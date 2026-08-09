@@ -1,0 +1,140 @@
+.task-time-tracker-log-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+	margin-bottom: 1em;
+}
+
+.task-time-tracker-log-row {
+	padding: 0.5em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+}
+
+.task-time-tracker-log-task {
+	font-weight: 600;
+	margin-bottom: 0.25em;
+}
+
+.task-time-tracker-log-task-missing {
+	color: var(--text-error);
+}
+
+.task-time-tracker-log-task-snapshot {
+	font-size: 0.85em;
+	color: var(--text-muted);
+	margin-bottom: 0.25em;
+}
+
+.task-time-tracker-log-meta {
+	display: flex;
+	gap: 1em;
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+.task-time-tracker-log-taskid {
+	font-size: 0.8em;
+	color: var(--text-faint);
+	font-family: var(--font-monospace);
+}
+
+.task-time-tracker-totals-duration {
+	font-weight: 600;
+}
+
+.task-time-tracker-recovery-buttons {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.5em;
+	margin-top: 1em;
+}
+
+.task-time-tracker-settings-error {
+	color: var(--text-error);
+}
+
+/* Fase 5 UX — badge tipo tag junto al checkbox, solo modo Edicion.
+   Tres variantes de color por estado, todas con variables de tema de
+   Obsidian (nunca hex fijo) para adaptarse a cualquier tema claro/oscuro/
+   personalizado. */
+.task-time-tracker-inline-control {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3em;
+	margin-left: 0.5em;
+	padding: 0.05em 0.5em;
+	border-radius: 0.35em;
+	vertical-align: middle;
+	cursor: pointer;
+	opacity: 0;
+	transition:
+		opacity 0.1s ease-in-out,
+		background-color 0.1s ease-in-out,
+		color 0.1s ease-in-out;
+
+	/* Disponible (hover, sin tracking activo): tono neutro/sutil. */
+	background-color: var(--background-modifier-border);
+	color: var(--text-muted);
+}
+
+.task-time-tracker-inline-control:hover:not(.is-static) {
+	background-color: var(--background-modifier-hover);
+	color: var(--text-accent);
+}
+
+/* Con al menos una sesion guardada (tarea abierta, no activa), el badge
+   se mantiene siempre visible en vez de solo al hacer hover. */
+.task-time-tracker-inline-control.has-history {
+	opacity: 1;
+}
+
+/* En ejecucion: color de enfasis que la distingue claramente del resto. */
+.task-time-tracker-inline-control.is-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+	opacity: 1;
+}
+
+.task-time-tracker-inline-control.is-active:hover {
+	background-color: var(--interactive-accent-hover);
+}
+
+/* Cerrada con historial: solo informativo, sin interaccion posible —
+   tono mas apagado/desaturado que el resto. */
+.task-time-tracker-inline-control.is-static {
+	cursor: default;
+	opacity: 1;
+	background-color: var(--background-secondary);
+	color: var(--text-faint);
+}
+
+/* Iconos de tipo relleno (no de contorno): los iconos de Lucide que usa
+   Obsidian se dibujan con fill:none + stroke, asi que se invierte para
+   que el propio trazo (un triangulo o un cuadrado) quede solido. */
+.task-time-tracker-inline-icon svg {
+	width: 0.85em;
+	height: 0.85em;
+	display: block;
+	fill: currentColor;
+	stroke: none;
+}
+
+.task-time-tracker-inline-badge {
+	font-size: 0.8em;
+	font-family: var(--font-monospace);
+	line-height: 1;
+}
+
+.task-time-tracker-inline-control.is-hidden,
+.task-time-tracker-inline-icon.is-hidden,
+.task-time-tracker-inline-badge.is-hidden {
+	display: none;
+}
+
+/* Se revela al hacer hover sobre la linea de la tarea en modo Edicion
+   (Live Preview: .cm-line). Las tareas activas o cerradas-con-historial
+   ya tienen opacity:1 propio (arriba) y no dependen de esto. */
+.cm-line:hover .task-time-tracker-inline-control {
+	opacity: 1;
+}

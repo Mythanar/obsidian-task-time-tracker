@@ -1,0 +1,11 @@
+{
+	"id": "task-time-tracker",
+	"name": "Task Time Tracker",
+	"version": "0.0.9",
+	"minAppVersion": "1.7.2",
+	"description": "Track time spent on checkbox tasks (Tasks-plugin compatible), stored locally, with manual batch export to external platforms.",
+	"author": "",
+	"authorUrl": "",
+	"fundingUrl": "",
+	"isDesktopOnly": false
+}
