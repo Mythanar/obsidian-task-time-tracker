@@ -12,13 +12,14 @@
 import { ItemView, MarkdownView, Notice, TFile, WorkspaceLeaf, setIcon } from "obsidian";
 import { formatDuration } from "../core/TrackingEngine";
 import { parseCheckboxLine, ResolvedTask, TaskIdentifier } from "../core/TaskIdentifier";
-import { EntryUpdateResult, TimeEntry } from "../types";
+import { DeleteTaskResult, EntryUpdateResult, TimeEntry } from "../types";
 
 export const TIME_LOG_VIEW_TYPE = "task-time-tracker-log-view";
 
 export interface TimeLogViewActions {
 	updateEntryTimes(entryId: string, start: number, end: number): Promise<EntryUpdateResult>;
 	deleteEntry(entryId: string): Promise<void>;
+	deleteTask(taskId: string): Promise<DeleteTaskResult>;
 }
 
 // Estado transitorio de edicion de una sesion: solo una a la vez, nunca
@@ -169,6 +170,12 @@ export class TimeLogView extends ItemView {
 	// independiente.
 	private expandedTaskIds = new Set<string>();
 	private editDraft: EditDraft | null = null;
+	// Backlog Fase 5 — borrado de tarea completa (todo su historico por
+	// tt-id): confirmacion pendiente, si hay alguna. Se guarda por taskId,
+	// no por tarjeta/dia: si la misma tarea aparece en varias tarjetas
+	// (vista semanal), la confirmacion se refleja en todas a la vez, ya
+	// que la accion afecta al historico completo, no a una sola tarjeta.
+	private taskDeleteConfirmId: string | null = null;
 	// Bloque 2 — cada apertura del panel (instancia nueva de la vista, ver
 	// registerView en main.ts) arranca siempre en "hoy" y en vista diaria;
 	// no hay memoria de la ultima fecha/modo vistos en una apertura anterior.
@@ -261,26 +268,36 @@ export class TimeLogView extends ItemView {
 		resolutions: Map<string, ResolvedTask | null>,
 		dayKey: number,
 	): void {
+		const label = this.taskLabel(taskId, resolutions);
+
+		// Backlog Fase 5 — confirmacion de borrado de tarea completa: sale
+		// del flujo normal de la tarjeta (sin cabecera expandible ni
+		// detalle), igual que confirmingDelete lo hace para una sesion
+		// individual — ver renderTaskDeleteConfirm().
+		if (this.taskDeleteConfirmId === taskId) {
+			const card = list.createDiv({ cls: "task-time-tracker-log-row" });
+			this.renderTaskDeleteConfirm(card, taskId, label);
+			return;
+		}
+
 		const expandKey = `${dayKey}|${taskId}`;
 		const totalMs = taskEntries.reduce((sum, entry) => sum + ((entry.end ?? Date.now()) - entry.start), 0);
-		const label = this.taskLabel(taskId, resolutions);
 		const isMissing = resolutions.get(taskId) == null;
 		const expanded = this.expandedTaskIds.has(expandKey);
 
 		const card = list.createDiv({ cls: "task-time-tracker-log-row" });
 		const header = card.createDiv({ cls: "task-time-tracker-log-card-header" });
 
+		// Linea 1: solo el enlace a la nota de origen (o el texto si la tarea
+		// no se resuelve). Ninguna accion de expandir/colapsar vive aqui, asi
+		// que el chevron se movio a la linea 2 — ver comentario ahi.
 		const titleRow = header.createDiv({ cls: "task-time-tracker-log-card-title-row" });
-		const toggleIcon = titleRow.createSpan({ cls: "task-time-tracker-log-card-toggle" });
-		setIcon(toggleIcon, expanded ? "chevron-down" : "chevron-right");
-
 		const title = titleRow.createDiv({ text: label, cls: "task-time-tracker-log-task" });
 		if (isMissing) {
 			title.addClass("task-time-tracker-log-task-missing");
 		} else {
 			title.addClass("task-time-tracker-log-task-link");
-			title.addEventListener("click", (evt) => {
-				evt.stopPropagation();
+			title.addEventListener("click", () => {
 				void this.openTaskNote(taskId, taskEntries);
 			});
 		}
@@ -290,14 +307,40 @@ export class TimeLogView extends ItemView {
 			header.createDiv({ text: mostRecent.taskText, cls: "task-time-tracker-log-task-snapshot" });
 		}
 
-		const meta = header.createDiv({ cls: "task-time-tracker-log-meta" });
+		// Linea 2: chevron + nº sesiones + total + tt-id. Unico disparador de
+		// expandir/colapsar la tarjeta (antes compartia el clic con toda la
+		// cabecera, incluido el titulo) — con el mismo estilo de hover que ya
+		// usan las filas de sesion individuales, para marcarla como clicable.
+		const meta = header.createDiv({ cls: "task-time-tracker-log-meta task-time-tracker-log-meta-toggle" });
+		const toggleIcon = meta.createSpan({ cls: "task-time-tracker-log-card-toggle" });
+		setIcon(toggleIcon, expanded ? "chevron-down" : "chevron-right");
 		meta.createSpan({ text: `${taskEntries.length} ${taskEntries.length === 1 ? "sesión" : "sesiones"}` });
 		meta.createSpan({ text: formatDuration(totalMs), cls: "task-time-tracker-totals-duration" });
 		meta.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
 
-		header.addEventListener("click", () => {
+		meta.addEventListener("click", () => {
 			if (expanded) this.expandedTaskIds.delete(expandKey);
 			else this.expandedTaskIds.add(expandKey);
+			void this.render();
+		});
+
+		// Backlog Fase 5 — borrar la tarea completa (todo su historico, no
+		// solo lo visible en el rango de fecha actual): con stopPropagation
+		// para no disparar tambien el expandir/colapsar de la fila que lo
+		// contiene. El chequeo de sesion activa usa this.getEntries() sin
+		// acotar por dia/semana — la tarea puede tener su sesion activa hoy
+		// aunque esta tarjeta en concreto muestre otro dia (vista semanal).
+		const deleteBtn = meta.createEl("button", { cls: "task-time-tracker-log-card-delete clickable-icon" });
+		setIcon(deleteBtn, "trash-2");
+		deleteBtn.setAttribute("aria-label", "Eliminar tarea");
+		deleteBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			const hasActive = this.getEntries().some((entry) => entry.taskId === taskId && entry.end === null);
+			if (hasActive) {
+				new Notice("No se puede eliminar: esta tarea tiene una sesión activa. Detén el tracking primero.");
+				return;
+			}
+			this.taskDeleteConfirmId = taskId;
 			void this.render();
 		});
 
@@ -306,6 +349,63 @@ export class TimeLogView extends ItemView {
 			for (const entry of taskEntries) {
 				this.renderSessionRow(detail, entry);
 			}
+		}
+	}
+
+	// Backlog Fase 5 — confirmacion de borrado de tarea completa. Mismo
+	// patron que renderEditForm() usa para confirmar el borrado de una
+	// sesion individual (datos visibles + Si/Cancelar), reutilizando las
+	// mismas clases CSS. A diferencia de la tarjeta normal (cuyo total
+	// puede venir acotado a un dia/semana), aqui se recalculan sesiones y
+	// total SIEMPRE sobre el historico completo de la tarea
+	// (this.getEntries() sin filtrar por fecha): lo que se muestra debe
+	// coincidir exactamente con lo que se va a borrar.
+	// Orden de arriba a abajo: titulo, resumen, aviso, botones (todo junto,
+	// sin scroll, para decidir y confirmar) y, tras una linea divisoria, el
+	// detalle completo de todas las sesiones — mismo renderSessionRow() que
+	// ya se usa al expandir la tarjeta en el uso normal del Historial.
+	private renderTaskDeleteConfirm(card: Element, taskId: string, label: string): void {
+		const fullTaskEntries = this.getEntries().filter((entry) => entry.taskId === taskId);
+		const totalMs = fullTaskEntries.reduce((sum, entry) => sum + ((entry.end ?? Date.now()) - entry.start), 0);
+
+		const confirm = card.createDiv({ cls: "task-time-tracker-log-edit-form" });
+		confirm.createDiv({ text: label, cls: "task-time-tracker-log-task" });
+
+		const meta = confirm.createDiv({ cls: "task-time-tracker-log-meta" });
+		meta.createSpan({ text: `${fullTaskEntries.length} ${fullTaskEntries.length === 1 ? "sesión" : "sesiones"}` });
+		meta.createSpan({ text: formatDuration(totalMs), cls: "task-time-tracker-totals-duration" });
+		meta.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
+
+		confirm.createEl("p", {
+			text: "¿Eliminar esta tarea y todo su histórico de sesiones (todas las fechas)? Esta acción no se puede deshacer.",
+			cls: "task-time-tracker-log-edit-error",
+		});
+
+		const actions = confirm.createDiv({ cls: "task-time-tracker-log-edit-actions" });
+		actions.createEl("button", { text: "Sí, eliminar", cls: "mod-warning" }).addEventListener("click", () => {
+			void this.actions.deleteTask(taskId).then((result) => {
+				if (!result.ok) {
+					new Notice("No se puede eliminar: esta tarea tiene una sesión activa. Detén el tracking primero.");
+				}
+				this.taskDeleteConfirmId = null;
+				void this.render();
+			});
+		});
+		actions.createEl("button", { text: "Cancelar" }).addEventListener("click", () => {
+			this.taskDeleteConfirmId = null;
+			void this.render();
+		});
+
+		// Solo lectura a proposito: renderSessionRow() (uso normal del
+		// Historial) deja la fila clicable para editar y añade su propio
+		// boton "Eliminar" por sesion — dos acciones de escritura que no
+		// deben convivir con la confirmacion de borrar la tarea entera. Aqui
+		// se llama renderSessionInfo() directamente (mismos datos: fecha,
+		// hora inicio, hora fin, duracion), sin listener de clic ni botones.
+		const detail = confirm.createDiv({ cls: "task-time-tracker-log-card-detail" });
+		for (const entry of [...fullTaskEntries].sort((a, b) => b.start - a.start)) {
+			const row = detail.createDiv({ cls: "task-time-tracker-log-session-row" });
+			this.renderSessionInfo(row, entry);
 		}
 	}
 
@@ -599,12 +699,15 @@ export class TimeLogView extends ItemView {
 	}
 
 	// Fase 5 UX — abre la nota de origen de una tarea desde el titulo de
-	// su tarjeta: pestaña nueva en el area central, cursor en la linea del
-	// tt-id (resolvePreferring: prioriza la nota de la sesion mas
+	// su tarjeta (resolvePreferring: prioriza la nota de la sesion mas
 	// reciente si el id esta duplicado en varias notas, con el criterio
-	// generico de Fase 2 como respaldo). Selecciona la linea completa
-	// unos instantes a modo de resaltado (no hay una API publica para el
-	// flash de la busqueda nativa de Obsidian sin tocar el DOM interno).
+	// generico de Fase 2 como respaldo). Si la nota ya esta abierta en
+	// alguna pestaña del workspace, se enfoca esa (la primera que se
+	// encuentre, sin importar cual sea "la mas reciente" entre varias) en
+	// vez de abrir una pestaña nueva; si no, se abre una pestaña nueva en
+	// el area central, igual que antes. Selecciona la linea completa unos
+	// instantes a modo de resaltado (no hay una API publica para el flash
+	// de la busqueda nativa de Obsidian sin tocar el DOM interno).
 	private async openTaskNote(taskId: string, taskEntries: TimeEntry[]): Promise<void> {
 		const mostRecent = taskEntries.reduce((latest, entry) => (entry.start > latest.start ? entry : latest));
 		const resolved = await this.taskIdentifier.resolvePreferring(taskId, mostRecent.filePath);
@@ -614,8 +717,9 @@ export class TimeLogView extends ItemView {
 			return;
 		}
 
-		const leaf = this.app.workspace.getLeaf("tab");
+		const leaf = this.findLeafWithFile(file) ?? this.app.workspace.getLeaf("tab");
 		await leaf.openFile(file, { eState: { line: resolved.lineNumber } });
+		await this.app.workspace.revealLeaf(leaf);
 
 		const view = leaf.view;
 		if (!(view instanceof MarkdownView)) return;
@@ -625,6 +729,18 @@ export class TimeLogView extends ItemView {
 		editor.setSelection(lineStart, { line: resolved.lineNumber, ch: lineLength });
 		editor.scrollIntoView({ from: lineStart, to: lineStart }, true);
 		window.setTimeout(() => editor.setCursor(lineStart), 1200);
+	}
+
+	// Primera pestaña de markdown existente que ya tenga este archivo
+	// abierto, o null si no hay ninguna. No distingue "la mas reciente"
+	// entre varias — basta con la primera que se encuentre.
+	private findLeafWithFile(file: TFile): WorkspaceLeaf | null {
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			if (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path) {
+				return leaf;
+			}
+		}
+		return null;
 	}
 
 	// Bloque 2 — barra de navegacion de fecha: toggle dia/semana, flechas
@@ -743,7 +859,6 @@ export class TimeLogView extends ItemView {
 		this.renderDateNav(container);
 
 		if (this.viewMode === "day") {
-			container.createEl("h5", { text: "Total acumulado por tarea" });
 			await this.renderDaySection(container, startOfDay(this.anchorDate), allEntries);
 		} else {
 			const weekStart = startOfWeek(this.anchorDate);

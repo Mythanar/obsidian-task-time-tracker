@@ -33,6 +33,11 @@ export type LogViewLocation = "sidebar" | "tab";
 export interface PluginSettings {
 	toggl: TogglSettings;
 	logViewLocation: LogViewLocation;
+	// Fase 5 — carpeta dentro de la vault donde ExportManager escribe los
+	// CSV generados (ambos formatos, generico y Toggl). Cambiar este ajuste
+	// no mueve exportaciones ya hechas en la carpeta anterior; solo aplica
+	// a partir de la proxima exportacion.
+	exportsFolder: string;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -42,6 +47,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 		timeFormat: "24h",
 	},
 	logViewLocation: "sidebar",
+	exportsFolder: "task-tracker-exports",
 };
 
 // Fase 5 — resultado de editar los horarios de una sesión desde el
@@ -50,6 +56,12 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 // calcula en vivo del lado de la UI mientras se edita (ver TimeLogView.ts);
 // nunca bloquea el guardado, así que no forma parte de este resultado.
 export type EntryUpdateResult = { ok: true } | { ok: false; error: "not-found" | "invalid-range" };
+
+// Fase 5 — resultado de borrar una tarea completa (todo su historico de
+// sesiones, por tt-id) desde el panel de Historial (ver TimeLogView.ts /
+// main.ts#deleteTask). Se bloquea si esa tarea tiene la sesion activa en
+// este momento; el usuario debe detener el tracking antes de borrar.
+export type DeleteTaskResult = { ok: true } | { ok: false; error: "active" };
 
 const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 

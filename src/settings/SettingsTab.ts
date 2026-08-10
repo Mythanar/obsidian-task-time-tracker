@@ -5,9 +5,9 @@
 // Fase 5 — sección "General" para ajustes globales del plugin; por ahora
 // es un placeholder sin contenido funcional.
 
-import { App, PluginSettingTab, Setting } from "obsidian";
+import { AbstractInputSuggest, App, PluginSettingTab, Setting, TFolder } from "obsidian";
 import type TaskTimeTrackerPlugin from "../main";
-import { isValidEmail, LogViewLocation, TogglDateFormat, TogglTimeFormat } from "../types";
+import { DEFAULT_SETTINGS, isValidEmail, LogViewLocation, TogglDateFormat, TogglTimeFormat } from "../types";
 
 const EMAIL_DESC_DEFAULT = "Necesario para exportar sesiones en formato CSV para Toggl.";
 const EMAIL_DESC_INVALID = "Ese email no tiene un formato válido (ej. usuario@dominio.com).";
@@ -27,6 +27,36 @@ const TIME_FORMAT_OPTIONS: Record<string, string> = {
 	"24h": "24 horas",
 	"12h": "12 horas (AM/PM)",
 };
+
+// Fase 5 — autocompletado de carpetas ya existentes en la vault para el
+// ajuste de carpeta de exportacion, mismo patron de UI que usa Obsidian
+// para configurar la carpeta de adjuntos por defecto. Permite escribir
+// una ruta que todavia no existe (ExportManager.ts la autocrea al
+// exportar) — el autocompletado es solo una ayuda, no una restriccion.
+class FolderSuggest extends AbstractInputSuggest<TFolder> {
+	constructor(
+		app: App,
+		inputEl: HTMLInputElement,
+		private onChoose: (path: string) => void,
+	) {
+		super(app, inputEl);
+	}
+
+	protected getSuggestions(query: string): TFolder[] {
+		const q = query.toLowerCase();
+		return this.app.vault.getAllFolders(true).filter((folder) => folder.path.toLowerCase().includes(q));
+	}
+
+	renderSuggestion(folder: TFolder, el: HTMLElement): void {
+		el.setText(folder.path);
+	}
+
+	selectSuggestion(folder: TFolder): void {
+		this.setValue(folder.path);
+		this.onChoose(folder.path);
+		this.close();
+	}
+}
 
 export class SettingsTab extends PluginSettingTab {
 	constructor(
@@ -55,6 +85,27 @@ export class SettingsTab extends PluginSettingTab {
 					this.plugin.pluginState.settings.logViewLocation = value as LogViewLocation;
 					await this.plugin.saveSettings();
 				});
+			});
+
+		// Fase 5 — carpeta de destino de ambos formatos de exportacion (CSV
+		// generico y CSV para Toggl). Cambiar esto no mueve exportaciones ya
+		// hechas en la carpeta anterior, solo aplica desde la proxima
+		// exportacion (ver ExportManager.ts).
+		new Setting(containerEl)
+			.setName("Carpeta de exportación")
+			.setDesc(
+				"Carpeta dentro de la vault donde se guardan los archivos exportados. Se crea automáticamente si no existe todavía.",
+			)
+			.addText((text) => {
+				text.setPlaceholder(DEFAULT_SETTINGS.exportsFolder).setValue(this.plugin.pluginState.settings.exportsFolder);
+
+				const saveExportsFolder = async (path: string) => {
+					this.plugin.pluginState.settings.exportsFolder = path.trim();
+					await this.plugin.saveSettings();
+				};
+
+				new FolderSuggest(this.app, text.inputEl, (path) => void saveExportsFolder(path));
+				text.onChange((value) => void saveExportsFolder(value));
 			});
 
 		new Setting(containerEl).setName("Toggl").setHeading();

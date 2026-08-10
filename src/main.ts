@@ -18,7 +18,7 @@ import { SettingsTab } from "./settings/SettingsTab";
 import { DEFAULT_SETTINGS, PluginState } from "./types";
 import { InlineTrackingBus } from "./ui/InlineTrackingBus";
 import { createInlineTaskControlExtension } from "./ui/InlineTaskControlExtension";
-import { EntryUpdateResult } from "./types";
+import { DeleteTaskResult, EntryUpdateResult } from "./types";
 
 /**
  * Task Time Tracker
@@ -60,6 +60,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			settings: {
 				toggl: { ...DEFAULT_SETTINGS.toggl, ...savedState?.settings?.toggl },
 				logViewLocation: savedState?.settings?.logViewLocation ?? DEFAULT_SETTINGS.logViewLocation,
+				exportsFolder: savedState?.settings?.exportsFolder ?? DEFAULT_SETTINGS.exportsFolder,
 			},
 		};
 
@@ -79,6 +80,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 				new TimeLogView(leaf, () => this.trackingEngine.getEntries(), this.taskIdentifier, {
 					updateEntryTimes: (entryId, start, end) => this.updateEntryTimes(entryId, start, end),
 					deleteEntry: (entryId) => this.deleteEntry(entryId),
+					deleteTask: (taskId) => this.deleteTask(taskId),
 				}),
 		);
 
@@ -154,9 +156,14 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			id: "export-time-entries",
 			name: "Export time entries...",
 			callback: () => {
-				new ExportModal(this.app, this.pluginState.settings.toggl.email, (fromValue, toValue, format) => {
-					void this.runExport(fromValue, toValue, format);
-				}).open();
+				new ExportModal(
+					this.app,
+					this.pluginState.settings.toggl,
+					(email) => this.saveTogglEmail(email),
+					(fromValue, toValue, format) => {
+						void this.runExport(fromValue, toValue, format);
+					},
+				).open();
 			},
 		});
 
@@ -294,6 +301,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	private async runExport(fromValue: string, toValue: string, format: ExportFormat): Promise<void> {
 		const fromMs = new Date(`${fromValue}T00:00:00`).getTime();
 		const toMs = new Date(`${toValue}T23:59:59.999`).getTime();
+		const exportsFolder = this.pluginState.settings.exportsFolder;
 
 		try {
 			const filePath =
@@ -303,13 +311,23 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 							fromMs,
 							toMs,
 							this.pluginState.settings.toggl,
+							exportsFolder,
 						)
-					: await this.exportManager.exportToCsv(this.trackingEngine.getEntries(), fromMs, toMs);
+					: await this.exportManager.exportToCsv(this.trackingEngine.getEntries(), fromMs, toMs, exportsFolder);
 			new Notice(`Exportado a ${filePath}`);
 		} catch (error) {
 			console.error("Task Time Tracker: error exportando a CSV", error);
 			new Notice("Ocurrió un error al exportar. Revisa la consola para más detalles.");
 		}
+	}
+
+	// Fase 5 — el modal de exportacion permite completar el email de Toggl
+	// ahi mismo si falta; al confirmar, se persiste aqui como el mismo
+	// ajuste de Settings > Toggl > Email (unica fuente de verdad), nunca
+	// como un valor exclusivo de esa exportacion.
+	private async saveTogglEmail(email: string): Promise<void> {
+		this.pluginState.settings.toggl.email = email;
+		await this.saveSettings();
 	}
 
 	async saveSettings(): Promise<void> {
@@ -349,6 +367,29 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		await this.saveData(this.pluginState);
 		this.refreshLogViews();
 		this.notifyTrackingChanged();
+	}
+
+	// Fase 5 UX — panel de Historial: borrado de una tarea completa, todo
+	// su historico por tt-id (incluidas sesiones de otras notas si el id
+	// esta duplicado — mismo criterio de Fase 2 de tratar duplicados como
+	// la misma tarea). Nunca toca la nota: el [tt-id:: ...] que quede en
+	// la linea de la tarea se deja intacto y huerfano a proposito; si el
+	// usuario vuelve a trackear esa linea, simplemente arranca un
+	// historico nuevo bajo el mismo id. Bloqueado mientras esa tarea
+	// tenga la sesion activa (la confirmacion vive en la UI, aqui ya se
+	// asume confirmado salvo por este bloqueo).
+	async deleteTask(taskId: string): Promise<DeleteTaskResult> {
+		const active = this.trackingEngine.getActiveEntry();
+		if (active?.taskId === taskId) return { ok: false, error: "active" };
+
+		const entries = this.trackingEngine.getEntries();
+		for (let i = entries.length - 1; i >= 0; i--) {
+			if (entries[i]?.taskId === taskId) entries.splice(i, 1);
+		}
+		await this.saveData(this.pluginState);
+		this.refreshLogViews();
+		this.notifyTrackingChanged();
+		return { ok: true };
 	}
 
 	private refreshLogViews(): void {

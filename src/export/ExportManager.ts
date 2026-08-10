@@ -20,7 +20,9 @@ import { TimeEntry, TogglSettings } from "../types";
 import { buildCsv, ExportRow } from "./adapters/CsvAdapter";
 import { buildTogglCsv, formatTogglDate, formatTogglTime, TogglExportRow } from "./adapters/TogglCsvAdapter";
 
-const EXPORTS_FOLDER = "task-tracker-exports";
+// Respaldo si el ajuste de settings llegara vacio (no deberia ocurrir:
+// DEFAULT_SETTINGS.exportsFolder ya cubre ese caso desde main.ts#onload).
+const FALLBACK_EXPORTS_FOLDER = "task-tracker-exports";
 
 function pad(n: number): string {
 	return String(n).padStart(2, "0");
@@ -46,8 +48,10 @@ export class ExportManager {
 
 	// Exporta a un CSV nuevo las sesiones cerradas cuya fecha de inicio
 	// cae entre fromMs y toMs (inclusive). Devuelve la ruta del archivo
-	// creado dentro del vault.
-	async exportToCsv(entries: TimeEntry[], fromMs: number, toMs: number): Promise<string> {
+	// creado dentro del vault. exportsFolder es el ajuste configurable de
+	// Settings (Fase 5); cambiarlo solo afecta a partir de la proxima
+	// exportacion, nunca mueve archivos ya generados en la carpeta anterior.
+	async exportToCsv(entries: TimeEntry[], fromMs: number, toMs: number, exportsFolder: string): Promise<string> {
 		const inRange = this.getEntriesInRange(entries, fromMs, toMs);
 
 		const rows: ExportRow[] = [];
@@ -68,18 +72,21 @@ export class ExportManager {
 		}
 		rows.sort((a, b) => (a.date + a.startTime).localeCompare(b.date + b.startTime));
 
-		return this.writeCsvFile(buildCsv(rows), "task-tracker-export");
+		return this.writeCsvFile(buildCsv(rows), "task-tracker-export", exportsFolder);
 	}
 
 	// Exporta a un CSV nuevo, con las columnas que espera el importador de
 	// Toggl (Email, Description, Start date, Start time, Duration), las
 	// sesiones cerradas cuya fecha de inicio cae entre fromMs y toMs
 	// (inclusive). Fecha y hora se formatean segun los ajustes de Toggl.
+	// Mismo exportsFolder configurable que exportToCsv — un unico ajuste
+	// para ambos formatos, no hace falta uno distinto por plataforma.
 	async exportToTogglCsv(
 		entries: TimeEntry[],
 		fromMs: number,
 		toMs: number,
 		togglSettings: TogglSettings,
+		exportsFolder: string,
 	): Promise<string> {
 		const inRange = this.getEntriesInRange(entries, fromMs, toMs);
 
@@ -95,7 +102,7 @@ export class ExportManager {
 		}
 		rows.sort((a, b) => (a.startDate + a.startTime).localeCompare(b.startDate + b.startTime));
 
-		return this.writeCsvFile(buildTogglCsv(rows), "toggl-export");
+		return this.writeCsvFile(buildTogglCsv(rows), "toggl-export", exportsFolder);
 	}
 
 	private getEntriesInRange(entries: TimeEntry[], fromMs: number, toMs: number): ClosedTimeEntry[] {
@@ -112,14 +119,15 @@ export class ExportManager {
 		return resolved ? (parseCheckboxLine(resolved.lineText) ?? resolved.lineText) : entry.taskText;
 	}
 
-	private async writeCsvFile(csv: string, filePrefix: string): Promise<string> {
-		if (!this.app.vault.getFolderByPath(EXPORTS_FOLDER)) {
-			await this.app.vault.createFolder(EXPORTS_FOLDER);
+	private async writeCsvFile(csv: string, filePrefix: string, exportsFolder: string): Promise<string> {
+		const folder = exportsFolder.trim() || FALLBACK_EXPORTS_FOLDER;
+		if (!this.app.vault.getFolderByPath(folder)) {
+			await this.app.vault.createFolder(folder);
 		}
 
 		const now = new Date();
 		const fileName = `${filePrefix}_${formatDate(now.getTime())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}.csv`;
-		const filePath = `${EXPORTS_FOLDER}/${fileName}`;
+		const filePath = `${folder}/${fileName}`;
 		await this.app.vault.create(filePath, csv);
 		return filePath;
 	}

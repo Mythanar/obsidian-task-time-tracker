@@ -451,3 +451,33 @@ una entrada aquí.
   solo aplica la próxima vez que se abra. Motivo: pedido explícito del
   usuario, con el mismo criterio de "no autoactuar sobre un panel ya
   abierto" que ya rige la edición/borrado de sesiones del Bloque 1.
+
+
+## Fase 6 (futura) — Internacionalización (i18n)
+
+- **Nueva fase añadida al roadmap: Fase 6 — Internacionalización.** El
+  plugin se desarrolla en español pero debe publicarse con inglés como
+  idioma por defecto, detectando el idioma configurado en Obsidian:
+  si Obsidian está en español, el plugin se muestra en español; en
+  cualquier otro caso (inglés incluido), se muestra en inglés. Motivo:
+  ampliar el alcance de usuarios potenciales del plugin más allá de
+  hispanohablantes, sin perder la experiencia nativa en español para
+  quien ya lo use así.
+- **Criterio de entrada: no se empieza hasta que Fase 5 esté cerrada.**
+  Traducir antes sería traducir dos veces, ya que Fase 5 todavía añade
+  textos nuevos (settings, diálogo de exportar rediseñado). Se coloca
+  justo antes del release, no después.
+- **Qué se traduce:** todo texto visible en la interfaz — comandos de
+  la paleta, status bar, panel de Historial, modales, settings,
+  mensajes de validación y avisos.
+- **Qué NO se traduce (decisión explícita, para evitar que se cuele por
+  descuido):** el identificador `[tt-id:: <id>]` inline en las notas
+  (sintaxis interna, no contenido de usuario); las columnas del CSV
+  genérico y del CSV para Toggl (`Email`, `Description`, `Start date`,
+  etc. — las lee un importador externo, traducirlas rompería la
+  compatibilidad); nombres de archivos y carpetas de exportación
+  (`task-tracker-exports`, `task-tracker-export_...csv`).
+- **No es una fase de producto, es una fase de "congelar textos y
+  traducir".** No cambia comportamiento del plugin, solo extrae los
+  textos ya escritos en español a archivos de traducción y añade el
+  inglés como equivalente.
