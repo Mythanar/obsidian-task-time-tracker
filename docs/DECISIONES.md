@@ -326,47 +326,128 @@ una entrada aquí.
   respaldo funciona con contenido leído directamente, sin ningún objeto
   Editor involucrado; el debounce corto solo evalúa el contenido final
   tras una pausa de escritura, nunca un estado intermedio transitorio.
-- **Icono play/stop junto al checkbox (ítem 2 del backlog de UX):
-  arquitectura de doble integración (CodeMirror 6 + post-processor), sin
-  forzar reconstrucciones de decoración para la actualización en vivo.**
-  Es el primer elemento visual que el plugin dibuja dentro del cuerpo de
-  la nota (hasta ahora todo vivía en status bar o panel lateral), y hay
-  que cubrir modo Edición (Live Preview) y modo Lectura, que usan
-  mecanismos de renderizado completamente distintos — mismo tipo de
-  problema que el bug de timing anterior, pero ahora de raíz en el
-  diseño en vez de como fix.
-  - Modo Edición: una `ViewPlugin` de CodeMirror 6 dibuja un widget por
-    cada línea de checkbox visible (ancla justo después de `[x]`/`[ ]`,
-    usando la posición calculada por un nuevo helper
-    `checkboxMarkerEnd()`). El widget se reconstruye solo cuando cambia
-    el texto de la propia línea (`eq()` compara el texto), no en cada
-    pulsación de tecla en otras líneas ni en cada movimiento de cursor.
-  - Modo Lectura: un `registerMarkdownPostProcessor` empareja en orden de
-    documento cada `<li class="task-list-item">` renderizado con su línea
-    de origen (vía `ctx.getSectionInfo`), ya que Obsidian no expone un
-    mapeo directo línea↔elemento para listas.
-  - **Actualización en vivo (número subiendo cada segundo) sin tocar
-    decoraciones de CodeMirror.** En vez de reconstruir el widget cada
-    segundo (coste y parpadeo innecesarios) o forzar un refresco externo
-    de decoraciones cuando cambia el estado de tracking, cada widget se
-    monta siempre (tarea abierta, cerrada o sin historial) y decide su
-    propio contenido/visibilidad en cada refresco; un pub/sub interno
-    (`InlineTrackingBus`) avisa a todos los controles montados —tanto los
-    de CodeMirror como los del post-processor— cuando hay que
-    releerse (al iniciar/detener tracking, y cada segundo mientras hay
-    una sesión activa). Así, cuando una tarea cerrada pasa de "sin
-    historial" a "con historial" (justo al detenerse su timer), el badge
-    aparece solo actualizando el DOM ya existente, sin recalcular
-    decoraciones.
-  - **Resolución de la línea en el momento del clic, no al montar el
-    control**, para tolerar ediciones intermedias sin arriesgar escribir
-    en la línea equivocada: en modo Edición se usa `view.posAtDOM()` +
-    `doc.lineAt()` sobre el editor en vivo (siempre exacto); en modo
-    Lectura, sin editor disponible, se usa `vault.process()` verificando
-    que el texto de la línea no haya cambiado desde que se montó el
-    control — si cambió, se aborta con aviso en vez de escribir a
-    ciegas.
-  - El archivo se resuelve exclusivamente con API pública de Obsidian
-    (`editorInfoField` para el path del archivo en CodeMirror,
-    `MarkdownRenderChild` + `ctx.addChild` para el ciclo de vida en modo
-    Lectura), sin acceder a estructuras internas no documentadas.
+- **Icono/badge junto al checkbox para iniciar tracking sin comando.**
+  Se añade un control visual al final de la línea de cada tarea (después
+  del `tt-id::`), exclusivo de modo Edición — se decidió no dar soporte a
+  modo Lectura, tratando el inicio de tracking como una acción propia del
+  modo edición/fuente.
+  - **Visibilidad:** por hover solo en el caso de una tarea abierta sin
+    ningún historial (solo icono de play, sin contador). En cualquier
+    otro caso con datos que mostrar, el badge es siempre visible sin
+    depender del ratón: tarea abierta con historial (play + total
+    acumulado), tarea con tracking activo (stop + contador en vivo,
+    actualizado cada segundo), y tarea cerrada con historial (badge fijo
+    informativo, sin icono ni interacción). Una tarea cerrada sin
+    historial no muestra nada.
+  - **El contador de la tarea es el total acumulado de todas sus
+    sesiones**, distinto del status bar (Fase 1), que sigue mostrando
+    solo el tiempo de la sesión activa — ambos indicadores conviven.
+  - **Diseño:** badge tipo tag con fondo de color, usando las variables
+    de tema de Obsidian (se adapta a temas claros/oscuros/personalizados
+    en vez de colores fijos), con un tono distinto por estado
+    (disponible-con-historial / activo / cerrado) e iconos de play/stop
+    de tipo relleno.
+  - **Timer exclusivo respetado:** iniciar tracking desde el icono de una
+    tarea con otra ya activa cierra automáticamente la anterior, igual
+    que ya ocurría vía comando.
+  - **Backlog abierto:** caso límite de la misma nota abierta a la vez en
+    dos paneles (Edición + Lectura) con cambios sin guardar — pendiente
+    de que el usuario lo reproduzca en vivo antes de decidir si hace
+    falta blindarlo, dado que el uso de doble panel es frecuente entre
+    usuarios de Obsidian.
+
+## Fase 5 — status bar (trim y clic para abrir el Historial)
+
+- **Nombre de tarea recortado a 40 caracteres, con "…" solo cuando se
+  recortó de verdad.** Motivo: nombres de tarea largos rompían el layout
+  del status bar; el "…" condicional evita añadir el signo cuando el
+  texto ya entraba completo sin recorte.
+- **El status bar siempre muestra algo, incluso sin tracking activo**
+  (icono + "Sin tracking activo" en reposo). Motivo: un status bar
+  vacío no comunica que el plugin está cargado y funcionando.
+- **Toda la barra es clicable y abre el panel de Historial**, tanto con
+  tracking activo como en reposo, con efecto hover usando
+  `var(--background-modifier-hover)` (variable de tema, no color fijo).
+  Motivo: acceso directo al Historial sin pasar por el comando; mismo
+  criterio de adaptación a temas claro/oscuro que el resto de Fase 5.
+
+## Fase 5 — rediseño del Historial, Bloque 1 (tarjetas expandibles, edición y borrado inline)
+
+- **El Historial pasa de lista cronológica plana a tarjetas de tarea
+  expandibles.** Cada tarjeta muestra sesiones + total + tt-id en la
+  cabecera, y al expandirse revela sus sesiones individuales. Motivo:
+  con más historial acumulado, la lista plana de Fase 1 dejó de ser
+  navegable.
+- **El título de la tarjeta abre la nota de origen**, en una pestaña
+  nueva del área central, con la línea de la tarea seleccionada unos
+  instantes a modo de resaltado. Usa `TaskIdentifier.resolvePreferring()`
+  (prioriza la nota de la sesión más reciente si el mismo tt-id está
+  duplicado en varias notas, con el criterio genérico de Fase 2 como
+  respaldo). Motivo: no existe una API pública de Obsidian para el flash
+  de búsqueda nativo sin tocar el DOM interno; la selección de línea es
+  la aproximación elegida.
+- **Edición y borrado de sesiones se implementan en `main.ts` sobre
+  `pluginState.entries` directamente, no en `TrackingEngine`.**
+  `TrackingEngine` sigue limitado a timer activo/persistencia básica;
+  `updateEntryTimes()`/`deleteEntry()` viven en `main.ts` y mutan la
+  misma referencia de array que ya usa el motor. Motivo: decisión
+  explícita para no ensanchar la responsabilidad de `TrackingEngine` con
+  lógica de edición que solo necesita el panel.
+- **Un clic fuera del formulario de edición no descarta los cambios** —
+  solo Guardar/Cancelar/Eliminar lo hacen. El estado de edición
+  (`EditDraft`) sobrevive a un re-render externo del panel (p. ej. si se
+  inicia tracking en otra nota mientras se edita una sesión). Motivo: un
+  refresh externo no debería tirar por la borda una edición en curso del
+  usuario.
+- **Edición de fecha/hora completamente libre, incluidos los segundos**
+  (campos de texto `HH:MM:SS`, sin ningún redondeo automático). Se
+  probaron y revirtieron dos reglas intermedias (forzar segundos a
+  `:00` al guardar, y comparar por campo "tocado") antes de asentarse en
+  esta versión definitiva. Motivo: cualquier redondeo automático
+  generaba discrepancias entre la duración mostrada en la lista y la
+  mostrada en el formulario de edición para una sesión sin tocar.
+- **Aviso de solapamiento con otra sesión: en vivo mientras se edita,
+  nunca bloqueante y nunca como `Notice`.** Se calcula del lado de
+  `TimeLogView.ts` (no en `main.ts`) contra las entries actuales cada
+  vez que cambia un campo. Motivo: reemplaza un enfoque anterior de
+  confirmación al guardar; el usuario decide si el solapamiento es
+  aceptable, el guardado nunca se impide por esto.
+- **Mensajes de validación (formato inválido / solapamiento) en un
+  único bloque fijo**, con prioridad estricta (error de guardado >
+  formato inválido > fin≤inicio > solapamiento > nada, nunca dos a la
+  vez) y altura reservada aunque esté vacío. El formato inválido no se
+  evalúa en cada tecla: solo al perder el foco o al completar los 8
+  caracteres de `HH:MM:SS`. Motivo: dos mensajes simultáneos en
+  posiciones distintas eran confusos, y validar en cada tecla mostraba
+  errores sobre un valor que el usuario todavía estaba escribiendo.
+- **La confirmación de borrado mantiene visibles los datos originales
+  de la sesión** (no lo que se haya tecleado sin guardar) mientras se
+  confirma. Motivo: el usuario necesita ver qué sesión concreta está a
+  punto de eliminar.
+
+## Fase 5 — rediseño del Historial, Bloque 2 (navegación por fecha, ubicación del panel)
+
+- **El Historial pasa a mostrar por defecto solo el día actual**, con
+  navegación día/semana (flechas + botón "Hoy") en vez de todo el
+  histórico de golpe. Cada apertura nueva del panel arranca siempre en
+  "hoy" y en vista diaria, sin memoria de la última fecha/modo vistos en
+  una apertura anterior — se apoya en que Obsidian crea una instancia
+  nueva de `TimeLogView` cada vez que el panel se abre desde cerrado. El
+  filtrado usa el día calendario local de `entry.start` (no de
+  `entry.end`), así que una sesión que cruza medianoche se cuenta en el
+  día en que empezó. Motivo: con meses de histórico acumulado, mostrarlo
+  todo de golpe deja de ser útil.
+- **Semana: lunes a domingo (convención ISO), agrupada en una sección
+  por día**, cada una con sus propias tarjetas de tarea y un estado
+  vacío ("Sin sesiones este día.") si no hubo actividad ese día.
+- **El total de cada tarjeta queda acotado al rango de fecha visible
+  (día o semana)**, distinto a propósito del total histórico completo
+  que sigue mostrando el badge junto al checkbox (Fase 5, icono/badge).
+  Motivo: son dos preguntas distintas ("cuánto llevo hoy/esta semana" vs.
+  "cuánto llevo en total con esta tarea") y no tiene sentido forzar que
+  coincidan.
+- **Nuevo ajuste en settings: ubicación del Historial (panel lateral /
+  pestaña central).** Cambiar el ajuste no mueve un panel ya abierto;
+  solo aplica la próxima vez que se abra. Motivo: pedido explícito del
+  usuario, con el mismo criterio de "no autoactuar sobre un panel ya
+  abierto" que ya rige la edición/borrado de sesiones del Bloque 1.

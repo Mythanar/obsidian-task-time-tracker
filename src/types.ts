@@ -25,8 +25,14 @@ export interface TogglSettings {
 	timeFormat: TogglTimeFormat;
 }
 
+// Fase 5 — dónde se abre el panel de Historial (TimeLogView). Cambiar
+// este ajuste no mueve un panel ya abierto; solo aplica la próxima vez
+// que se abra (ver activateLogView() en main.ts).
+export type LogViewLocation = "sidebar" | "tab";
+
 export interface PluginSettings {
 	toggl: TogglSettings;
+	logViewLocation: LogViewLocation;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -35,7 +41,15 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 		dateFormat: "ISO",
 		timeFormat: "24h",
 	},
+	logViewLocation: "sidebar",
 };
+
+// Fase 5 — resultado de editar los horarios de una sesión desde el
+// panel de Historial (ver TimeLogView.ts / main.ts#updateEntryTimes). El
+// aviso de solapamiento con otra sesión es puramente informativo y se
+// calcula en vivo del lado de la UI mientras se edita (ver TimeLogView.ts);
+// nunca bloquea el guardado, así que no forma parte de este resultado.
+export type EntryUpdateResult = { ok: true } | { ok: false; error: "not-found" | "invalid-range" };
 
 const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
 

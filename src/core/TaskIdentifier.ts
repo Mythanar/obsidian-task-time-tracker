@@ -8,7 +8,7 @@
 // necesita para reconocer tt-id como campo estructurado (sin corchetes,
 // Dataview no lo detecta como campo).
 
-import { App, MarkdownView } from "obsidian";
+import { App, MarkdownView, TFile } from "obsidian";
 
 const TASK_ID_REGEX = /\[tt-id::\s*([0-9A-Za-z]+)\]/;
 // Viñeta: "-", "*", "+" o lista numerada ("1.", "2.", ...). El \s* inicial
@@ -77,9 +77,30 @@ export class TaskIdentifier {
 	// ese conflicto en esta fase, todas cuentan como la misma tarea a
 	// efectos de tiempo acumulado.
 	async resolve(taskId: string): Promise<ResolvedTask | null> {
+		return this.searchFiles(taskId, this.app.vault.getMarkdownFiles());
+	}
+
+	// Fase 5 UX — panel de Historial: variante de resolve() para el link
+	// "abrir nota" de una tarjeta de tarea. Si el mismo tt-id aparece en
+	// varias notas (duplicados, ver resolve()), prioriza la nota de la
+	// sesion mas reciente (preferredPath, el mismo criterio que ya usa la
+	// exportacion a CSV para "nota de origen": el snapshot de la sesion,
+	// no una busqueda en vivo) antes de caer al criterio generico de
+	// Fase 2 (primera coincidencia en todo el vault) si esa nota ya no
+	// contiene el tt-id (p.ej. la tarea se movio a otra nota).
+	async resolvePreferring(taskId: string, preferredPath: string): Promise<ResolvedTask | null> {
+		const preferred = this.app.vault.getAbstractFileByPath(preferredPath);
+		if (preferred instanceof TFile) {
+			const found = await this.searchFiles(taskId, [preferred]);
+			if (found) return found;
+		}
+		return this.resolve(taskId);
+	}
+
+	private async searchFiles(taskId: string, files: TFile[]): Promise<ResolvedTask | null> {
 		const liveContents = this.getLiveEditorContents();
 
-		for (const file of this.app.vault.getMarkdownFiles()) {
+		for (const file of files) {
 			const content = liveContents.get(file.path) ?? (await this.app.vault.cachedRead(file));
 			const lines = content.split("\n");
 			for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {

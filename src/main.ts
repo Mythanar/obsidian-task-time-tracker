@@ -18,6 +18,7 @@ import { SettingsTab } from "./settings/SettingsTab";
 import { DEFAULT_SETTINGS, PluginState } from "./types";
 import { InlineTrackingBus } from "./ui/InlineTrackingBus";
 import { createInlineTaskControlExtension } from "./ui/InlineTaskControlExtension";
+import { EntryUpdateResult } from "./types";
 
 /**
  * Task Time Tracker
@@ -58,18 +59,27 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			entries: savedState?.entries ?? [],
 			settings: {
 				toggl: { ...DEFAULT_SETTINGS.toggl, ...savedState?.settings?.toggl },
+				logViewLocation: savedState?.settings?.logViewLocation ?? DEFAULT_SETTINGS.logViewLocation,
 			},
 		};
 
 		this.trackingEngine = new TrackingEngine(this.pluginState, (s) => this.saveData(s));
 		this.taskIdentifier = new TaskIdentifier(this.app);
 		this.exportManager = new ExportManager(this.app, this.taskIdentifier);
-		this.statusBarWidget = new StatusBarWidget(this, () => this.trackingEngine.getActiveEntry());
+		this.statusBarWidget = new StatusBarWidget(
+			this,
+			() => this.trackingEngine.getActiveEntry(),
+			() => void this.activateLogView(),
+		);
 		this.addSettingTab(new SettingsTab(this.app, this));
 
 		this.registerView(
 			TIME_LOG_VIEW_TYPE,
-			(leaf) => new TimeLogView(leaf, () => this.trackingEngine.getEntries(), this.taskIdentifier),
+			(leaf) =>
+				new TimeLogView(leaf, () => this.trackingEngine.getEntries(), this.taskIdentifier, {
+					updateEntryTimes: (entryId, start, end) => this.updateEntryTimes(entryId, start, end),
+					deleteEntry: (entryId) => this.deleteEntry(entryId),
+				}),
 		);
 
 		// Respaldo: cubre ediciones que no pasan por un editor abierto en
@@ -306,12 +316,50 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		await this.saveData(this.pluginState);
 	}
 
+	// Fase 5 UX — panel de Historial: edicion inline de inicio/fin de una
+	// sesion ya cerrada. Se opera directamente sobre pluginState.entries
+	// (el mismo array que ya usa TrackingEngine, pasado por referencia) en
+	// vez de agregar metodos a TrackingEngine — su responsabilidad sigue
+	// siendo solo el timer activo. El aviso de solapamiento con otra
+	// sesion se calcula en vivo del lado de TimeLogView mientras se
+	// edita, no aqui — el guardado nunca se bloquea por eso.
+	async updateEntryTimes(entryId: string, start: number, end: number): Promise<EntryUpdateResult> {
+		const entries = this.trackingEngine.getEntries();
+		const entry = entries.find((e) => e.id === entryId);
+		if (!entry || entry.end === null) return { ok: false, error: "not-found" };
+		if (end <= start) return { ok: false, error: "invalid-range" };
+
+		entry.start = start;
+		entry.end = end;
+		await this.saveData(this.pluginState);
+
+		this.refreshLogViews();
+		this.notifyTrackingChanged();
+		return { ok: true };
+	}
+
+	// Fase 5 UX — panel de Historial: borrado definitivo de una sesion
+	// cerrada (la confirmacion vive en la UI, aqui ya se asume confirmado).
+	async deleteEntry(entryId: string): Promise<void> {
+		const entries = this.trackingEngine.getEntries();
+		const index = entries.findIndex((e) => e.id === entryId);
+		if (index === -1) return;
+
+		entries.splice(index, 1);
+		await this.saveData(this.pluginState);
+		this.refreshLogViews();
+		this.notifyTrackingChanged();
+	}
+
 	private refreshLogViews(): void {
 		for (const leaf of this.app.workspace.getLeavesOfType(TIME_LOG_VIEW_TYPE)) {
 			if (leaf.view instanceof TimeLogView) leaf.view.refresh();
 		}
 	}
 
+	// Bloque 2 — la ubicacion (sidebar/tab) solo se decide al crear un leaf
+	// nuevo; un panel ya abierto se revela donde ya estaba, sin moverlo (ver
+	// SettingsTab.ts).
 	private async activateLogView(): Promise<void> {
 		const existing = this.app.workspace.getLeavesOfType(TIME_LOG_VIEW_TYPE);
 		if (existing[0]) {
@@ -319,7 +367,10 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			return;
 		}
 
-		const leaf: WorkspaceLeaf | null = this.app.workspace.getRightLeaf(false);
+		const leaf: WorkspaceLeaf | null =
+			this.pluginState.settings.logViewLocation === "tab"
+				? this.app.workspace.getLeaf("tab")
+				: this.app.workspace.getRightLeaf(false);
 		if (!leaf) return;
 		await leaf.setViewState({ type: TIME_LOG_VIEW_TYPE, active: true });
 		await this.app.workspace.revealLeaf(leaf);

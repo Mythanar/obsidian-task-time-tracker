@@ -54,6 +54,229 @@
 	color: var(--text-error);
 }
 
+/* Fase 5 UX — panel de Historial: tarjetas de tarea expandibles.
+   Cabecera en dos lineas: titulo (con link) arriba, meta debajo. */
+.task-time-tracker-log-card-header {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25em;
+	cursor: pointer;
+}
+
+.task-time-tracker-log-card-title-row {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5em;
+}
+
+.task-time-tracker-log-card-toggle {
+	display: flex;
+	align-items: center;
+	color: var(--text-muted);
+	flex-shrink: 0;
+}
+
+.task-time-tracker-log-card-toggle svg {
+	width: 0.9em;
+	height: 0.9em;
+}
+
+.task-time-tracker-log-card-title-row .task-time-tracker-log-task {
+	flex: 1 1 auto;
+	margin-bottom: 0;
+}
+
+.task-time-tracker-log-task-link {
+	cursor: pointer;
+}
+
+.task-time-tracker-log-task-link:hover {
+	color: var(--text-accent);
+	text-decoration: underline;
+}
+
+.task-time-tracker-log-card-detail {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35em;
+	margin-top: 0.5em;
+	padding-top: 0.5em;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.task-time-tracker-log-session-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5em;
+	padding: 0.2em 0.35em;
+	margin: 0 -0.35em;
+	border-radius: 4px;
+}
+
+/* Punto D2 del rediseno: toda la fila es clicable (sin icono de editar
+   aparte); el fondo en hover indica que es interactiva. La sesion activa
+   (sin fila editable, ver renderSessionRow()) no lleva esta clase. */
+.task-time-tracker-log-session-row-editable {
+	cursor: pointer;
+}
+
+.task-time-tracker-log-session-row-editable:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.task-time-tracker-log-session-info {
+	display: flex;
+	gap: 1em;
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+/* Indicador "+1" de sesion que cruza a la medianoche del dia siguiente. */
+.task-time-tracker-log-nextday-badge {
+	color: var(--text-accent);
+	font-weight: 600;
+}
+
+.task-time-tracker-log-nextday-badge.is-hidden {
+	display: none;
+}
+
+/* Fondo permanente (no solo hover) mientras la fila esta en edicion o
+   en confirmacion de borrado: sin esto, al mover el raton fuera de la
+   fila (p.ej. para hacer clic en un boton) se pierde la referencia
+   visual de sobre que sesion se esta actuando. Mismo color que el hover
+   de la fila normal, pero fijo mientras dure el estado. */
+.task-time-tracker-log-edit-form {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4em;
+	padding: 0.2em 0.35em;
+	margin: 0 -0.35em;
+	border-radius: 4px;
+	background-color: var(--background-modifier-hover);
+}
+
+/* Campos + botones en la misma fila (con wrap si no entra), para no
+   alargar verticalmente la fila en edicion. */
+.task-time-tracker-log-edit-fields {
+	display: flex;
+	align-items: center;
+	gap: 0.4em;
+	flex-wrap: wrap;
+}
+
+.task-time-tracker-log-edit-input {
+	font-size: 0.85em;
+}
+
+.task-time-tracker-log-edit-time {
+	width: 6em;
+}
+
+.task-time-tracker-log-edit-time.is-invalid {
+	border-color: var(--text-error);
+}
+
+.task-time-tracker-log-edit-arrow {
+	color: var(--text-muted);
+}
+
+.task-time-tracker-log-edit-error {
+	color: var(--text-error);
+	font-size: 0.85em;
+	margin: 0;
+}
+
+/* Bloque de aviso unico y fijo (error de formato/rango, o aviso de
+   solapamiento — nunca los dos a la vez): altura reservada aunque este
+   vacio, para que el formulario no cambie de alto al aparecer/
+   desaparecer un mensaje. */
+.task-time-tracker-log-edit-message {
+	font-size: 0.85em;
+	margin: 0;
+	min-height: 1.2em;
+}
+
+.task-time-tracker-log-edit-message-error {
+	color: var(--text-error);
+}
+
+.task-time-tracker-log-edit-message-warning {
+	color: var(--text-warning);
+}
+
+/* Punto 1: alineados a la izquierda, junto a los campos — si no entran
+   en la misma linea, caen debajo de los campos por el flex-wrap del
+   contenedor padre en vez de irse a la derecha del todo. */
+.task-time-tracker-log-edit-actions {
+	display: flex;
+	gap: 0.4em;
+}
+
+/* Bloque 2 — navegador de fecha del Historial: toggle dia/semana +
+   flechas prev/siguiente + boton "Hoy". */
+.task-time-tracker-log-datenav {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5em;
+	margin-bottom: 0.75em;
+	flex-wrap: wrap;
+}
+
+.task-time-tracker-log-datenav-mode {
+	display: flex;
+	gap: 0.25em;
+}
+
+.task-time-tracker-log-datenav-mode-btn.is-active {
+	background-color: var(--interactive-accent);
+	color: var(--text-on-accent);
+}
+
+.task-time-tracker-log-datenav-range {
+	display: flex;
+	align-items: center;
+	gap: 0.35em;
+}
+
+.task-time-tracker-log-datenav-label {
+	font-weight: 600;
+	text-align: center;
+	white-space: nowrap;
+}
+
+/* Titulo de cada dia dentro de la vista semanal (7 secciones). */
+.task-time-tracker-log-day-heading {
+	margin: 1em 0 0.35em;
+	color: var(--text-muted);
+	text-transform: capitalize;
+}
+
+.task-time-tracker-log-day-heading:first-of-type {
+	margin-top: 0;
+}
+
+/* Estado vacio de un dia (vista diaria) o de un dia dentro de la semana
+   (vista semanal) sin ninguna sesion. */
+.task-time-tracker-log-empty-day {
+	color: var(--text-muted);
+	font-size: 0.9em;
+	margin: 0 0 1em;
+}
+
+/* Fase 5 UX — el status bar completo abre el panel de Historial al
+   hacer clic, tanto con tracking activo como en reposo. */
+.task-time-tracker-statusbar {
+	cursor: pointer;
+	border-radius: var(--radius-s);
+}
+
+.task-time-tracker-statusbar:hover {
+	background-color: var(--background-modifier-hover);
+}
+
 /* Fase 5 UX — badge tipo tag junto al checkbox, solo modo Edicion.
    Tres variantes de color por estado, todas con variables de tema de
    Obsidian (nunca hex fijo) para adaptarse a cualquier tema claro/oscuro/

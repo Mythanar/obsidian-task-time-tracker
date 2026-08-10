@@ -7,10 +7,15 @@
 
 import { App, PluginSettingTab, Setting } from "obsidian";
 import type TaskTimeTrackerPlugin from "../main";
-import { isValidEmail, TogglDateFormat, TogglTimeFormat } from "../types";
+import { isValidEmail, LogViewLocation, TogglDateFormat, TogglTimeFormat } from "../types";
 
 const EMAIL_DESC_DEFAULT = "Necesario para exportar sesiones en formato CSV para Toggl.";
 const EMAIL_DESC_INVALID = "Ese email no tiene un formato válido (ej. usuario@dominio.com).";
+
+const LOG_VIEW_LOCATION_OPTIONS: Record<string, string> = {
+	sidebar: "Panel lateral",
+	tab: "Pestaña central",
+};
 
 const DATE_FORMAT_OPTIONS: Record<string, string> = {
 	ISO: "ISO (AAAA-MM-DD)",
@@ -37,7 +42,20 @@ export class SettingsTab extends PluginSettingTab {
 
 		// Seccion general (Fase 5): sin encabezado propio a proposito, sigue
 		// la convencion de Obsidian de dejar la primera seccion sin titulo.
-		containerEl.createEl("p", { text: "Sin ajustes generales todavía." });
+		// Bloque 2 — ubicacion del panel de Historial: cambiar esto no mueve
+		// un panel ya abierto, solo aplica la proxima vez que se abra (ver
+		// activateLogView() en main.ts).
+		new Setting(containerEl)
+			.setName("Ubicación del Historial")
+			.setDesc("Dónde se abre el panel de Historial. Si ya está abierto, el cambio se aplica la próxima vez que lo abras.")
+			.addDropdown((dropdown) => {
+				dropdown.addOptions(LOG_VIEW_LOCATION_OPTIONS);
+				dropdown.setValue(this.plugin.pluginState.settings.logViewLocation);
+				dropdown.onChange(async (value) => {
+					this.plugin.pluginState.settings.logViewLocation = value as LogViewLocation;
+					await this.plugin.saveSettings();
+				});
+			});
 
 		new Setting(containerEl).setName("Toggl").setHeading();
 
