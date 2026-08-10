@@ -1,6 +1,6 @@
 {
 	"name": "task-time-tracker",
-	"version": "0.0.12",
+	"version": "0.0.13",
 	"description": "Obsidian plugin to track time on checkbox tasks with local-first storage and manual batch export.",
 	"main": "main.js",
 	"type": "module",

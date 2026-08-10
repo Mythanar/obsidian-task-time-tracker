@@ -108,6 +108,22 @@ export class SettingsTab extends PluginSettingTab {
 				text.onChange((value) => void saveExportsFolder(value));
 			});
 
+		// Fase 5 — se origino como salvaguarda ante una desinstalacion (la
+		// API de Obsidian no permite interceptar ese momento exacto), pero
+		// el texto visible no menciona desinstalar: Obsidian preserva
+		// data.json por defecto al desinstalar un plugin (decision ya
+		// cerrada en Fase 1), asi que ese aviso seria inexacto. Se presenta
+		// como buena practica general en vez de advertencia sobre un caso
+		// concreto. Un solo clic, sin modal: CSV generico (nunca Toggl),
+		// rango completo desde la primera sesion hasta ahora, misma carpeta
+		// configurada arriba (ver exportAllEntriesToCsv() en main.ts).
+		new Setting(containerEl)
+			.setName("Exportar todo")
+			.setDesc("Tu historial vive solo en este dispositivo. Usa este botón para tener una copia de seguridad en cualquier momento.")
+			.addButton((button) =>
+				button.setButtonText("Exportar todo").onClick(() => void this.plugin.exportAllEntriesToCsv()),
+			);
+
 		new Setting(containerEl).setName("Toggl").setHeading();
 
 		const { toggl } = this.plugin.pluginState.settings;

@@ -321,6 +321,39 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		}
 	}
 
+	// Fase 5 — boton "Exportar todo" en Settings: salvaguarda ante una
+	// desinstalacion, ya que la API de Obsidian no permite interceptar el
+	// momento exacto en que el usuario desinstala un plugin (no hay forma
+	// tecnica de avisar "justo antes"). Mismo camino que runExport() con
+	// formato CSV generico y el rango completo precalculado (desde la
+	// primera sesion hasta ahora) — sin modal, sin seleccion de rango ni
+	// de formato, un solo clic. La sesion activa (si hay una) queda fuera
+	// igual que en cualquier otra exportacion: exportToCsv() ya filtra por
+	// entry.end !== null.
+	async exportAllEntriesToCsv(): Promise<void> {
+		const entries = this.trackingEngine.getEntries();
+		if (entries.length === 0) {
+			new Notice("No hay sesiones guardadas todavía.");
+			return;
+		}
+
+		const fromMs = Math.min(...entries.map((entry) => entry.start));
+		const toMs = Date.now();
+
+		try {
+			const filePath = await this.exportManager.exportToCsv(
+				entries,
+				fromMs,
+				toMs,
+				this.pluginState.settings.exportsFolder,
+			);
+			new Notice(`Exportado a ${filePath}`);
+		} catch (error) {
+			console.error("Task Time Tracker: error exportando a CSV", error);
+			new Notice("Ocurrió un error al exportar. Revisa la consola para más detalles.");
+		}
+	}
+
 	// Fase 5 — el modal de exportacion permite completar el email de Toggl
 	// ahi mismo si falta; al confirmar, se persiste aqui como el mismo
 	// ajuste de Settings > Toggl > Email (unica fuente de verdad), nunca
