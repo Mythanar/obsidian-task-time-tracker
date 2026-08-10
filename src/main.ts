@@ -19,6 +19,7 @@ import { DEFAULT_SETTINGS, PluginState } from "./types";
 import { InlineTrackingBus } from "./ui/InlineTrackingBus";
 import { createInlineTaskControlExtension } from "./ui/InlineTaskControlExtension";
 import { DeleteTaskResult, EntryUpdateResult } from "./types";
+import { t } from "./i18n";
 
 /**
  * Task Time Tracker
@@ -127,18 +128,18 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 
 		this.addCommand({
 			id: "start-tracking-current-task",
-			name: "Start tracking on current task",
+			name: t("cmd.start"),
 			editorCallback: (editor: Editor, ctx: MarkdownView | MarkdownFileInfo) =>
 				this.startTrackingFromCursor(editor, ctx),
 		});
 
 		this.addCommand({
 			id: "stop-active-tracking",
-			name: "Stop active tracking",
+			name: t("cmd.stop"),
 			callback: async () => {
 				const stopped = await this.trackingEngine.stop();
 				if (!stopped) {
-					new Notice("No hay ninguna sesión de tracking activa.");
+					new Notice(t("notice.noActiveSession"));
 				}
 				this.statusBarWidget.refresh();
 				this.refreshLogViews();
@@ -148,13 +149,13 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 
 		this.addCommand({
 			id: "open-time-log-panel",
-			name: "Open time log panel",
+			name: t("cmd.openLog"),
 			callback: () => this.activateLogView(),
 		});
 
 		this.addCommand({
 			id: "export-time-entries",
-			name: "Export time entries...",
+			name: t("cmd.export"),
 			callback: () => {
 				new ExportModal(
 					this.app,
@@ -193,12 +194,12 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		const line = editor.getLine(cursor.line);
 		const taskText = parseCheckboxLine(line);
 		if (taskText === null) {
-			new Notice("La línea actual no es una tarea (checkbox).");
+			new Notice(t("notice.notATask"));
 			return;
 		}
 
 		if (isClosedCheckboxState(extractCheckboxState(line))) {
-			new Notice("Esta tarea ya está cerrada; no se puede trackear.");
+			new Notice(t("notice.taskClosed"));
 			return;
 		}
 
@@ -211,7 +212,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		const filePath = ctx.file?.path ?? "";
 		const result = await this.trackingEngine.start(taskId, taskText, filePath);
 		if (result === "already-active") {
-			new Notice("Esta tarea ya se está trackeando.");
+			new Notice(t("notice.alreadyTracking"));
 			return;
 		}
 
@@ -314,10 +315,10 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 							exportsFolder,
 						)
 					: await this.exportManager.exportToCsv(this.trackingEngine.getEntries(), fromMs, toMs, exportsFolder);
-			new Notice(`Exportado a ${filePath}`);
+			new Notice(t("notice.exportSuccess", { filePath }));
 		} catch (error) {
 			console.error("Task Time Tracker: error exportando a CSV", error);
-			new Notice("Ocurrió un error al exportar. Revisa la consola para más detalles.");
+			new Notice(t("notice.exportError"));
 		}
 	}
 
@@ -333,7 +334,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	async exportAllEntriesToCsv(): Promise<void> {
 		const entries = this.trackingEngine.getEntries();
 		if (entries.length === 0) {
-			new Notice("No hay sesiones guardadas todavía.");
+			new Notice(t("notice.noSessionsYet"));
 			return;
 		}
 
@@ -347,10 +348,10 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 				toMs,
 				this.pluginState.settings.exportsFolder,
 			);
-			new Notice(`Exportado a ${filePath}`);
+			new Notice(t("notice.exportSuccess", { filePath }));
 		} catch (error) {
 			console.error("Task Time Tracker: error exportando a CSV", error);
-			new Notice("Ocurrió un error al exportar. Revisa la consola para más detalles.");
+			new Notice(t("notice.exportError"));
 		}
 	}
 

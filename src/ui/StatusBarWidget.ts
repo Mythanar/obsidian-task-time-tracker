@@ -8,6 +8,7 @@
 
 import { Plugin } from "obsidian";
 import { formatDuration } from "../core/TrackingEngine";
+import { t } from "../i18n";
 import { TimeEntry } from "../types";
 
 // Corte a 40 caracteres con "..." al final para indicar que sigue; no
@@ -32,7 +33,7 @@ export class StatusBarWidget {
 	refresh(): void {
 		const entry = this.getActiveEntry();
 		if (!entry) {
-			this.el.setText("⏱ Sin tracking activo");
+			this.el.setText(`⏱ ${t("statusbar.idle")}`);
 			return;
 		}
 		const isTruncated = entry.taskText.length > MAX_TASK_TEXT_LENGTH;

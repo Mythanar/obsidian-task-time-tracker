@@ -10,6 +10,7 @@
 // formato de exportacion.
 
 import { App, ButtonComponent, Modal, Notice, Setting } from "obsidian";
+import { t } from "../i18n";
 import { isValidEmail, TogglSettings } from "../types";
 
 export type ExportFormat = "generic" | "toggl";
@@ -50,23 +51,23 @@ export class ExportModal extends Modal {
 
 	onOpen(): void {
 		const { contentEl } = this;
-		contentEl.createEl("h3", { text: "Exportar sesiones" });
+		contentEl.createEl("h3", { text: t("export.title") });
 
-		new Setting(contentEl).setName("Desde").addText((text) => {
+		new Setting(contentEl).setName(t("export.from")).addText((text) => {
 			text.inputEl.type = "date";
 			text.setValue(this.fromValue);
 			text.onChange((value) => (this.fromValue = value));
 		});
 
-		new Setting(contentEl).setName("Hasta").addText((text) => {
+		new Setting(contentEl).setName(t("export.to")).addText((text) => {
 			text.inputEl.type = "date";
 			text.setValue(this.toValue);
 			text.onChange((value) => (this.toValue = value));
 		});
 
-		new Setting(contentEl).setName("Formato").addDropdown((dropdown) => {
-			dropdown.addOption("generic", "CSV genérico");
-			dropdown.addOption("toggl", "CSV para Toggl");
+		new Setting(contentEl).setName(t("export.formatLabel")).addDropdown((dropdown) => {
+			dropdown.addOption("generic", t("export.formatGeneric"));
+			dropdown.addOption("toggl", t("export.formatToggl"));
 			dropdown.setValue(this.format);
 			dropdown.onChange((value) => {
 				this.format = value as ExportFormat;
@@ -79,9 +80,9 @@ export class ExportModal extends Modal {
 		// visibilidad del campo no puede depender de la validez. El aviso de
 		// abajo si reacciona a la validez, reutilizando las mismas clases de
 		// mensaje que el formulario de edicion de sesiones del Historial.
-		this.emailSetting = new Setting(contentEl).setName("Email de Toggl").addText((text) =>
+		this.emailSetting = new Setting(contentEl).setName(t("export.togglEmailLabel")).addText((text) =>
 			text
-				.setPlaceholder("tu@email.com")
+				.setPlaceholder(t("export.emailPlaceholder"))
 				.setValue(this.togglEmailDraft)
 				.onChange((value) => {
 					this.togglEmailDraft = value.trim();
@@ -93,7 +94,7 @@ export class ExportModal extends Modal {
 
 		new Setting(contentEl).addButton((button) => {
 			this.exportButton = button
-				.setButtonText("Exportar")
+				.setButtonText(t("export.exportButton"))
 				.setCta()
 				.onClick(() => void this.handleSubmit());
 		});
@@ -122,8 +123,8 @@ export class ExportModal extends Modal {
 			this.emailMessageEl.setText(
 				needsEmail
 					? this.togglEmailDraft.length === 0
-						? "El email de Toggl es obligatorio para exportar en este formato."
-						: "Ese email no tiene un formato válido (ej. usuario@dominio.com)."
+						? t("export.emailRequired")
+						: t("export.emailInvalid")
 					: "",
 			);
 		}
@@ -133,15 +134,15 @@ export class ExportModal extends Modal {
 
 	private async handleSubmit(): Promise<void> {
 		if (!this.fromValue || !this.toValue) {
-			new Notice("Selecciona un rango de fechas válido.");
+			new Notice(t("export.rangeInvalid"));
 			return;
 		}
 		if (this.fromValue > this.toValue) {
-			new Notice('El campo "Desde" no puede ser posterior a "Hasta".');
+			new Notice(t("export.fromAfterTo"));
 			return;
 		}
 		if (this.needsTogglEmail()) {
-			new Notice("Completa un email de Toggl válido antes de exportar con este formato.");
+			new Notice(t("export.emailInvalidNotice"));
 			return;
 		}
 

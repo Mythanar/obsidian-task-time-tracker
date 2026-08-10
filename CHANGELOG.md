@@ -37,6 +37,65 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1
     cualquier estado abierto), se puede volver a trackear con
     normalidad; no hay memoria de que estuvo cerrada.
 
+- Fase 5 — status bar: recorte de tarea, estado detenido y acceso al Historial:
+  - El nombre de la tarea se corta a 40 caracteres, con puntos suspensivos.
+  - Ya no queda vacío/oculto sin tracking activo: muestra icono + texto
+    "Sin tracking activo".
+  - Todo el status bar es clicable y abre el panel de Historial, tanto
+    en estado activo como detenido — mismo resultado que el comando
+    "Open time log panel".
+
+- Fase 5 — rediseño del Historial (tarjetas, link a la nota, edición y
+  borrado de sesiones):
+  - Tarjetas de tarea expandibles: título con link a la nota (abre en
+    pestaña nueva, o enfoca la existente si ya está abierta, con la
+    línea de la tarea seleccionada) y resumen (nº de sesiones + total +
+    `tt-id`); al expandir, detalle de sesiones individuales.
+  - Edición inline de sesiones cerradas (fecha de inicio, hora de
+    inicio, hora de fin, en `HH:MM:SS`, sin redondeos automáticos), con
+    validación de formato y aviso de solapamiento con otra sesión
+    guardada, ambos en línea (sin toast) y sin bloquear mientras se
+    sigue escribiendo.
+  - Borrado de sesión individual con confirmación explícita que
+    mantiene visibles los datos de la sesión mientras se confirma.
+  - Borrado de una tarea completa (icono de papelera en el resumen de
+    la tarjeta): elimina todo el histórico de esa tarea por `tt-id`
+    (incluidas sesiones de otras notas si el id está duplicado), sin
+    tocar el `[tt-id:: ...]` que quede en la nota. Bloqueado mientras
+    esa tarea tenga la sesión activa en ese momento.
+
+- Fase 5 — navegación por fecha en el Historial y ubicación configurable
+  del panel:
+  - El Historial muestra por defecto solo el día actual, con vista
+    diaria (flechas día a día) y vista semanal (lunes a domingo,
+    flechas semana a semana), y botón "Hoy" para volver a la fecha
+    actual desde cualquier punto de la navegación.
+  - El total de cada tarjeta de tarea refleja solo el rango de fecha
+    visible (cambia al navegar) — distinto del badge del checkbox, que
+    sigue mostrando el total histórico completo.
+  - Nuevo ajuste en Settings: elegir si el Historial se abre como panel
+    lateral o como pestaña en el área central; si se cambia mientras ya
+    está abierto, aplica la próxima vez que se abra.
+
+- Fase 5 — rediseño del diálogo de exportación y carpeta de exportación
+  configurable:
+  - El selector de formato "CSV para Toggl" deja de bloquearse; siempre
+    es seleccionable. Si el email de Toggl no es válido, el modal
+    muestra un campo editable ahí mismo, con aviso en línea y el botón
+    "Exportar" desactivado hasta que sea válido. Al confirmar, el email
+    se guarda también en Settings > Toggl > Email (única fuente de
+    verdad).
+  - Nuevo ajuste en Settings: carpeta de destino de ambos formatos de
+    exportación, con autocompletado de carpetas ya existentes en la
+    vault y creación automática si la ruta no existe todavía. Valor por
+    defecto `task-tracker-exports`, igual que antes.
+
+- Fase 5 — botón "Exportar todo" en Settings:
+  - Exporta con un clic todo el histórico a CSV genérico (nunca Toggl),
+    sin modal ni selección de rango/formato, en la carpeta de
+    exportación configurada. Excluye la sesión activa igual que el
+    resto de exportaciones.
+
 - Fase 1 — MVP de tracking local:
   - Comando "Time Tracker: Start tracking on current task": inicia el
     tracking sobre la tarea (checkbox) donde está el cursor; si había otro
@@ -123,6 +182,13 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1
   limpio, sin corchetes ni el separador `::`.
 - `TimeEntry` ya no guarda `filePath`; guarda `taskId` como fuente de
   verdad para el vínculo con la tarea.
+- Los timestamps de tracking (`start`/`end`) se redondean a segundos
+  completos directamente en `TrackingEngine.start()`/`stop()`,
+  eliminando los milisegundos del dato desde el origen; resuelve
+  desajustes de duración entre pantallas (lista vs. edición) que no se
+  conseguían arreglar de forma estable ajustando solo el cálculo o la
+  visualización. `data.json` se reseteó al aplicar este cambio (datos
+  de prueba, mismo criterio que el reset de Fase 2).
 
 ### Fixed
 
@@ -174,6 +240,14 @@ El formato está basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1
   `vault.cachedRead`, que no refleja los cambios hechos por la API de
   Editor hasta que Obsidian los guarda a disco (hay un pequeño delay).
   Ahora, para notas abiertas, se lee el contenido en vivo del editor.
+- Fix ortográfico: "sesiónes" → "sesiones" (era un bug de interpolación
+  de plural, no un typo literal).
+- En el modal de exportación, el campo de email de Toggl desaparecía en
+  cuanto el usuario escribía un valor válido y el campo perdía el foco,
+  porque su visibilidad dependía de la validez del email a mitad de la
+  interacción. Ahora la visibilidad del campo depende solo del formato
+  seleccionado (Toggl); solo el aviso y el botón "Exportar" siguen
+  reaccionando a la validez.
 
 ## [0.0.1] - 2026-08-08
 

@@ -5,6 +5,7 @@
 // silencio ni descarta el dato.
 
 import { App, Modal } from "obsidian";
+import { t } from "../i18n";
 import { TimeEntry } from "../types";
 
 export class RecoveryModal extends Modal {
@@ -19,22 +20,23 @@ export class RecoveryModal extends Modal {
 
 	onOpen(): void {
 		const { contentEl } = this;
-		contentEl.createEl("h3", { text: "Sesión de tracking sin cerrar" });
+		contentEl.createEl("h3", { text: t("recovery.title") });
 		contentEl.createEl("p", {
-			text: `Tenías "${this.entry.taskText}" corriendo desde ${new Date(
-				this.entry.start,
-			).toLocaleString()}. ¿Qué quieres hacer?`,
+			text: t("recovery.body", {
+				taskText: this.entry.taskText,
+				datetime: new Date(this.entry.start).toLocaleString(),
+			}),
 		});
 
 		const buttonRow = contentEl.createDiv({ cls: "task-time-tracker-recovery-buttons" });
 
-		buttonRow.createEl("button", { text: "Cerrar ahora" }).addEventListener("click", () => {
+		buttonRow.createEl("button", { text: t("recovery.closeNow") }).addEventListener("click", () => {
 			this.onCloseNow();
 			this.close();
 		});
 
 		buttonRow
-			.createEl("button", { text: "Seguir corriendo", cls: "mod-cta" })
+			.createEl("button", { text: t("recovery.keepGoing"), cls: "mod-cta" })
 			.addEventListener("click", () => {
 				this.onKeepRunning();
 				this.close();

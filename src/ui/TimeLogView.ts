@@ -12,6 +12,7 @@
 import { ItemView, MarkdownView, Notice, TFile, WorkspaceLeaf, setIcon } from "obsidian";
 import { formatDuration } from "../core/TrackingEngine";
 import { parseCheckboxLine, ResolvedTask, TaskIdentifier } from "../core/TaskIdentifier";
+import { t } from "../i18n";
 import { DeleteTaskResult, EntryUpdateResult, TimeEntry } from "../types";
 
 export const TIME_LOG_VIEW_TYPE = "task-time-tracker-log-view";
@@ -139,8 +140,6 @@ type DraftResolution =
 	| { ok: true; start: number; end: number; crossesMidnight: boolean }
 	| { ok: false; error: string };
 
-const INVALID_FORMAT_ERROR = "Revisa la fecha y las horas: usa el formato HH:MM:SS.";
-
 // Resuelve el rango final a partir de los tres campos del borrador, tal
 // cual los dejo el usuario (segundos incluidos, sin forzar nada). El fin
 // cae al dia siguiente de la fecha de inicio si su hora (con segundos)
@@ -149,7 +148,7 @@ function resolveDraftTimestamps(draft: EditDraft): DraftResolution {
 	const startDateMs = parseDateInput(draft.startDate);
 	const start = parseTimeInput(draft.startTime);
 	const end = parseTimeInput(draft.endTime);
-	if (startDateMs === null || !start || !end) return { ok: false, error: INVALID_FORMAT_ERROR };
+	if (startDateMs === null || !start || !end) return { ok: false, error: t("log.errorFormat") };
 
 	const secondsOfDay = (t: ParsedTime) => t.hours * 3600 + t.minutes * 60 + t.seconds;
 	const crossesMidnight = secondsOfDay(end) < secondsOfDay(start);
@@ -196,7 +195,7 @@ export class TimeLogView extends ItemView {
 	}
 
 	getDisplayText(): string {
-		return "Time tracker log";
+		return t("log.title");
 	}
 
 	getIcon(): string {
@@ -222,7 +221,7 @@ export class TimeLogView extends ItemView {
 
 	private taskLabel(taskId: string, resolutions: Map<string, ResolvedTask | null>): string {
 		const resolved = resolutions.get(taskId) ?? null;
-		if (!resolved) return "Tarea no encontrada";
+		if (!resolved) return t("log.taskNotFound");
 		return parseCheckboxLine(resolved.lineText) ?? resolved.lineText;
 	}
 
@@ -314,7 +313,9 @@ export class TimeLogView extends ItemView {
 		const meta = header.createDiv({ cls: "task-time-tracker-log-meta task-time-tracker-log-meta-toggle" });
 		const toggleIcon = meta.createSpan({ cls: "task-time-tracker-log-card-toggle" });
 		setIcon(toggleIcon, expanded ? "chevron-down" : "chevron-right");
-		meta.createSpan({ text: `${taskEntries.length} ${taskEntries.length === 1 ? "sesión" : "sesiones"}` });
+		meta.createSpan({
+			text: `${taskEntries.length} ${taskEntries.length === 1 ? t("log.session.singular") : t("log.session.plural")}`,
+		});
 		meta.createSpan({ text: formatDuration(totalMs), cls: "task-time-tracker-totals-duration" });
 		meta.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
 
@@ -332,12 +333,12 @@ export class TimeLogView extends ItemView {
 		// aunque esta tarjeta en concreto muestre otro dia (vista semanal).
 		const deleteBtn = meta.createEl("button", { cls: "task-time-tracker-log-card-delete clickable-icon" });
 		setIcon(deleteBtn, "trash-2");
-		deleteBtn.setAttribute("aria-label", "Eliminar tarea");
+		deleteBtn.setAttribute("aria-label", t("log.deleteTaskAriaLabel"));
 		deleteBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
 			const hasActive = this.getEntries().some((entry) => entry.taskId === taskId && entry.end === null);
 			if (hasActive) {
-				new Notice("No se puede eliminar: esta tarea tiene una sesión activa. Detén el tracking primero.");
+				new Notice(t("log.deleteBlockedActive"));
 				return;
 			}
 			this.taskDeleteConfirmId = taskId;
@@ -372,26 +373,28 @@ export class TimeLogView extends ItemView {
 		confirm.createDiv({ text: label, cls: "task-time-tracker-log-task" });
 
 		const meta = confirm.createDiv({ cls: "task-time-tracker-log-meta" });
-		meta.createSpan({ text: `${fullTaskEntries.length} ${fullTaskEntries.length === 1 ? "sesión" : "sesiones"}` });
+		meta.createSpan({
+			text: `${fullTaskEntries.length} ${fullTaskEntries.length === 1 ? t("log.session.singular") : t("log.session.plural")}`,
+		});
 		meta.createSpan({ text: formatDuration(totalMs), cls: "task-time-tracker-totals-duration" });
 		meta.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
 
 		confirm.createEl("p", {
-			text: "¿Eliminar esta tarea y todo su histórico de sesiones (todas las fechas)? Esta acción no se puede deshacer.",
+			text: t("log.deleteTaskConfirm"),
 			cls: "task-time-tracker-log-edit-error",
 		});
 
 		const actions = confirm.createDiv({ cls: "task-time-tracker-log-edit-actions" });
-		actions.createEl("button", { text: "Sí, eliminar", cls: "mod-warning" }).addEventListener("click", () => {
+		actions.createEl("button", { text: t("log.deleteTaskYes"), cls: "mod-warning" }).addEventListener("click", () => {
 			void this.actions.deleteTask(taskId).then((result) => {
 				if (!result.ok) {
-					new Notice("No se puede eliminar: esta tarea tiene una sesión activa. Detén el tracking primero.");
+					new Notice(t("log.deleteBlockedActive"));
 				}
 				this.taskDeleteConfirmId = null;
 				void this.render();
 			});
 		});
-		actions.createEl("button", { text: "Cancelar" }).addEventListener("click", () => {
+		actions.createEl("button", { text: t("log.cancel") }).addEventListener("click", () => {
 			this.taskDeleteConfirmId = null;
 			void this.render();
 		});
@@ -427,7 +430,7 @@ export class TimeLogView extends ItemView {
 				rangeSpan.createSpan({ text: " +1", cls: "task-time-tracker-log-nextday-badge" });
 			}
 		} else {
-			rangeSpan.createSpan({ text: "en curso" });
+			rangeSpan.createSpan({ text: t("log.ongoing") });
 		}
 
 		info.createSpan({ text: entry.end !== null ? formatDuration(entry.end - entry.start) : "—" });
@@ -475,17 +478,17 @@ export class TimeLogView extends ItemView {
 			// tecleado sin guardar) siguen visibles mientras se confirma.
 			this.renderSessionInfo(form, entry);
 			form.createEl("p", {
-				text: "¿Eliminar esta sesión? Esta acción no se puede deshacer.",
+				text: t("log.deleteSessionConfirm"),
 				cls: "task-time-tracker-log-edit-error",
 			});
 			const actions = form.createDiv({ cls: "task-time-tracker-log-edit-actions" });
-			actions.createEl("button", { text: "Sí, eliminar", cls: "mod-warning" }).addEventListener("click", () => {
+			actions.createEl("button", { text: t("log.deleteSessionYes"), cls: "mod-warning" }).addEventListener("click", () => {
 				void this.actions.deleteEntry(entry.id).then(() => {
 					this.editDraft = null;
 					void this.render();
 				});
 			});
-			actions.createEl("button", { text: "Cancelar" }).addEventListener("click", () => {
+			actions.createEl("button", { text: t("log.cancel") }).addEventListener("click", () => {
 				draft.confirmingDelete = false;
 				void this.render();
 			});
@@ -532,14 +535,14 @@ export class TimeLogView extends ItemView {
 		const messageEl = form.createEl("p", { cls: "task-time-tracker-log-edit-message" });
 
 		const actions = form.createDiv({ cls: "task-time-tracker-log-edit-actions" });
-		actions.createEl("button", { text: "Guardar", cls: "mod-cta" }).addEventListener("click", () => {
+		actions.createEl("button", { text: t("log.save"), cls: "mod-cta" }).addEventListener("click", () => {
 			void this.saveEditDraft(entry);
 		});
-		actions.createEl("button", { text: "Cancelar" }).addEventListener("click", () => {
+		actions.createEl("button", { text: t("log.cancel") }).addEventListener("click", () => {
 			this.editDraft = null;
 			void this.render();
 		});
-		actions.createEl("button", { text: "Eliminar", cls: "mod-warning" }).addEventListener("click", () => {
+		actions.createEl("button", { text: t("log.delete"), cls: "mod-warning" }).addEventListener("click", () => {
 			draft.confirmingDelete = true;
 			void this.render();
 		});
@@ -565,7 +568,7 @@ export class TimeLogView extends ItemView {
 			const startInvalid = draft.startTimeEvaluated && parseTimeInput(draft.startTime) === null;
 			const endInvalid = draft.endTimeEvaluated && parseTimeInput(draft.endTime) === null;
 			if (parseDateInput(draft.startDate) === null || startInvalid || endInvalid) {
-				setMessage(INVALID_FORMAT_ERROR, "error");
+				setMessage(t("log.errorFormat"), "error");
 				return;
 			}
 
@@ -577,7 +580,7 @@ export class TimeLogView extends ItemView {
 				return;
 			}
 			if (resolved.end <= resolved.start) {
-				setMessage("La hora de fin debe ser posterior a la de inicio.", "error");
+				setMessage(t("log.errorRange"), "error");
 				return;
 			}
 
@@ -593,7 +596,7 @@ export class TimeLogView extends ItemView {
 			const overlapping = this.getEntries().some(
 				(other) => other.id !== entry.id && rangesOverlap(start, end, other.start, other.end ?? Date.now()),
 			);
-			setMessage(overlapping ? "Aviso: este horario se solapa con otra sesión guardada." : "", overlapping ? "warning" : "none");
+			setMessage(overlapping ? t("log.warnOverlap") : "", overlapping ? "warning" : "none");
 		};
 
 		// Vista previa en vivo de duracion + "+1" mientras se escribe,
@@ -679,17 +682,14 @@ export class TimeLogView extends ItemView {
 			return;
 		}
 		if (resolved.end <= resolved.start) {
-			draft.error = "La hora de fin debe ser posterior a la de inicio.";
+			draft.error = t("log.errorRange");
 			void this.render();
 			return;
 		}
 
 		const result = await this.actions.updateEntryTimes(entry.id, resolved.start, resolved.end);
 		if (!result.ok) {
-			draft.error =
-				result.error === "invalid-range"
-					? "La hora de fin debe ser posterior a la de inicio."
-					: "No se pudo guardar: la sesión ya no existe.";
+			draft.error = result.error === "invalid-range" ? t("log.errorRange") : t("log.errorGone");
 			void this.render();
 			return;
 		}
@@ -713,7 +713,7 @@ export class TimeLogView extends ItemView {
 		const resolved = await this.taskIdentifier.resolvePreferring(taskId, mostRecent.filePath);
 		const file = resolved ? this.app.vault.getAbstractFileByPath(resolved.filePath) : null;
 		if (!resolved || !(file instanceof TFile)) {
-			new Notice("No se encontró ninguna nota con esta tarea.");
+			new Notice(t("notice.noteNotFound"));
 			return;
 		}
 
@@ -752,11 +752,11 @@ export class TimeLogView extends ItemView {
 
 		const modeToggle = nav.createDiv({ cls: "task-time-tracker-log-datenav-mode" });
 		const dayBtn = modeToggle.createEl("button", {
-			text: "Día",
+			text: t("log.viewDay"),
 			cls: "task-time-tracker-log-datenav-mode-btn",
 		});
 		const weekBtn = modeToggle.createEl("button", {
-			text: "Semana",
+			text: t("log.viewWeek"),
 			cls: "task-time-tracker-log-datenav-mode-btn",
 		});
 		dayBtn.toggleClass("is-active", this.viewMode === "day");
@@ -775,6 +775,7 @@ export class TimeLogView extends ItemView {
 		const range = nav.createDiv({ cls: "task-time-tracker-log-datenav-range" });
 		const prevBtn = range.createEl("button", { cls: "clickable-icon" });
 		setIcon(prevBtn, "chevron-left");
+		prevBtn.setAttribute("aria-label", this.viewMode === "day" ? t("log.navPrevDay") : t("log.navPrevWeek"));
 		prevBtn.addEventListener("click", () => {
 			this.anchorDate = addDays(this.anchorDate, this.viewMode === "day" ? -1 : -7);
 			void this.render();
@@ -784,12 +785,13 @@ export class TimeLogView extends ItemView {
 
 		const nextBtn = range.createEl("button", { cls: "clickable-icon" });
 		setIcon(nextBtn, "chevron-right");
+		nextBtn.setAttribute("aria-label", this.viewMode === "day" ? t("log.navNextDay") : t("log.navNextWeek"));
 		nextBtn.addEventListener("click", () => {
 			this.anchorDate = addDays(this.anchorDate, this.viewMode === "day" ? 1 : 7);
 			void this.render();
 		});
 
-		const todayBtn = nav.createEl("button", { text: "Hoy" });
+		const todayBtn = nav.createEl("button", { text: t("log.today") });
 		todayBtn.addEventListener("click", () => {
 			this.anchorDate = startOfDay(Date.now());
 			void this.render();
@@ -834,7 +836,7 @@ export class TimeLogView extends ItemView {
 		}
 
 		if (dayEntries.length === 0) {
-			container.createEl("p", { text: "Sin sesiones este día.", cls: "task-time-tracker-log-empty-day" });
+			container.createEl("p", { text: t("log.emptyDay"), cls: "task-time-tracker-log-empty-day" });
 			return;
 		}
 
@@ -849,10 +851,10 @@ export class TimeLogView extends ItemView {
 		const allEntries = this.getEntries();
 
 		container.empty();
-		container.createEl("h4", { text: "Historial de tracking" });
+		container.createEl("h4", { text: t("log.title") });
 
 		if (allEntries.length === 0) {
-			container.createEl("p", { text: "Todavía no hay sesiones registradas." });
+			container.createEl("p", { text: t("log.emptyAll") });
 			return;
 		}
 

@@ -452,6 +452,24 @@ una entrada aquí.
   usuario, con el mismo criterio de "no autoactuar sobre un panel ya
   abierto" que ya rige la edición/borrado de sesiones del Bloque 1.
 
+## Fase 5 — botón "Exportar todo" en Settings
+
+- **Exportación de un clic de todo el histórico, sin modal.** Se añade
+  un botón "Exportar todo" en Settings que genera un CSV genérico
+  (nunca el formato Toggl) con el rango completo, desde la primera
+  sesión guardada hasta el momento de exportar, en la carpeta de
+  exportación ya configurada. Reutiliza el mismo `exportToCsv()` que el
+  resto de exportaciones, por lo que excluye la sesión activa igual que
+  ellas; si no hay ninguna sesión guardada todavía, avisa con un
+  `Notice` en vez de generar un archivo vacío. Motivo: se originó como
+  salvaguarda ante una desinstalación del plugin — la API de Obsidian
+  no permite interceptar ese momento exacto, así que no hay forma
+  técnica de avisar "justo antes" — pero el texto visible del botón no
+  menciona desinstalar en ningún momento, porque Obsidian ya preserva
+  `data.json` por defecto al desinstalar (decisión de Fase 1);
+  mencionarlo sería un aviso inexacto sobre un riesgo que no existe. Se
+  presenta en cambio como buena práctica general de respaldo.
+
 
 ## Fase 6 (futura) — Internacionalización (i18n)
 
@@ -481,3 +499,67 @@ una entrada aquí.
   traducir".** No cambia comportamiento del plugin, solo extrae los
   textos ya escritos en español a archivos de traducción y añade el
   inglés como equivalente.
+
+## Fase 6 — implementación
+
+- **Detección de idioma vía `moment.locale()`, no `localStorage`.** La
+  API pública de Obsidian no expone un campo documentado tipo
+  `app.locale`/`app.language`. Se descartó `localStorage.getItem("language")`
+  (usado por muchos plugins de la comunidad) por ser una clave interna
+  no documentada; `moment` sí es un export público de `obsidian`, y
+  Obsidian sincroniza su locale global con el idioma de la interfaz.
+  Motivo: coherencia con la regla del proyecto de evitar hacks sobre
+  el DOM/almacenamiento interno de Obsidian salvo que sea
+  estrictamente necesario.
+- **Resolución del idioma una sola vez, a nivel de módulo, sin init
+  explícito.** `src/i18n/index.ts` calcula el diccionario activo en el
+  momento en que el módulo se importa por primera vez, no mediante una
+  función `setLocale()` que haya que recordar llamar en `main.ts`.
+  Motivo: cambiar el idioma de Obsidian ya exige recargar la app, así
+  que no hace falta reaccionar en caliente; un valor calculado una
+  sola vez elimina el riesgo de que algún fichero use `t()` antes de
+  que el idioma se haya resuelto.
+- **`es.ts` tipado como `Record<TranslationKey, string>` contra las
+  claves de `en.ts`.** Si falta o sobra una clave en cualquiera de los
+  dos diccionarios, el build falla en vez de dejar un hueco de
+  traducción silencioso en producción. Motivo: con más de 80 claves
+  gestionadas a mano, un typo o un olvido es fácil de cometer y dificil
+  de detectar a simple vista; el tipo lo detecta en tiempo de
+  compilación.
+- **`t(key, params?)` con interpolación simple de `{placeholder}`, sin
+  motor de formato ICU ni plurales avanzados.** Solo dos claves de todo
+  el glosario tienen partes dinámicas (`recovery.body`,
+  `notice.exportSuccess`); el pluralizado sesión/sesiones sigue siendo
+  un ternario en `TimeLogView.ts`, no una regla de plural en el
+  diccionario. Motivo: no construir infraestructura para una
+  necesidad que hoy no existe.
+- **Unificación de `log.title` implementada.** `getDisplayText()`
+  (título de pestaña) y el `<h4>` interno de `TimeLogView` pasan a leer
+  la misma clave (`"Time Tracker"`, igual en ambos idiomas). Esto
+  cambia el texto visible del encabezado interno del Historial desde
+  el primer día de Fase 6 (antes decía "Historial de tracking"),
+  incluso para usuarios en español — cambio de código, no solo de
+  contenido, ya decidido y confirmado antes de implementar.
+- **Fechas del Historial: sin cambio de código, confirmado.**
+  `toLocaleDateString()`/`toLocaleTimeString()`/`toLocaleString()` se
+  quedan dependiendo del idioma/región del sistema operativo, no del
+  idioma configurado en Obsidian — inconsistencia latente ya conocida
+  y aceptada explícitamente, no se fuerza el locale detectado en estas
+  llamadas.
+- **Barrido completo de `Notice()` antes de implementar.** Se revisó
+  `src/` entero (no solo los ficheros con pantallas obvias) buscando
+  `new Notice(...)` sin traducir; aparecieron 8 mensajes adicionales
+  en `main.ts` y `TimeLogView.ts` que no estaban en el primer borrador
+  del glosario (p. ej. los avisos de "tarea ya cerrada" o "nota no
+  encontrada"). `src/core/` y `src/export/` confirmados sin texto de
+  usuario. Motivo: cerrar el glosario con cobertura real del código,
+  no con una lista construida de memoria.
+- **`aria-label` de las flechas de navegación del Historial: texto
+  dinámico según la vista activa** (`"Día anterior"`/`"Semana
+  anterior"`, etc.), no un texto genérico fijo para ambos estados.
+  Motivo: un lector de pantalla necesita saber si el botón, en ese
+  momento, mueve un día o una semana — un texto ambiguo no lo
+  comunica.
+- **Verificado manualmente en Obsidian, en ambos sentidos** (español y
+  de vuelta a otro idioma, con recarga completa de la app entre
+  medias), no solo compilación y tipos.
