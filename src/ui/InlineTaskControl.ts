@@ -26,6 +26,7 @@ export interface InlineTaskControlHandlers {
 export class InlineTaskControlView {
 	readonly el: HTMLElement;
 	private iconEl: HTMLElement;
+	private dotEl: HTMLElement;
 	private badgeEl: HTMLElement;
 
 	constructor(
@@ -36,6 +37,9 @@ export class InlineTaskControlView {
 	) {
 		this.el = createSpan({ cls: "task-time-tracker-inline-control" });
 		this.iconEl = this.el.createSpan({ cls: "task-time-tracker-inline-icon" });
+		// Punto pulsante, solo visible (via CSS, ver .is-active en
+		// styles.css) mientras esta tarea es la que tiene tracking activo.
+		this.dotEl = this.el.createSpan({ cls: "task-time-tracker-inline-dot" });
 		this.badgeEl = this.el.createSpan({ cls: "task-time-tracker-inline-badge" });
 
 		// Evita que el mousedown mueva el cursor del editor antes de que
@@ -84,7 +88,8 @@ export class InlineTaskControlView {
 		if (this.closed) {
 			this.el.toggleClass("is-static", hasHistory);
 			this.el.toggleClass("is-hidden", !hasHistory);
-			this.iconEl.toggleClass("is-hidden", true);
+			this.iconEl.toggleClass("is-hidden", !hasHistory);
+			if (hasHistory) setIcon(this.iconEl, "check");
 			this.badgeEl.toggleClass("is-hidden", !hasHistory);
 			if (hasHistory) this.badgeEl.setText(formatDuration(accumulatedMs));
 			return;

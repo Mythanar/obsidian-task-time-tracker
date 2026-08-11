@@ -82,6 +82,8 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 					updateEntryTimes: (entryId, start, end) => this.updateEntryTimes(entryId, start, end),
 					deleteEntry: (entryId) => this.deleteEntry(entryId),
 					deleteTask: (taskId) => this.deleteTask(taskId),
+					stopTracking: () => this.handleInlineStop(),
+					bus: this.inlineControlsBus,
 				}),
 		);
 

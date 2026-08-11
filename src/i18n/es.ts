@@ -35,7 +35,7 @@ export const es: Record<TranslationKey, string> = {
 	"export.emailInvalid": "Ese email no tiene un formato válido (ej. usuario@dominio.com).",
 	"export.rangeInvalid": "Selecciona un rango de fechas válido.",
 	"export.fromAfterTo": 'El campo "Desde" no puede ser posterior a "Hasta".',
-	"export.emailInvalidNotice": "Completa un email de Toggl válido antes de exportar con este formato.",
+	"export.emailInvalidNotice": "Agrega el email de tu cuenta de Toggl antes de exportar",
 	"export.exportButton": "Exportar",
 
 	// 6. Settings (src/settings/SettingsTab.ts)
@@ -68,6 +68,11 @@ export const es: Record<TranslationKey, string> = {
 	"log.session.singular": "sesión",
 	"log.session.plural": "sesiones",
 	"log.ongoing": "en curso",
+	"log.editStartDateLabel": "Fecha inicio",
+	"log.editStartTimeLabel": "Hora inicio",
+	"log.editEndDateLabel": "Fecha fin",
+	"log.editEndTimeLabel": "Hora fin",
+	"log.editDurationLabel": "Duración calculada",
 	"log.save": "Guardar",
 	"log.cancel": "Cancelar",
 	"log.delete": "Eliminar",
@@ -81,6 +86,7 @@ export const es: Record<TranslationKey, string> = {
 	"log.deleteTaskYes": "Sí, eliminar",
 	"log.deleteBlockedActive": "No se puede eliminar: esta tarea tiene una sesión activa. Detén el tracking primero.",
 	"log.deleteTaskAriaLabel": "Eliminar tarea",
+	"log.stopTrackingAriaLabel": "Detener tracking",
 	"log.viewDay": "Día",
 	"log.viewWeek": "Semana",
 	"log.today": "Hoy",

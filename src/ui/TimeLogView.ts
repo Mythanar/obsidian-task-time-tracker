@@ -14,6 +14,7 @@ import { formatDuration } from "../core/TrackingEngine";
 import { parseCheckboxLine, ResolvedTask, TaskIdentifier } from "../core/TaskIdentifier";
 import { t } from "../i18n";
 import { DeleteTaskResult, EntryUpdateResult, TimeEntry } from "../types";
+import { InlineTrackingBus } from "./InlineTrackingBus";
 
 export const TIME_LOG_VIEW_TYPE = "task-time-tracker-log-view";
 
@@ -21,28 +22,40 @@ export interface TimeLogViewActions {
 	updateEntryTimes(entryId: string, start: number, end: number): Promise<EntryUpdateResult>;
 	deleteEntry(entryId: string): Promise<void>;
 	deleteTask(taskId: string): Promise<DeleteTaskResult>;
+	stopTracking(): Promise<void>;
+	// Mismo bus que ya usa el badge junto al checkbox (ver
+	// InlineTaskControlExtension.ts): notifica cada segundo mientras haya
+	// una sesion activa, para que la tarjeta de esa tarea (si esta en el
+	// rango de fecha visible) actualice su contador en vivo sin necesidad
+	// de un render() completo del panel.
+	bus: InlineTrackingBus;
 }
 
 // Estado transitorio de edicion de una sesion: solo una a la vez, nunca
 // se persiste. Un clic fuera de la fila no la descarta (solo Guardar/
 // Cancelar/Eliminar lo hacen) — ver renderSessionRow()/renderEditForm().
-// Fecha y horas son campos de texto simples ("YYYY-MM-DD"/"HH:MM:SS"):
-// el usuario controla los segundos por completo, como cualquier otro
-// campo — no hay ninguna regla especial que los fuerce a :00. No hay
-// campo de fecha de fin — se calcula sola (ver resolveDraftTimestamps()).
-// Si se cancela, la sesion original queda intacta.
-// startTimeEvaluated/endTimeEvaluated: si ese campo de hora ya paso por
-// blur o alcanzo longitud completa al menos una vez desde el ultimo
-// cambio (ver renderEditForm/bindTimeInput) — mientras no sea asi, un
-// formato invalido no se muestra todavia (el usuario sigue escribiendo).
-// Se guardan en el draft (no solo como clase CSS en el input) porque el
+// Los cuatro campos (fecha inicio, hora inicio, fecha fin, hora fin) son
+// campos de texto simples ("YYYY-MM-DD"/"HH:MM:SS"), incluida la fecha
+// de fin: deja de inferirse por comparacion de horas (decision revisada
+// respecto al diseno original de Bloque 1, que la calculaba sola) y pasa
+// a ser un dato mas que el usuario controla directamente, igual que ya
+// pasaba con los segundos de hora inicio/fin. Si se cancela, la sesion
+// original queda intacta.
+// {campo}Evaluated: si ese campo ya paso por blur o alcanzo longitud
+// completa al menos una vez desde el ultimo cambio (ver
+// renderEditForm/bindDraftField) — mientras no sea asi, un formato
+// invalido no se muestra todavia (el usuario sigue escribiendo). Se
+// guardan en el draft (no solo como clase CSS en el input) porque el
 // formulario se puede reconstruir entero por un refresh externo sin que
 // el usuario haya tocado nada (ver punto B: clic fuera no descarta).
 interface EditDraft {
 	entryId: string;
 	startDate: string;
+	startDateEvaluated: boolean;
 	startTime: string;
 	startTimeEvaluated: boolean;
+	endDate: string;
+	endDateEvaluated: boolean;
 	endTime: string;
 	endTimeEvaluated: boolean;
 	error: string | null;
@@ -140,25 +153,41 @@ type DraftResolution =
 	| { ok: true; start: number; end: number; crossesMidnight: boolean }
 	| { ok: false; error: string };
 
-// Resuelve el rango final a partir de los tres campos del borrador, tal
-// cual los dejo el usuario (segundos incluidos, sin forzar nada). El fin
-// cae al dia siguiente de la fecha de inicio si su hora (con segundos)
-// es estrictamente menor que la de inicio.
+// Resuelve el rango final a partir de los cuatro campos del borrador,
+// tal cual los dejo el usuario (segundos incluidos, sin forzar nada).
+// Fecha de fin y fecha de inicio son independientes: quien decide si la
+// sesion cruza medianoche (o varios dias) es la propia fecha de fin
+// tecleada, no una inferencia por comparacion de horas.
 function resolveDraftTimestamps(draft: EditDraft): DraftResolution {
 	const startDateMs = parseDateInput(draft.startDate);
+	const endDateMs = parseDateInput(draft.endDate);
 	const start = parseTimeInput(draft.startTime);
 	const end = parseTimeInput(draft.endTime);
-	if (startDateMs === null || !start || !end) return { ok: false, error: t("log.errorFormat") };
-
-	const secondsOfDay = (t: ParsedTime) => t.hours * 3600 + t.minutes * 60 + t.seconds;
-	const crossesMidnight = secondsOfDay(end) < secondsOfDay(start);
-	const endDateMs = crossesMidnight ? addDays(startDateMs, 1) : startDateMs;
+	if (startDateMs === null || endDateMs === null || !start || !end) {
+		return { ok: false, error: t("log.errorFormat") };
+	}
 
 	return {
 		ok: true,
 		start: combineDateAndTime(startDateMs, start),
 		end: combineDateAndTime(endDateMs, end),
-		crossesMidnight,
+		crossesMidnight: endDateMs !== startDateMs,
+	};
+}
+
+// Para la punta que no se ha tocado (su texto sigue siendo el mismo con
+// el que se abrio la edicion, tanto fecha como hora), se usa el
+// timestamp real de la sesion en vez del reconstruido por
+// resolveDraftTimestamps() — evita cualquier diferencia de precision
+// entre ambos calculos. Compartido por updateMessage() (solapamiento) y
+// updatePreview() (duracion en vivo) para no duplicar el criterio.
+function effectiveRange(draft: EditDraft, entry: TimeEntry, resolved: { start: number; end: number }) {
+	const startUnchanged = draft.startDate === formatDateInput(entry.start) && draft.startTime === formatHMS(entry.start);
+	const endUnchanged =
+		draft.endDate === formatDateInput(entry.end as number) && draft.endTime === formatHMS(entry.end as number);
+	return {
+		start: startUnchanged ? entry.start : resolved.start,
+		end: endUnchanged ? (entry.end as number) : resolved.end,
 	};
 }
 
@@ -180,6 +209,23 @@ export class TimeLogView extends ItemView {
 	// no hay memoria de la ultima fecha/modo vistos en una apertura anterior.
 	private viewMode: LogViewMode = "day";
 	private anchorDate: number = startOfDay(Date.now());
+	// Contador en vivo de la tarjeta activa (si esta en el rango de fecha
+	// visible tras el ultimo render()): se recalcula cada segundo via el
+	// bus, sin reconstruir el panel entero. null si la tarea con tracking
+	// activo no aparece en ninguna tarjeta actualmente renderizada.
+	private activeCardTick: { el: HTMLElement; completedMs: number; start: number } | null = null;
+	private busUnsubscribe: (() => void) | null = null;
+	// render() es async (resolveTaskIds lee el vault) y puede dispararse
+	// mas de una vez para la misma accion del usuario (p.ej. al guardar
+	// una edicion: saveEditDraft() llama a render() explicitamente, y
+	// main.ts ya dispara refreshLogViews() -> render() desde dentro de
+	// updateEntryTimes()). Sin este guard, una llamada mas antigua que
+	// se reanuda tras su propio await puede seguir aniadiendo tarjetas al
+	// contenedor que una llamada mas reciente ya vacio y reconstruyo,
+	// duplicando el contenido. Cada render() se queda con su propio
+	// numero de turno al empezar; si al reanudar tras un await ese numero
+	// ya no coincide con el mas reciente, se aborta sin tocar el DOM.
+	private renderToken = 0;
 
 	constructor(
 		leaf: WorkspaceLeaf,
@@ -203,11 +249,23 @@ export class TimeLogView extends ItemView {
 	}
 
 	async onOpen(): Promise<void> {
+		this.busUnsubscribe = this.actions.bus.subscribe(() => this.tickActiveCard());
 		await this.render();
+	}
+
+	async onClose(): Promise<void> {
+		this.busUnsubscribe?.();
+		this.busUnsubscribe = null;
 	}
 
 	refresh(): void {
 		void this.render();
+	}
+
+	private tickActiveCard(): void {
+		if (!this.activeCardTick) return;
+		const { el, completedMs, start } = this.activeCardTick;
+		el.setText(formatDuration(completedMs + (Date.now() - start)));
 	}
 
 	private async resolveTaskIds(entries: TimeEntry[]): Promise<Map<string, ResolvedTask | null>> {
@@ -283,8 +341,16 @@ export class TimeLogView extends ItemView {
 		const totalMs = taskEntries.reduce((sum, entry) => sum + ((entry.end ?? Date.now()) - entry.start), 0);
 		const isMissing = resolutions.get(taskId) == null;
 		const expanded = this.expandedTaskIds.has(expandKey);
+		// La sesion activa, si es una de las entries de ESTA tarjeta (ya
+		// acotadas al rango de fecha visible por renderDaySection()): al
+		// haber un unico timer activo en todo el plugin, como mucho una
+		// tarjeta en toda la vista puede cumplir esto. Si la tarea activa no
+		// tiene ninguna sesion en el rango visible, activeEntry es null aqui
+		// y la tarjeta se comporta exactamente igual que cualquier otra.
+		const activeEntry = taskEntries.find((entry) => entry.end === null) ?? null;
 
 		const card = list.createDiv({ cls: "task-time-tracker-log-row" });
+		card.toggleClass("is-tracking-active", activeEntry !== null);
 		const header = card.createDiv({ cls: "task-time-tracker-log-card-header" });
 
 		// Linea 1: solo el enlace a la nota de origen (o el texto si la tarea
@@ -311,13 +377,20 @@ export class TimeLogView extends ItemView {
 		// cabecera, incluido el titulo) — con el mismo estilo de hover que ya
 		// usan las filas de sesion individuales, para marcarla como clicable.
 		const meta = header.createDiv({ cls: "task-time-tracker-log-meta task-time-tracker-log-meta-toggle" });
-		const toggleIcon = meta.createSpan({ cls: "task-time-tracker-log-card-toggle" });
+		// Chevron + sesiones + total + tt-id viven en su propio grupo
+		// alineado (task-time-tracker-log-summary): asi su alineacion
+		// vertical entre si no depende del alto del boton que los acompana
+		// a la derecha (trash o stop+contador, este ultimo mas alto por el
+		// padding del pill). align-items: center en .task-time-tracker-log-meta
+		// centra ambos grupos entre si sin que ninguno "estire" al otro.
+		const summary = meta.createDiv({ cls: "task-time-tracker-log-summary" });
+		const toggleIcon = summary.createSpan({ cls: "task-time-tracker-log-card-toggle" });
 		setIcon(toggleIcon, expanded ? "chevron-down" : "chevron-right");
-		meta.createSpan({
+		summary.createSpan({
 			text: `${taskEntries.length} ${taskEntries.length === 1 ? t("log.session.singular") : t("log.session.plural")}`,
 		});
-		meta.createSpan({ text: formatDuration(totalMs), cls: "task-time-tracker-totals-duration" });
-		meta.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
+		summary.createSpan({ text: formatDuration(totalMs), cls: "task-time-tracker-totals-duration" });
+		summary.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
 
 		meta.addEventListener("click", () => {
 			if (expanded) this.expandedTaskIds.delete(expandKey);
@@ -325,25 +398,54 @@ export class TimeLogView extends ItemView {
 			void this.render();
 		});
 
-		// Backlog Fase 5 — borrar la tarea completa (todo su historico, no
-		// solo lo visible en el rango de fecha actual): con stopPropagation
-		// para no disparar tambien el expandir/colapsar de la fila que lo
-		// contiene. El chequeo de sesion activa usa this.getEntries() sin
-		// acotar por dia/semana — la tarea puede tener su sesion activa hoy
-		// aunque esta tarjeta en concreto muestre otro dia (vista semanal).
-		const deleteBtn = meta.createEl("button", { cls: "task-time-tracker-log-card-delete clickable-icon" });
-		setIcon(deleteBtn, "trash-2");
-		deleteBtn.setAttribute("aria-label", t("log.deleteTaskAriaLabel"));
-		deleteBtn.addEventListener("click", (evt) => {
-			evt.stopPropagation();
-			const hasActive = this.getEntries().some((entry) => entry.taskId === taskId && entry.end === null);
-			if (hasActive) {
-				new Notice(t("log.deleteBlockedActive"));
-				return;
-			}
-			this.taskDeleteConfirmId = taskId;
-			void this.render();
-		});
+		if (activeEntry) {
+			// Reemplaza la papelera (deshabilitada mientras la tarea esta
+			// activa): boton de stop con contador en vivo, mismo patron de
+			// pill que el badge junto al checkbox (icono relleno + numero en
+			// monoespaciada). completedMs es la suma de las sesiones YA
+			// cerradas de esta tarjeta; el tick de cada segundo (via el bus)
+			// le suma el tiempo transcurrido desde activeEntry.start.
+			const stopBtn = meta.createEl("button", { cls: "task-time-tracker-log-card-stop" });
+			stopBtn.setAttribute("aria-label", t("log.stopTrackingAriaLabel"));
+			const stopIcon = stopBtn.createSpan({ cls: "task-time-tracker-log-card-stop-icon" });
+			setIcon(stopIcon, "square");
+			// Mismo punto pulsante que el badge junto al checkbox (comparten
+			// clase y animacion): aqui siempre "en ejecucion", sin necesidad
+			// de una clase is-active propia.
+			stopBtn.createSpan({ cls: "task-time-tracker-inline-dot" });
+			const stopDuration = stopBtn.createSpan({ cls: "task-time-tracker-log-card-stop-duration" });
+
+			const completedMs = taskEntries
+				.filter((entry) => entry.id !== activeEntry.id)
+				.reduce((sum, entry) => sum + ((entry.end as number) - entry.start), 0);
+			stopDuration.setText(formatDuration(completedMs + (Date.now() - activeEntry.start)));
+			this.activeCardTick = { el: stopDuration, completedMs, start: activeEntry.start };
+
+			stopBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				void this.actions.stopTracking();
+			});
+		} else {
+			// Backlog Fase 5 — borrar la tarea completa (todo su historico, no
+			// solo lo visible en el rango de fecha actual): con stopPropagation
+			// para no disparar tambien el expandir/colapsar de la fila que lo
+			// contiene. El chequeo de sesion activa usa this.getEntries() sin
+			// acotar por dia/semana — la tarea puede tener su sesion activa hoy
+			// aunque esta tarjeta en concreto muestre otro dia (vista semanal).
+			const deleteBtn = meta.createEl("button", { cls: "task-time-tracker-log-card-delete clickable-icon" });
+			setIcon(deleteBtn, "trash-2");
+			deleteBtn.setAttribute("aria-label", t("log.deleteTaskAriaLabel"));
+			deleteBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				const hasActive = this.getEntries().some((entry) => entry.taskId === taskId && entry.end === null);
+				if (hasActive) {
+					new Notice(t("log.deleteBlockedActive"));
+					return;
+				}
+				this.taskDeleteConfirmId = taskId;
+				void this.render();
+			});
+		}
 
 		if (expanded) {
 			const detail = card.createDiv({ cls: "task-time-tracker-log-card-detail" });
@@ -455,8 +557,11 @@ export class TimeLogView extends ItemView {
 				this.editDraft = {
 					entryId: entry.id,
 					startDate: formatDateInput(entry.start),
+					startDateEvaluated: false,
 					startTime: formatHMS(entry.start),
 					startTimeEvaluated: false,
+					endDate: formatDateInput(entry.end as number),
+					endDateEvaluated: false,
 					endTime: formatHMS(entry.end as number),
 					endTimeEvaluated: false,
 					error: null,
@@ -465,6 +570,20 @@ export class TimeLogView extends ItemView {
 				void this.render();
 			});
 		}
+	}
+
+	// Campo de texto con icono + etiqueta encima (fecha u hora), parte de
+	// una de las dos parejas (inicio/fin) del formulario de edicion. Sin
+	// selector nativo del sistema: type="text" siempre, igual que ya
+	// pasaba con las horas.
+	private createEditField(container: Element, icon: string, label: string): HTMLInputElement {
+		const field = container.createDiv({ cls: "task-time-tracker-log-edit-field" });
+		const labelRow = field.createDiv({ cls: "task-time-tracker-log-edit-field-label" });
+		setIcon(labelRow.createSpan(), icon);
+		labelRow.createSpan({ text: label });
+		const input = field.createEl("input", { cls: "task-time-tracker-log-edit-input" });
+		input.type = "text";
+		return input;
 	}
 
 	private renderEditForm(container: Element, entry: TimeEntry): void {
@@ -495,43 +614,49 @@ export class TimeLogView extends ItemView {
 			return;
 		}
 
-		// Solo los campos de fecha/hora (sin botones: ver mas abajo, ahora
-		// van en su propia fila para dejar sitio al bloque de aviso fijo
-		// entre ambos).
-		const fields = form.createDiv({ cls: "task-time-tracker-log-edit-fields" });
+		// Bloque 3 UX — parejas etiquetadas con icono (fecha inicio/hora
+		// inicio, fecha fin/hora fin), todas como campos de texto libres,
+		// sin selector nativo del sistema ni siquiera para las fechas. El
+		// grid se apila verticalmente en pantallas estrechas y pasa a una
+		// sola fila si hay ancho suficiente (ver .task-time-tracker-log-edit-grid).
+		const grid = form.createDiv({ cls: "task-time-tracker-log-edit-grid" });
 
-		const dateInput = fields.createEl("input", { cls: "task-time-tracker-log-edit-input" });
-		dateInput.type = "date";
-		dateInput.value = draft.startDate;
-
-		const startInput = fields.createEl("input", { cls: "task-time-tracker-log-edit-input task-time-tracker-log-edit-time" });
-		startInput.type = "text";
+		const startGroup = grid.createDiv({ cls: "task-time-tracker-log-edit-group" });
+		const startDateInput = this.createEditField(startGroup, "calendar", t("log.editStartDateLabel"));
+		const startInput = this.createEditField(startGroup, "clock", t("log.editStartTimeLabel"));
 		startInput.placeholder = "HH:MM:SS";
-		startInput.value = draft.startTime;
 
-		fields.createSpan({ text: "→", cls: "task-time-tracker-log-edit-arrow" });
-
-		const endInput = fields.createEl("input", { cls: "task-time-tracker-log-edit-input task-time-tracker-log-edit-time" });
-		endInput.type = "text";
+		const endGroup = grid.createDiv({ cls: "task-time-tracker-log-edit-group" });
+		const endDateInput = this.createEditField(endGroup, "calendar", t("log.editEndDateLabel"));
+		const endInput = this.createEditField(endGroup, "clock", t("log.editEndTimeLabel"));
 		endInput.placeholder = "HH:MM:SS";
+
+		startDateInput.value = draft.startDate;
+		startInput.value = draft.startTime;
+		endDateInput.value = draft.endDate;
 		endInput.value = draft.endTime;
 
-		// El estado "invalido" se guarda en el draft (startTimeEvaluated/
-		// endTimeEvaluated), no solo como clase CSS: un refresh externo
-		// reconstruye este formulario entero (ver comentario en
-		// EditDraft), y sin esto la marca visual se perderia aunque el
-		// campo siguiera siendo invalido.
+		// El estado "invalido" se guarda en el draft ({campo}Evaluated),
+		// no solo como clase CSS: un refresh externo reconstruye este
+		// formulario entero (ver comentario en EditDraft), y sin esto la
+		// marca visual se perderia aunque el campo siguiera siendo
+		// invalido.
+		startDateInput.toggleClass("is-invalid", draft.startDateEvaluated && parseDateInput(draft.startDate) === null);
 		startInput.toggleClass("is-invalid", draft.startTimeEvaluated && parseTimeInput(draft.startTime) === null);
+		endDateInput.toggleClass("is-invalid", draft.endDateEvaluated && parseDateInput(draft.endDate) === null);
 		endInput.toggleClass("is-invalid", draft.endTimeEvaluated && parseTimeInput(draft.endTime) === null);
 
-		const nextDayBadge = fields.createSpan({ text: "+1", cls: "task-time-tracker-log-nextday-badge is-hidden" });
-		const durationPreview = fields.createSpan({ cls: "task-time-tracker-totals-duration" });
+		// Bloque resaltado de solo lectura: duracion calculada en vivo a
+		// partir de los cuatro campos.
+		const durationBlock = form.createDiv({ cls: "task-time-tracker-log-edit-duration" });
+		durationBlock.createSpan({ text: t("log.editDurationLabel"), cls: "task-time-tracker-log-edit-duration-label" });
+		const durationPreview = durationBlock.createSpan({ cls: "task-time-tracker-log-edit-duration-value" });
 
-		// Bloque de aviso unico y fijo: siempre en la misma posicion
-		// (debajo de los campos, encima de los botones), con altura
-		// reservada aunque no haya nada que mostrar, para que el
-		// formulario no salte de alto. Nunca muestra dos mensajes a la
-		// vez — ver updateMessage() para la prioridad entre ellos.
+		// Bloque de aviso unico y fijo, justo debajo del bloque de
+		// duracion: siempre en la misma posicion, con altura reservada
+		// aunque no haya nada que mostrar, para que el formulario no
+		// salte de alto. Nunca muestra dos mensajes a la vez — ver
+		// updateMessage() para la prioridad entre ellos.
 		const messageEl = form.createEl("p", { cls: "task-time-tracker-log-edit-message" });
 
 		const actions = form.createDiv({ cls: "task-time-tracker-log-edit-actions" });
@@ -542,7 +667,15 @@ export class TimeLogView extends ItemView {
 			this.editDraft = null;
 			void this.render();
 		});
-		actions.createEl("button", { text: t("log.delete"), cls: "mod-warning" }).addEventListener("click", () => {
+
+		// "Eliminar sesion": icono de papelera en vez de boton de texto,
+		// mismo estilo que el de borrar la tarea completa
+		// (task-time-tracker-log-card-delete), en la misma fila que
+		// Guardar/Cancelar, empujado al extremo derecho.
+		const deleteBtn = actions.createEl("button", { cls: "task-time-tracker-log-edit-delete clickable-icon" });
+		setIcon(deleteBtn, "trash-2");
+		deleteBtn.setAttribute("aria-label", t("log.delete"));
+		deleteBtn.addEventListener("click", () => {
 			draft.confirmingDelete = true;
 			void this.render();
 		});
@@ -555,19 +688,20 @@ export class TimeLogView extends ItemView {
 
 		// Prioridad, nunca dos a la vez: 1) error de guardado del backend
 		// (sesion borrada mientras se editaba) 2) error de formato — solo
-		// si algun campo de hora ya fue evaluado (blur o longitud
-		// completa, ver bindTimeInput; nunca mientras se sigue
-		// escribiendo) 3) fin <= inicio (una vez el formato es valido)
-		// 4) aviso de solapamiento (solo con formato valido y fin >
-		// inicio) 5) nada.
+		// si algun campo ya fue evaluado (blur o longitud completa, ver
+		// bindDraftField; nunca mientras se sigue escribiendo) 3) fin <=
+		// inicio (una vez el formato es valido) 4) aviso de solapamiento
+		// (solo con formato valido y fin > inicio) 5) nada.
 		const updateMessage = () => {
 			if (draft.error) {
 				setMessage(draft.error, "error");
 				return;
 			}
-			const startInvalid = draft.startTimeEvaluated && parseTimeInput(draft.startTime) === null;
-			const endInvalid = draft.endTimeEvaluated && parseTimeInput(draft.endTime) === null;
-			if (parseDateInput(draft.startDate) === null || startInvalid || endInvalid) {
+			const startDateInvalid = draft.startDateEvaluated && parseDateInput(draft.startDate) === null;
+			const endDateInvalid = draft.endDateEvaluated && parseDateInput(draft.endDate) === null;
+			const startTimeInvalid = draft.startTimeEvaluated && parseTimeInput(draft.startTime) === null;
+			const endTimeInvalid = draft.endTimeEvaluated && parseTimeInput(draft.endTime) === null;
+			if (startDateInvalid || endDateInvalid || startTimeInvalid || endTimeInvalid) {
 				setMessage(t("log.errorFormat"), "error");
 				return;
 			}
@@ -584,60 +718,51 @@ export class TimeLogView extends ItemView {
 				return;
 			}
 
-			// Los campos de hora no tienen milisegundos (HH:MM:SS), asi
-			// que resolveDraftTimestamps() siempre reconstruye con :000
-			// — eso por si solo ya puede diferir en hasta ~1s del
-			// end-start real de la sesion guardada. Mientras un campo no
-			// se haya tocado (su texto sigue siendo el mismo con el que
-			// se abrio la edicion), se usa el timestamp real de la
-			// sesion para ESA punta, no el reconstruido.
-			const start = draft.startTime === formatHMS(entry.start) ? entry.start : resolved.start;
-			const end = draft.endTime === formatHMS(entry.end as number) ? (entry.end as number) : resolved.end;
+			const { start, end } = effectiveRange(draft, entry, resolved);
 			const overlapping = this.getEntries().some(
 				(other) => other.id !== entry.id && rangesOverlap(start, end, other.start, other.end ?? Date.now()),
 			);
 			setMessage(overlapping ? t("log.warnOverlap") : "", overlapping ? "warning" : "none");
 		};
 
-		// Vista previa en vivo de duracion + "+1" mientras se escribe,
-		// sin reconstruir el formulario entero — eso perderia el foco
-		// del input a mitad de tecleo. Sin duracion valida todavia
-		// (campos incompletos o fuera de rango), no se muestra nada.
-		// Ver el comentario dentro de updateMessage() sobre por que se
-		// usa el timestamp real de la sesion para la punta no tocada.
+		// Vista previa en vivo de la duracion calculada, sin reconstruir
+		// el formulario entero — eso perderia el foco del input a mitad
+		// de tecleo. Sin duracion valida todavia (campos incompletos o
+		// fuera de rango), se muestra "—" en vez de dejar el bloque vacio.
 		const updatePreview = () => {
 			const resolved = resolveDraftTimestamps(draft);
 			if (!resolved.ok) {
-				nextDayBadge.addClass("is-hidden");
-				durationPreview.setText("");
+				durationPreview.setText("—");
 				return;
 			}
-			const start = draft.startTime === formatHMS(entry.start) ? entry.start : resolved.start;
-			const end = draft.endTime === formatHMS(entry.end as number) ? (entry.end as number) : resolved.end;
-			nextDayBadge.toggleClass("is-hidden", !resolved.crossesMidnight);
-			durationPreview.setText(end > start ? formatDuration(end - start) : "");
+			const { start, end } = effectiveRange(draft, entry, resolved);
+			durationPreview.setText(end > start ? formatDuration(end - start) : "—");
 		};
 
-		// Minutos/segundos y horas reales (ver TIME_INPUT_REGEX). El
-		// error de formato NO se evalua en cada tecla (seria prematuro
-		// mientras el usuario sigue escribiendo): solo al perder el foco
-		// (blur) o al llegar a la longitud completa de "HH:MM:SS" (8
-		// caracteres) — ver EditDraft sobre por que el resultado se
-		// guarda en el draft (setEvaluated) y no solo como clase CSS.
-		// Mientras tanto, se limpia para no dejar una marca vieja mientras
-		// se sigue corrigiendo. Sin flechas arriba/abajo: se edita solo a
-		// mano. Los segundos son libres — el usuario decide, sin ninguna
-		// regla que los fuerce a :00.
-		const bindTimeInput = (input: HTMLInputElement, apply: (value: string) => void, setEvaluated: (value: boolean) => void) => {
+		// El formato NO se evalua en cada tecla (seria prematuro mientras
+		// el usuario sigue escribiendo): solo al perder el foco (blur) o
+		// al llegar a la longitud completa del campo (10 caracteres
+		// "YYYY-MM-DD", 8 "HH:MM:SS") — ver EditDraft sobre por que el
+		// resultado se guarda en el draft (setEvaluated) y no solo como
+		// clase CSS. Mientras tanto, se limpia para no dejar una marca
+		// vieja mientras se sigue corrigiendo. Sin selector nativo ni
+		// flechas arriba/abajo: se edita solo a mano.
+		const bindDraftField = (
+			input: HTMLInputElement,
+			isValid: (value: string) => boolean,
+			fullLength: number,
+			apply: (value: string) => void,
+			setEvaluated: (value: boolean) => void,
+		) => {
 			const evaluateFormat = () => {
 				setEvaluated(true);
-				input.toggleClass("is-invalid", parseTimeInput(input.value) === null);
+				input.toggleClass("is-invalid", !isValid(input.value));
 				updateMessage();
 			};
 			input.addEventListener("input", () => {
 				apply(input.value);
 				updatePreview();
-				if (input.value.length >= 8) evaluateFormat();
+				if (input.value.length >= fullLength) evaluateFormat();
 				else {
 					setEvaluated(false);
 					input.removeClass("is-invalid");
@@ -647,18 +772,31 @@ export class TimeLogView extends ItemView {
 			input.addEventListener("blur", evaluateFormat);
 		};
 
-		dateInput.addEventListener("input", () => {
-			draft.startDate = dateInput.value;
-			updatePreview();
-			updateMessage();
-		});
-		bindTimeInput(
+		bindDraftField(
+			startDateInput,
+			(value) => parseDateInput(value) !== null,
+			10,
+			(value) => (draft.startDate = value),
+			(value) => (draft.startDateEvaluated = value),
+		);
+		bindDraftField(
 			startInput,
+			(value) => parseTimeInput(value) !== null,
+			8,
 			(value) => (draft.startTime = value),
 			(value) => (draft.startTimeEvaluated = value),
 		);
-		bindTimeInput(
+		bindDraftField(
+			endDateInput,
+			(value) => parseDateInput(value) !== null,
+			10,
+			(value) => (draft.endDate = value),
+			(value) => (draft.endDateEvaluated = value),
+		);
+		bindDraftField(
 			endInput,
+			(value) => parseTimeInput(value) !== null,
+			8,
 			(value) => (draft.endTime = value),
 			(value) => (draft.endTimeEvaluated = value),
 		);
@@ -825,7 +963,8 @@ export class TimeLogView extends ItemView {
 		container: Element,
 		dayStart: number,
 		allEntries: TimeEntry[],
-		withHeading = false,
+		withHeading: boolean,
+		token: number,
 	): Promise<void> {
 		const dayEntries = allEntries
 			.filter((entry) => isSameLocalDay(entry.start, dayStart))
@@ -841,14 +980,25 @@ export class TimeLogView extends ItemView {
 		}
 
 		const resolutions = await this.resolveTaskIds(dayEntries);
+		// Una llamada a render() mas reciente ya tomo el control del
+		// contenedor mientras se resolvian los tt-id de esta seccion —
+		// ver comentario de renderToken. Abortar aqui evita duplicar
+		// tarjetas encima del resultado (ya correcto) de esa llamada mas
+		// reciente.
+		if (token !== this.renderToken) return;
 		this.renderTaskList(container, dayEntries, resolutions, dayStart);
 	}
 
 	private async render(): Promise<void> {
+		const token = ++this.renderToken;
 		const container = this.containerEl.children[1];
 		if (!container) return;
 
 		const allEntries = this.getEntries();
+		// Se recalcula desde cero en cada render(): si la tarjeta activa no
+		// se vuelve a renderizar (p. ej. se navega a otra fecha), el tick
+		// deja de tener efecto en vez de apuntar a un nodo ya desmontado.
+		this.activeCardTick = null;
 
 		container.empty();
 		container.createEl("h4", { text: t("log.title") });
@@ -861,11 +1011,12 @@ export class TimeLogView extends ItemView {
 		this.renderDateNav(container);
 
 		if (this.viewMode === "day") {
-			await this.renderDaySection(container, startOfDay(this.anchorDate), allEntries);
+			await this.renderDaySection(container, startOfDay(this.anchorDate), allEntries, false, token);
 		} else {
 			const weekStart = startOfWeek(this.anchorDate);
 			for (let i = 0; i < 7; i++) {
-				await this.renderDaySection(container, addDays(weekStart, i), allEntries, true);
+				if (token !== this.renderToken) return;
+				await this.renderDaySection(container, addDays(weekStart, i), allEntries, true, token);
 			}
 		}
 	}

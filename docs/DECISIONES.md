@@ -470,6 +470,117 @@ una entrada aquí.
   mencionarlo sería un aviso inexacto sobre un riesgo que no existe. Se
   presenta en cambio como buena práctica general de respaldo.
 
+## Fase 5 — rediseño del formulario de edición inline de sesión
+
+> ⚠️ **Cambio de decisión respecto al Bloque 1.** El Bloque 1 (más
+> arriba) fijó que "la fecha de fin nunca se edita directamente: si la
+> hora de fin es menor que la de inicio, se interpreta como cruce de
+> medianoche". Esa decisión se revierte aquí: la fecha de fin pasa a ser
+> un campo editable de verdad, ya no se infiere. Motivo del cambio:
+> pedido explícito del usuario al rediseñar el formulario; el mecanismo
+> de inferencia por comparación de horas no cubre sesiones que abarcan
+> más de un día completo (p. ej. de un lunes a un miércoles), mientras
+> que un campo de fecha de fin explícito sí, sin necesitar ningún caso
+> especial adicional.
+
+- **Los cuatro campos (fecha inicio, hora inicio, fecha fin, hora fin)
+  pasan a ser texto libre, incluidas las fechas.** El campo de fecha de
+  inicio deja de ser un `<input type="date">` nativo (selector del
+  sistema) y pasa a validarse igual que ya se hacía con las horas: sin
+  marcar error hasta que el usuario termine de escribir (blur o
+  longitud completa), con el mismo `DATE_INPUT_REGEX` que ya existía
+  pero hasta ahora solo se usaba para parsear, no para validar tecleo
+  en vivo. Motivo: coherencia con el resto de campos del formulario y
+  con el pedido explícito de no usar selectores nativos del sistema.
+- **La fecha de fin se resuelve directamente del campo, sin inferencia
+  por comparación de horas.** `resolveDraftTimestamps()` deja de tener
+  un caso especial "si la hora de fin es menor, sumar un día"; ahora
+  simplemente parsea `endDate` igual que `startDate`. El badge "+1" del
+  formulario de edición desaparece (sigue existiendo en la fila estática
+  de sesión y en las confirmaciones de borrado, que no cambiaron) —
+  la propia fecha de fin visible ya comunica esa información con más
+  claridad que un indicador "+1".
+- **Nuevo bloque "Duración calculada", de solo lectura y resaltado
+  visualmente**, en el lugar donde antes iba la vista previa de
+  duración suelta junto a los campos. Motivo: dar más peso visual a un
+  dato que antes quedaba como un número más entre los campos.
+- **"Eliminar sesión" se separa de Guardar/Cancelar con una línea
+  divisoria**, en vez de estar en la misma fila de botones. Motivo:
+  reducir el riesgo de pulsación accidental sobre una acción
+  irreversible, especialmente en pantalla táctil.
+  > ⚠️ **Superado poco después, en la misma ronda de rediseño.** Se
+  > vuelve a integrar en la fila de Guardar/Cancelar, como icono de
+  > papelera (mismo icono ya usado para borrar una tarea completa desde
+  > el Historial) alineado a la derecha, en vez de la línea divisoria de
+  > más arriba. Motivo: pedido explícito del usuario tras ver el
+  > formulario ya implementado, con el mismo criterio visual que el
+  > borrado de tarea completa en vez de un patrón propio solo para
+  > sesiones.
+- **Bug corregido — contenido duplicado tras pulsar "Guardar".** Al
+  guardar una edición de sesión, el panel del Historial llegaba a
+  mostrar la lista de tareas duplicada. Causa raíz: condición de
+  carrera entre dos llamadas a `render()` — `saveEditDraft()` lo invoca
+  explícitamente, y `updateEntryTimes()` (en `main.ts`) ya lo dispara
+  también de forma indirecta vía `refreshLogViews()`; al ser `render()`
+  asíncrono, ambas invocaciones se solapaban y corrompían el DOM. Fix:
+  un `renderToken` incremental que `render()` genera al empezar y que
+  `renderDaySection()` comprueba tras su único punto `await`, abortando
+  si ya existe una invocación más reciente en curso. El mismo patrón de
+  carrera existía también en borrado de sesión y de tarea completa, no
+  solo en Guardar, así que el fix cubre las tres a la vez en vez de
+  parchear cada punto de llamada por separado.
+- **Layout responsive por flexbox (`flex-wrap`), no media queries ni
+  container queries.** Las dos parejas (inicio/fin) se apilan
+  verticalmente si no caben una junto a otra, igual que ya hacía la
+  barra de navegación de fecha del Historial. Motivo: mismo patrón ya
+  usado en el plugin, sin depender de soporte de container queries en
+  todos los entornos donde corre Obsidian (incluido mobile).
+- **La lógica de validación no cambia salvo lo estrictamente necesario
+  para el nuevo campo:** prioridad de mensajes, aviso de solapamiento
+  en vivo, "clic fuera no descarta", persistencia del error de guardado
+  del backend — todo igual que en Bloque 1. El único añadido de lógica
+  real es que ahora hay cuatro campos evaluables en vez de tres
+  (`{campo}Evaluated` por cada uno) y `effectiveRange()`, un helper
+  nuevo que centraliza en un solo sitio el criterio de "usar el
+  timestamp original si ese campo no se tocó" para los cuatro campos,
+  antes duplicado a mano entre `updateMessage()` y `updatePreview()`
+  para los tres campos que existían.
+
+## Fase 5 — rediseño visual del badge play/stop (pill)
+
+- **Colores derivados con `color-mix()` en vez de valores fijos.** El
+  usuario aportó un mockup HTML/CSS de referencia con colores morados en
+  `rgba(...)` fijos. Se tradujeron a
+  `color-mix(in srgb, var(--interactive-accent) X%, transparent)` (con un
+  `var(--interactive-accent)` plano declarado antes, como respaldo para
+  motores sin soporte de `color-mix()`, relevante porque el plugin no es
+  `isDesktopOnly` y debe funcionar también en Obsidian mobile). Motivo:
+  regla no negociable del proyecto de no usar nunca colores fijos, para
+  que el badge se adapte al accent real del tema activo del usuario en
+  vez de quedar fijado al morado de la demo.
+- **Texto/icono en `--interactive-accent` en los tres estados no
+  estáticos (disponible, activo, con historial), no `--text-on-accent`.**
+  El diseño nuevo usa fondos translúcidos (tintados, no rellenos sólidos)
+  en forma de pill (`border-radius: 100px`); `--text-on-accent` (pensado
+  para texto claro sobre un relleno sólido) sería ilegible sobre un fondo
+  mayormente transparente. Coherente con el propio mockup del usuario,
+  que tampoco cambia el color de texto entre sus estados idle/running/
+  paused.
+- **Punto pulsante nuevo como indicador de "en ejecución".** Se añade un
+  punto (`.task-time-tracker-inline-dot`, con `@keyframes
+  task-time-tracker-pulse`) visible solo mientras hay tracking activo,
+  compartido entre el badge junto al checkbox (clase `.is-active`) y el
+  botón de stop del Historial (donde siempre está en ejecución por
+  definición, al renderizarse solo para la tarjeta de la tarea activa).
+- **Icono de check para tareas cerradas con historial**, en vez de no
+  mostrar ningún icono como hasta ahora. Motivo: mismo criterio visual
+  que el mockup (estado "finished" con checkmark), da una señal visual
+  de "completada" en vez de dejar el hueco vacío.
+- **El componente `tt-check` del mockup (checkbox de la tarea) queda
+  fuera de alcance.** El checkbox `- [ ]` lo renderiza el propio editor
+  de Obsidian (Live Preview/Reading mode), no este plugin — el plugin
+  solo dibuja el badge/pill que se añade después del `tt-id::`, así que
+  restylear el checkbox en sí no es código de este proyecto.
 
 ## Fase 6 (futura) — Internacionalización (i18n)
 

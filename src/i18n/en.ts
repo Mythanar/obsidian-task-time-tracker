@@ -34,7 +34,7 @@ export const en = {
 	"export.emailInvalid": "That email isn't a valid format (e.g. user@domain.com).",
 	"export.rangeInvalid": "Select a valid date range.",
 	"export.fromAfterTo": 'The "From" field can\'t be later than "To".',
-	"export.emailInvalidNotice": "Enter a valid Toggl email before exporting in this format.",
+	"export.emailInvalidNotice": "Add your Toggl account email before exporting",
 	"export.exportButton": "Export",
 
 	// 6. Settings (src/settings/SettingsTab.ts)
@@ -67,6 +67,11 @@ export const en = {
 	"log.session.singular": "session",
 	"log.session.plural": "sessions",
 	"log.ongoing": "ongoing",
+	"log.editStartDateLabel": "Start date",
+	"log.editStartTimeLabel": "Start time",
+	"log.editEndDateLabel": "End date",
+	"log.editEndTimeLabel": "End time",
+	"log.editDurationLabel": "Calculated duration",
 	"log.save": "Save",
 	"log.cancel": "Cancel",
 	"log.delete": "Delete",
@@ -80,6 +85,7 @@ export const en = {
 	"log.deleteTaskYes": "Yes, delete",
 	"log.deleteBlockedActive": "Can't delete: this task has an active session. Stop tracking first.",
 	"log.deleteTaskAriaLabel": "Delete task",
+	"log.stopTrackingAriaLabel": "Stop tracking",
 	"log.viewDay": "Day",
 	"log.viewWeek": "Week",
 	"log.today": "Today",

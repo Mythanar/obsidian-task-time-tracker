@@ -77,10 +77,10 @@ Fichero: `src/ui/ExportModal.ts`
 | export.emailInvalid | Ese email no tiene un formato válido (ej. usuario@dominio.com). | That email isn't a valid format (e.g. user@domain.com). |
 | export.rangeInvalid | Selecciona un rango de fechas válido. | Select a valid date range. |
 | export.fromAfterTo | El campo "Desde" no puede ser posterior a "Hasta". | The "From" field can't be later than "To". |
-| export.emailInvalidNotice | Completa un email de Toggl válido antes de exportar con este formato. | Enter a valid Toggl email before exporting in this format. |
+| export.emailInvalidNotice | Agrega el email de tu cuenta de Toggl antes de exportar | Add your Toggl account email before exporting |
 | export.exportButton | Exportar | Export |
 
-> ⚠️ **Fix de redacción pendiente, fuera de Fase 6:** `export.emailInvalidNotice` — propuesta futura para el español: "Agrega el email de tu cuenta de Toggl antes de exportar". No aplicar todavía; la traducción al inglés de arriba ya da por bueno el texto actual.
+> ✅ **Fix de redacción aplicado:** `export.emailInvalidNotice` — texto actualizado en `src/i18n/es.ts`/`en.ts` tanto en español como en inglés.
 
 ---
 
@@ -150,6 +150,11 @@ Sin traducción necesaria (símbolos/datos dinámicos): fecha (`toLocaleDateStri
 | Clave sugerida | Español | Inglés |
 |---|---|---|
 | log.ongoing | en curso | ongoing |
+| log.editStartDateLabel | Fecha inicio | Start date |
+| log.editStartTimeLabel | Hora inicio | Start time |
+| log.editEndDateLabel | Fecha fin | End date |
+| log.editEndTimeLabel | Hora fin | End time |
+| log.editDurationLabel | Duración calculada | Calculated duration |
 | log.save | Guardar | Save |
 | log.cancel | Cancelar | Cancel |
 | log.delete | Eliminar | Delete |
@@ -160,7 +165,9 @@ Sin traducción necesaria (símbolos/datos dinámicos): fecha (`toLocaleDateStri
 | log.errorGone | No se pudo guardar: la sesión ya no existe. | Couldn't save: this session no longer exists. |
 | log.warnOverlap | Aviso: este horario se solapa con otra sesión guardada. | Note: this time overlaps with another saved session. |
 
-Sin traducción necesaria: `→` (separadores), `+1` (badge medianoche), `—` (duración sin cerrar), placeholder `HH:MM:SS`.
+Sin traducción necesaria: `→` (separadores) y `+1` (badge medianoche) — ambos solo en la fila estática de sesión, ya no en el formulario de edición (ver nota abajo); `—` (duración sin cerrar/no calculable todavía), placeholder `HH:MM:SS`.
+
+> ✅ **Rediseño del formulario de edición inline:** ahora agrupa los campos en parejas etiquetadas con icono (fecha inicio/hora inicio, fecha fin/hora fin), todas como texto libre — incluida la fecha, que deja de ser un `<input type="date">` nativo y de inferirse por comparación de horas. Decisión revisada respecto a la original de Fase 5 Bloque 1 ("la fecha de fin nunca se edita directamente"); ver `DECISIONES.md`. Añade un bloque de "Duración calculada" que sustituye a la vista previa junto a los campos, y separa "Eliminar sesión" del resto de botones con una línea divisoria.
 
 ### 7.4 Confirmación de borrado de tarea completa
 
@@ -219,7 +226,7 @@ Ficheros: `src/main.ts` y `src/ui/TimeLogView.ts`. `src/core/` y `src/export/` c
 
 ## 10. Cabos sueltos detectados durante el repaso
 
-1. ⏳ Fix de redacción del mensaje `export.emailInvalidNotice` en español (apartado 5) — pendiente, fuera de Fase 6, sin fecha.
+1. ✅ Fix de redacción del mensaje `export.emailInvalidNotice` en español (apartado 5) — aplicado, junto con su traducción al inglés.
 2. ✅ Unificación de la clave `log.title` — decisión cerrada ("Time Tracker" en ambos idiomas). Pendiente solo de implementación (apartado 7.1).
 3. ✅ `aria-label` de las flechas de navegación anterior/siguiente del Historial — implementado, dinámico según Día/Semana (apartado 7.5).
 4. ✅ `estado-fase-5.md` y `DECISIONES.md` — entrada retroactiva de "Exportar todo" ya añadida a `DECISIONES.md`, sin tocar `estado-fase-5.md` (ya la tenía).
