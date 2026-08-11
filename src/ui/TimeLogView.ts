@@ -413,21 +413,22 @@ export class TimeLogView extends ItemView {
 		}
 
 		// Linea 2: chevron (decorativo, aria-hidden — el trigger real es
-		// toda la cabecera, ver arriba) + nº sesiones + total + tt-id.
+		// toda la cabecera, ver arriba) + nº sesiones + total + tt-id +
+		// boton (trash o stop+contador). Un unico grupo flex-wrap (sin el
+		// contenedor "summary" que antes separaba estos elementos del
+		// boton): en mobile, con el panel mas estrecho que la pantalla,
+		// cualquiera de estos elementos puede necesitar bajar de linea
+		// entero (nunca partirse por dentro, ver white-space: nowrap en
+		// styles.css) — incluido el badge de tracking activo, que antes
+		// se desbordaba por no formar parte de este mismo flex-wrap.
 		const meta = header.createDiv({ cls: "task-time-tracker-log-meta" });
-		// Chevron + sesiones + total + tt-id viven en su propio grupo
-		// alineado (task-time-tracker-log-summary): asi su alineacion
-		// vertical entre si no depende del alto del boton que los acompana
-		// a la derecha (trash o stop+contador, este ultimo mas alto por el
-		// padding del pill). align-items: center en .task-time-tracker-log-meta
-		// centra ambos grupos entre si sin que ninguno "estire" al otro.
-		const summary = meta.createDiv({ cls: "task-time-tracker-log-summary" });
-		const toggleCol = summary.createDiv({ cls: "task-time-tracker-log-card-icon-col" });
+		const toggleCol = meta.createDiv({ cls: "task-time-tracker-log-card-icon-col" });
 		const toggleIcon = toggleCol.createSpan({ cls: "task-time-tracker-log-card-toggle" });
 		toggleIcon.setAttribute("aria-hidden", "true");
 		setIcon(toggleIcon, expanded ? "chevron-down" : "chevron-right");
-		summary.createSpan({
+		meta.createSpan({
 			text: `${taskEntries.length} ${taskEntries.length === 1 ? t("log.session.singular") : t("log.session.plural")}`,
+			cls: "task-time-tracker-log-session-count",
 		});
 		// Total agregado (varias sesiones sumadas): formato compacto, no
 		// HH:MM:SS — ver formatDurationCompact(). Icono de cronometro +
@@ -436,10 +437,10 @@ export class TimeLogView extends ItemView {
 		// perderse entre el resto de metadatos de la cabecera (tt-id,
 		// nº de sesiones) — mismo patron que el bloque "Calculated
 		// duration" del formulario de edicion.
-		const totalGroup = summary.createSpan({ cls: "task-time-tracker-totals-duration-group" });
+		const totalGroup = meta.createSpan({ cls: "task-time-tracker-totals-duration-group" });
 		setIcon(totalGroup.createSpan({ cls: "task-time-tracker-totals-duration-icon" }), "timer");
 		totalGroup.createSpan({ text: formatDurationCompact(totalMs), cls: "task-time-tracker-totals-duration" });
-		summary.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
+		meta.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
 
 		if (activeEntry) {
 			// Reemplaza la papelera (deshabilitada mientras la tarea esta
@@ -522,6 +523,7 @@ export class TimeLogView extends ItemView {
 		const meta = confirm.createDiv({ cls: "task-time-tracker-log-meta" });
 		meta.createSpan({
 			text: `${fullTaskEntries.length} ${fullTaskEntries.length === 1 ? t("log.session.singular") : t("log.session.plural")}`,
+			cls: "task-time-tracker-log-session-count",
 		});
 		// Mismo total agregado que la cabecera de la tarjeta (misma clase
 		// CSS, mismo icono de cronometro), formato compacto — ver
@@ -992,14 +994,19 @@ export class TimeLogView extends ItemView {
 		return null;
 	}
 
-	// Bloque 2 — barra de navegacion de fecha: toggle dia/semana, flechas
-	// prev/siguiente (avanzan un dia o una semana segun el modo activo) y
-	// boton "Hoy" (vuelve siempre al dia de hoy, incluso en vista semanal:
-	// startOfDay(Date.now()) cae dentro de la semana de hoy).
+	// Bloque 2 — barra de navegacion de fecha: dos grupos atomicos (nunca
+	// se rompen por dentro) dentro de un unico flex-wrap, sin media
+	// queries: Grupo A (Dia/Semana/Hoy) y Grupo B (flechas + fecha). Con
+	// espacio de sobra ambos caben en una linea (A a la izquierda, B
+	// ocupando y centrando el resto — ver .task-time-tracker-log-datenav
+	// en styles.css); en mobile, con el panel mas estrecho que la
+	// pantalla, cada grupo baja a su propia linea, ambos centrados.
 	private renderDateNav(container: Element): void {
 		const nav = container.createDiv({ cls: "task-time-tracker-log-datenav" });
 
-		const modeToggle = nav.createDiv({ cls: "task-time-tracker-log-datenav-mode" });
+		const groupA = nav.createDiv({ cls: "task-time-tracker-log-datenav-group-a" });
+
+		const modeToggle = groupA.createDiv({ cls: "task-time-tracker-log-datenav-mode" });
 		const dayBtn = modeToggle.createEl("button", {
 			text: t("log.viewDay"),
 			cls: "task-time-tracker-log-datenav-mode-btn",
@@ -1021,6 +1028,12 @@ export class TimeLogView extends ItemView {
 			void this.render();
 		});
 
+		const todayBtn = groupA.createEl("button", { text: t("log.today") });
+		todayBtn.addEventListener("click", () => {
+			this.anchorDate = startOfDay(Date.now());
+			void this.render();
+		});
+
 		const range = nav.createDiv({ cls: "task-time-tracker-log-datenav-range" });
 		const prevBtn = range.createEl("button", { cls: "clickable-icon" });
 		setIcon(prevBtn, "chevron-left");
@@ -1037,12 +1050,6 @@ export class TimeLogView extends ItemView {
 		nextBtn.setAttribute("aria-label", this.viewMode === "day" ? t("log.navNextDay") : t("log.navNextWeek"));
 		nextBtn.addEventListener("click", () => {
 			this.anchorDate = addDays(this.anchorDate, this.viewMode === "day" ? 1 : 7);
-			void this.render();
-		});
-
-		const todayBtn = nav.createEl("button", { text: t("log.today") });
-		todayBtn.addEventListener("click", () => {
-			this.anchorDate = startOfDay(Date.now());
 			void this.render();
 		});
 	}

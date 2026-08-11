@@ -674,3 +674,99 @@ una entrada aquí.
 - **Verificado manualmente en Obsidian, en ambos sentidos** (español y
   de vuelta a otro idioma, con recarga completa de la app entre
   medias), no solo compilación y tipos.
+
+## Fase 5 — rediseño de interacción del panel Historial
+
+- **Icono de nota delante del título, en vez de un título-link.** El
+  título de la tarjeta deja de ser el enlace a la nota de origen; pasa
+  a texto plano, y un icono de nota (`file-text`) delante del texto
+  asume esa acción, con su propio `stopPropagation()`. Motivo: dejar
+  libre el resto de la cabecera para una única acción de
+  expandir/colapsar (ver punto siguiente), sin que el título compita
+  como zona clicable independiente.
+- **Toda la cabecera de la tarjeta (título + línea de meta) expande o
+  colapsa las sesiones**, no solo la línea de meta como hasta ahora. El
+  chevron pasa a ser decorativo (`aria-hidden="true"`), ya no es el
+  único disparador.
+- **Icono suelto de borrado en la fila de sesión, revelado por
+  `:hover`/`:focus-within`: probado y revertido en la misma ronda de
+  trabajo.**
+  > ⚠️ **Revertido.** Un icono destructivo apareciendo como reacción
+  > pasiva al cursor, sin que el usuario pidiera nada, generaba la
+  > sensación de "aquí se borra" incluso diferenciando el hover de la
+  > fila (fondo) del hover del propio icono (círculo). Se elimina el
+  > icono suelto y su lógica de apertura directa del modal de
+  > confirmación; el borrado de una sesión individual vuelve a ser
+  > accesible solo desde el botón "Eliminar" dentro del formulario de
+  > edición (clic en la fila → editar → Eliminar), igual en desktop y
+  > en mobile.
+- **Papelera de borrar tarea completa: deja de depender de
+  `:hover`/`:focus-within`, se vincula a que la tarjeta esté
+  expandida.** Mismo motivo que el punto anterior. Efecto colateral
+  positivo: desktop y mobile pasan a compartir el mismo criterio de
+  visibilidad — se elimina la distinción `@media (hover: none)` que
+  existía entre plataformas para este botón.
+- **Área de toque mínima 44×44px en los botones-icono de la cabecera y
+  de la fila de sesión**, vía un pseudo-elemento `::after` invisible con
+  `inset` negativo, sin inflar el icono visual ni el alto real de la
+  fila que los contiene.
+- **Formato compacto (`formatDurationCompact()`) para los totales
+  agregados** de la cabecera de tarjeta y de la confirmación de borrado
+  de tarea, distinto del `HH:MM:SS` que sigue usando cada sesión
+  individual. Sin ceros a la izquierda, omite unidades en cero, nunca
+  usa "días" (siempre horas, p. ej. `127h 49m`), sin segundos salvo que
+  el total sea menor a un minuto. `h`/`m`/`s` se tratan como formato
+  universal, sin traducir — mismo criterio ya aplicado a `HH:MM:SS`,
+  `→` y `+N` (ver `docs/glosario-traduccion-i18n.md`).
+- **Bug corregido — el badge "+N" de cruce de día no calculaba la
+  diferencia real de días naturales.** `crossesMidnightRange()`
+  (booleano) se sustituye por `getDaySpan(startMs, endMs): number`, que
+  calcula la diferencia con `Date.UTC(y, m, d)` (a salvo de cambios de
+  horario de verano/invierno) en vez de una resta directa de timestamps
+  o de comparar solo las horas. El campo `crossesMidnight` de
+  `DraftResolution`, que ya no leía nadie, se elimina junto con el fix.
+- **Fecha de fin junto al badge "+N" en filas de sesión.** En sesiones
+  que abarcan más de un día natural se añade la fecha de fin entre
+  paréntesis justo después del badge (p. ej. `+4 (14/8/2026)`), en tono
+  secundario — no el color de énfasis del badge — para no obligar al
+  usuario a calcularla a mano en sesiones largas. Aplica a los tres
+  sitios que comparten `renderSessionInfo()` (fila estática,
+  confirmación de borrado de sesión y de tarea completa); el formulario
+  de edición no la muestra, ya tiene su propio campo de fecha de fin
+  explícito.
+- **Fixes de `cursor: pointer`** en varios elementos activos que no
+  mostraban el cursor de mano al pasar por encima: botones de abrir
+  nota y papelera, Guardar/Cancelar, Sí eliminar/Cancelar y —
+  encontrados durante la misma revisión, no reportados originalmente —
+  los botones de navegación de fecha y la papelera propia del
+  formulario de edición.
+
+## Fase 5 — ajustes de mobile
+
+- **Icono de play de una tarea abierta sin historial: forzado siempre
+  visible en mobile, no solo con `:hover`.** El icono solo se revelaba
+  vía `.cm-line:hover`, un estado que no existe en pantallas táctiles —
+  quedaba sin ninguna vía visible para iniciar el tracking. Se detecta
+  `Platform.isMobile` (API pública de `obsidian`) una sola vez al
+  montar el widget (no cambia en caliente) y se fuerza `opacity: 1` vía
+  una clase `is-mobile`, sin tocar la regla de hover original (sigue
+  rigiendo en desktop).
+- **Fecha de apoyo del badge "+N": no se renderiza el nodo en mobile**,
+  no solo se oculta por CSS — mismo criterio de `Platform.isMobile` que
+  el punto anterior.
+- **Metadatos de la cabecera de tarjeta y navegador de fecha, en
+  `flex-wrap` en vez de una sola fila fija.** En mobile el panel del
+  Historial es más estrecho que la pantalla del dispositivo; sin
+  `flex-wrap`, "N sesión(es)" podía partirse por dentro (word-wrap del
+  navegador) y el badge de tracking activo se desbordaba fuera del
+  borde de la tarjeta. Cada elemento (nº de sesiones, duración, tt-id,
+  badge) se trata como bloque atómico (`white-space: nowrap` +
+  `flex-shrink: 0`): si no cabe entero, baja entero a la siguiente
+  línea, nunca se parte por dentro. El navegador de fecha pasa a dos
+  grupos (`Día/Semana/Hoy` y `< fecha >`); con `flex-grow: 1` solo en
+  el segundo grupo, este consume todo el espacio libre de la línea
+  cuando ambos caben juntos (grupo A queda pegado a la izquierda, grupo
+  B centra su contenido en el resto), y cuando no caben y cada uno baja
+  a su propia línea, ambos quedan centrados — sin ninguna clase
+  condicional ni lógica adicional en JS, solo con las propiedades de
+  flexbox ya usadas en el resto del plugin.

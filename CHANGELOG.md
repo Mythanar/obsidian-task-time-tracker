@@ -21,11 +21,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The link between a task and its time history is preserved even if you edit the task text; if you delete it, the history isn't lost — it's shown as "Task not found".
 
 **History**
-- A panel with one card per task: recorded sessions, total time, and a direct link to the source note. The active task's card shows a stop button with a live counter, matching the style of the inline badge.
+- A panel with one card per task: recorded sessions, a compact total, and a note icon that opens the source note directly. Tap or click anywhere on a card's header to expand or collapse its sessions. The active task's card shows a stop button with a live counter, matching the style of the inline badge.
 - Day and week navigation, with a "Today" button to jump back to the current date.
-- Editing and deleting individual sessions, with a warning if two sessions overlap in time.
+- Editing and deleting individual sessions, with a live preview of the calculated duration and a warning if two sessions overlap in time.
+- Sessions spanning more than one calendar day show a "+N" badge with the end date, so you don't have to work it out by hand.
 - Deleting a task's entire history at once.
 - The panel can be placed as a sidebar or a central tab, your choice (Settings).
+- Touch-friendly on mobile: no control relies on hover to become visible or usable, and tap targets are sized accordingly.
 
 **Export**
 - Export a date range to a generic CSV file, ready to open in any spreadsheet app.

@@ -26,29 +26,33 @@
 	margin-bottom: 0.25em;
 }
 
+/* Chevron + sesiones + total + tt-id + boton (trash o stop+contador):
+   un unico grupo flex-wrap, sin contenedor "summary" intermedio — en
+   mobile, con el panel mas estrecho que la pantalla, el conjunto no
+   siempre cabe en una linea. Cada elemento (ver white-space: nowrap y
+   flex-shrink: 0 mas abajo) se trata como un bloque atomico: si no cabe
+   entero, baja entero a la siguiente linea, nunca se parte por dentro
+   (ej. "1 sesión" partido en "1"/"sesión" por word-wrap del navegador). */
 .task-time-tracker-log-meta {
 	display: flex;
 	align-items: center;
-	gap: 1em;
+	flex-wrap: wrap;
+	gap: 0.35em 1em;
 	font-size: 0.85em;
 	color: var(--text-muted);
 }
 
-/* Chevron + sesiones + total + tt-id como un unico grupo alineado,
-   independiente del boton que lo acompana a la derecha (trash o
-   stop+contador) — align-items: center en .task-time-tracker-log-meta
-   ya centra ambos grupos entre si, este flex interno solo alinea los
-   elementos DENTRO del grupo. */
-.task-time-tracker-log-summary {
-	display: flex;
-	align-items: center;
-	gap: 1em;
+.task-time-tracker-log-session-count {
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 
 .task-time-tracker-log-taskid {
 	font-size: 0.8em;
 	color: var(--text-faint);
 	font-family: var(--font-monospace);
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 
 /* Icono de cronometro + valor agrupados (mismo patron que el bloque
@@ -62,6 +66,7 @@
 	display: inline-flex;
 	align-items: center;
 	gap: 0.3em;
+	flex-shrink: 0;
 }
 
 .task-time-tracker-totals-duration-icon svg {
@@ -74,6 +79,7 @@
 	font-size: 1.05em;
 	font-weight: 500;
 	color: var(--text-normal);
+	white-space: nowrap;
 }
 
 .task-time-tracker-recovery-buttons {
@@ -189,6 +195,7 @@
 	color: var(--text-muted);
 	opacity: 0;
 	cursor: pointer;
+	flex-shrink: 0;
 }
 
 .task-time-tracker-log-row.is-expanded .task-time-tracker-log-card-delete {
@@ -212,11 +219,15 @@
    la tarjeta esta activa. Mismo patron de pill que el badge junto al
    checkbox (.task-time-tracker-inline-control.is-active): tinte de
    --interactive-accent via color-mix() (nunca un color fijo), icono
-   relleno, numero en monoespaciada, punto pulsante. */
+   relleno, numero en monoespaciada, punto pulsante. Integrado en el
+   mismo flex-wrap que el resto de .task-time-tracker-log-meta (sin
+   position: absolute ni float): flex-shrink: 0 para que nunca se
+   comprima su contenido interno, bajando de linea entero si no cabe. */
 .task-time-tracker-log-card-stop {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35em;
+	flex-shrink: 0;
 	margin-left: auto;
 	padding: 0.2em 0.6em;
 	border: 1px solid var(--interactive-accent);
@@ -252,6 +263,7 @@
 	font-size: 0.85em;
 	font-family: var(--font-monospace);
 	line-height: 1;
+	white-space: nowrap;
 }
 
 .task-time-tracker-log-card-detail {
@@ -622,12 +634,27 @@
 	cursor: pointer;
 }
 
-/* Bloque 2 — navegador de fecha del Historial: toggle dia/semana +
-   flechas prev/siguiente + boton "Hoy". */
+/* Bloque 2 — navegador de fecha del Historial: Grupo A (Dia/Semana/Hoy)
+   y Grupo B (flechas + fecha), cada uno un bloque atomico (nunca se
+   rompen por dentro, ver flex-shrink: 0 + white-space: nowrap mas
+   abajo). Sin flex-grow, Grupo A queda a su tamaño natural — con
+   flex-grow: 1 en Grupo B (unico item con crecimiento en la fila) este
+   consume TODO el espacio libre de la linea, dejando 0 espacio libre a
+   nivel de contenedor: el resultado es Grupo A pegado a la izquierda y
+   Grupo B centrando su propio contenido (flechas + fecha) dentro del
+   espacio restante que ocupa por completo — sin necesidad de una clase
+   condicional para el caso de una sola linea.
+   Si no cabe todo junto, flex-wrap manda cada grupo a su propia linea:
+   Grupo A, ahora solo en su linea, SI tiene espacio libre alrededor —
+   justify-content: center en el contenedor lo centra en ella. Grupo B,
+   solo en la suya, vuelve a crecer al 100% de esa linea (flex-grow: 1
+   sigue activo) y centra su contenido dentro de ese ancho completo, que
+   ya es el ancho total del panel: mismo resultado sin ninguna logica
+   adicional en JS. */
 .task-time-tracker-log-datenav {
 	display: flex;
 	align-items: center;
-	justify-content: space-between;
+	justify-content: center;
 	gap: 0.5em;
 	margin-bottom: 0.75em;
 	flex-wrap: wrap;
@@ -638,6 +665,14 @@
    quedan con el cursor por defecto del navegador en esta vista. */
 .task-time-tracker-log-datenav button {
 	cursor: pointer;
+}
+
+.task-time-tracker-log-datenav-group-a {
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+	flex: 0 0 auto;
+	white-space: nowrap;
 }
 
 .task-time-tracker-log-datenav-mode {
@@ -653,7 +688,10 @@
 .task-time-tracker-log-datenav-range {
 	display: flex;
 	align-items: center;
+	justify-content: center;
 	gap: 0.35em;
+	flex: 1 1 auto;
+	white-space: nowrap;
 }
 
 .task-time-tracker-log-datenav-label {
