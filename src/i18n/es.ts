@@ -88,7 +88,6 @@ export const es: Record<TranslationKey, string> = {
 	"log.deleteTaskAriaLabel": "Eliminar tarea",
 	"log.stopTrackingAriaLabel": "Detener tracking",
 	"log.openNoteAriaLabel": "Abrir nota de la tarea",
-	"log.deleteSessionAriaLabel": "Eliminar sesión",
 	"log.viewDay": "Día",
 	"log.viewWeek": "Semana",
 	"log.today": "Hoy",

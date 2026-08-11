@@ -364,9 +364,11 @@ export class TimeLogView extends ItemView {
 
 		const card = list.createDiv({ cls: "task-time-tracker-log-row" });
 		card.toggleClass("is-tracking-active", activeEntry !== null);
-		// Mobile — sin hover, el trash de tarea se revela mientras la
-		// tarjeta esta expandida en vez de con :hover/:focus-within (ver
-		// styles.css, @media (hover: none)).
+		// El trash de tarea se revela mientras la tarjeta esta expandida
+		// (igual en desktop y mobile, ver styles.css) en vez de con
+		// :hover/:focus-within: mostrar un icono destructivo como reaccion
+		// pasiva al cursor invitaba a "aqui se borra" sin que el usuario
+		// hubiera pedido nada.
 		card.toggleClass("is-expanded", expanded);
 
 		// Rediseno de interaccion: toda la cabecera (titulo + meta) abre/
@@ -623,12 +625,12 @@ export class TimeLogView extends ItemView {
 		this.activeCardTicks.push({ el: counter, completedMs: 0, start: entry.start });
 	}
 
-	// Abre el formulario de edicion de una sesion (confirmingDelete: false,
-	// clic en la fila) o directamente su confirmacion de borrado
-	// (confirmingDelete: true, icono de papelera de la fila — mismo modal,
-	// sin construir uno nuevo: renderEditForm() ya rama a el si el draft
-	// nace con este flag en true).
-	private openEditDraft(entry: TimeEntry, confirmingDelete: boolean): void {
+	// Abre el formulario de edicion de una sesion (clic en la fila). El
+	// borrado de la sesion ya no tiene un punto de entrada directo desde
+	// la fila (icono suelto en hover): la unica via es el boton "Eliminar"
+	// dentro de este mismo formulario, que pone confirmingDelete a true
+	// sobre el draft ya abierto (ver renderEditForm()).
+	private openEditDraft(entry: TimeEntry): void {
 		this.editDraft = {
 			entryId: entry.id,
 			startDate: formatDateInput(entry.start),
@@ -640,7 +642,7 @@ export class TimeLogView extends ItemView {
 			endTime: formatHMS(entry.end as number),
 			endTimeEvaluated: false,
 			error: null,
-			confirmingDelete,
+			confirmingDelete: false,
 		};
 		void this.render();
 	}
@@ -657,30 +659,12 @@ export class TimeLogView extends ItemView {
 		// Solo sesiones cerradas son editables: la activa (si la tarea
 		// tuviera una en curso) nunca se edita desde aqui. Punto D2 del
 		// rediseno: toda la fila es clicable (fondo en hover via CSS), ya
-		// no hay un icono de editar aparte.
+		// no hay un icono de editar aparte. El borrado individual ya no
+		// tiene un icono propio en la fila — vive solo dentro del
+		// formulario de edicion que abre este mismo click.
 		if (entry.end !== null) {
 			row.addClass("task-time-tracker-log-session-row-editable");
-			row.addEventListener("click", () => this.openEditDraft(entry, false));
-
-			// Icono de borrado directo, alineado a la derecha, visible en
-			// hover/focus-within de la fila (desktop) — oculto en touch, ver
-			// @media (hover: none) en styles.css: en mobile el borrado sigue
-			// viviendo dentro del formulario de edicion, como hoy. Abre el
-			// mismo modal de confirmacion que el boton "Eliminar" del
-			// formulario (openEditDraft con confirmingDelete: true), no uno
-			// nuevo.
-			const deleteBtn = row.createEl("button", {
-				cls: "task-time-tracker-log-session-delete task-time-tracker-icon-btn clickable-icon",
-			});
-			setIcon(deleteBtn, "trash-2");
-			// title nativo ademas del aria-label (misma clave, sin
-			// duplicar): refuerzo visual en desktop sin coste añadido.
-			deleteBtn.setAttribute("aria-label", t("log.deleteSessionAriaLabel"));
-			deleteBtn.setAttribute("title", t("log.deleteSessionAriaLabel"));
-			deleteBtn.addEventListener("click", (evt) => {
-				evt.stopPropagation();
-				this.openEditDraft(entry, true);
-			});
+			row.addEventListener("click", () => this.openEditDraft(entry));
 		}
 	}
 

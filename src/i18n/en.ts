@@ -87,7 +87,6 @@ export const en = {
 	"log.deleteTaskAriaLabel": "Delete task",
 	"log.stopTrackingAriaLabel": "Stop tracking",
 	"log.openNoteAriaLabel": "Open task note",
-	"log.deleteSessionAriaLabel": "Delete session",
 	"log.viewDay": "Day",
 	"log.viewWeek": "Week",
 	"log.today": "Today",
