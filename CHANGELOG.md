@@ -41,6 +41,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 **Language**
 - Available in English and Spanish, based on your Obsidian language setting.
 
+### Fixed
+
+- Starting tracking on a task while its note was open in more than one pane at once (a split view, or Edit and Reading mode side by side) could momentarily show it as "Task not found" in the History panel, even though the tracked time was correct.
+- A "Task not found" card no longer leaves an empty gap where its note icon would be; it now shows a distinct icon and, if clicked, a short notice explaining the source note couldn't be found.
+
 ## [0.0.1] - 2026-08-08
 
 ### Added

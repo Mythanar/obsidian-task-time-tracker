@@ -401,6 +401,21 @@ export class TimeLogView extends ItemView {
 				evt.stopPropagation();
 				void this.openTaskNote(taskId, taskEntries);
 			});
+		} else {
+			// Tarea "no encontrada": mismo hueco (noteCol) y mismas clases
+			// que el icono de nota normal, para no romper la alineacion del
+			// titulo entre tarjetas — solo cambia el icono ("file-x", mismo
+			// trazo/familia que "file-text") y la accion al clic, que ya no
+			// puede abrir una nota que no existe.
+			const missingBtn = noteCol.createEl("button", {
+				cls: "task-time-tracker-log-card-note task-time-tracker-icon-btn clickable-icon",
+			});
+			setIcon(missingBtn, "file-x");
+			missingBtn.setAttribute("aria-label", t("log.noteNotFoundAriaLabel"));
+			missingBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				new Notice(t("notice.noteNotFound"));
+			});
 		}
 		const title = titleRow.createDiv({ text: label, cls: "task-time-tracker-log-task" });
 		if (isMissing) {

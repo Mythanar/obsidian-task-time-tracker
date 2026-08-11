@@ -101,12 +101,34 @@ export class TaskIdentifier {
 		const liveContents = this.getLiveEditorContents();
 
 		for (const file of files) {
-			const content = liveContents.get(file.path) ?? (await this.app.vault.cachedRead(file));
+			// La misma nota puede estar abierta en varios leaves (paneles
+			// divididos, Edicion + Lectura a la vez) con contenido
+			// momentaneamente distinto entre si — cada uno tiene su propia
+			// instancia de editor, y no se sincronizan entre ellos al
+			// instante. Probar todos los candidatos en vivo (no solo uno)
+			// antes de caer a cachedRead(): basta con que UNO de los
+			// paneles ya tenga el tt-id en memoria (p.ej. el que acaba de
+			// iniciar tracking) para resolverlo, sin depender de cual se
+			// itere ultimo.
+			const candidates = liveContents.get(file.path) ?? [];
+			const found = this.findInContents(taskId, file.path, candidates);
+			if (found) return found;
+			if (candidates.length > 0) continue;
+
+			const cached = await this.app.vault.cachedRead(file);
+			const foundInCache = this.findInContents(taskId, file.path, [cached]);
+			if (foundInCache) return foundInCache;
+		}
+		return null;
+	}
+
+	private findInContents(taskId: string, filePath: string, contents: string[]): ResolvedTask | null {
+		for (const content of contents) {
 			const lines = content.split("\n");
 			for (let lineNumber = 0; lineNumber < lines.length; lineNumber++) {
 				const lineText = lines[lineNumber];
 				if (lineText !== undefined && extractTaskId(lineText) === taskId) {
-					return { filePath: file.path, lineText, lineNumber };
+					return { filePath, lineText, lineNumber };
 				}
 			}
 		}
@@ -118,11 +140,18 @@ export class TaskIdentifier {
 	// vault.cachedRead() no los ve hasta entonces. Para notas abiertas
 	// se lee el contenido en vivo del editor para no marcar como
 	// "no encontrada" una tarea que se está trackeando activamente.
-	private getLiveEditorContents(): Map<string, string> {
-		const contents = new Map<string, string>();
+	// Devuelve TODOS los contenidos en vivo por ruta, no uno solo: si la
+	// misma nota esta abierta en mas de un leaf, cada uno puede tener un
+	// estado distinto en un instante dado (ver bug documentado en
+	// DECISIONES.md, "paneles duplicados").
+	private getLiveEditorContents(): Map<string, string[]> {
+		const contents = new Map<string, string[]>();
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			if (leaf.view instanceof MarkdownView && leaf.view.file) {
-				contents.set(leaf.view.file.path, leaf.view.editor.getValue());
+				const path = leaf.view.file.path;
+				const existing = contents.get(path) ?? [];
+				existing.push(leaf.view.editor.getValue());
+				contents.set(path, existing);
 			}
 		}
 		return contents;

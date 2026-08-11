@@ -770,3 +770,82 @@ una entrada aquí.
   a su propia línea, ambos quedan centrados — sin ninguna clase
   condicional ni lógica adicional en JS, solo con las propiedades de
   flexbox ya usadas en el resto del plugin.
+
+## Fase 5 — bug de paneles duplicados (misma nota en 2+ leaves)
+
+- **Bug reproducido — "Task not found" al iniciar tracking por primera
+  vez sobre una tarea sin `tt-id` previo, con la misma nota abierta en
+  2 o 3 paneles a la vez** (cualquier combinación de modo Edición/
+  Lectura), pese a que el dato subyacente (`tt-id`, sesión) era
+  correcto. En algunos casos se autocorregía al parar el tracking; en
+  otros quedaba fijo hasta reiniciar Obsidian.
+- **Diagnosticado con logging temporal (con timestamps) antes de tocar
+  código, mismo criterio que el bug de auto-stop** (ver entrada más
+  arriba): se instrumentó `InlineTaskControlExtension.handleStart()`
+  (justo tras el `dispatch()` que inserta el `[tt-id:: ...]` nuevo),
+  `main.ts` (`handleInlineStart()`/`refreshLogViews()`) y
+  `TaskIdentifier.ts` (`resolve()`/`searchFiles()`/
+  `getLiveEditorContents()`). Los logs confirmaron la causa raíz:
+  `getLiveEditorContents()` construía un `Map<filePath, contenido>`
+  con un único valor por ruta; si la misma nota está abierta en más de
+  un leaf (cada uno con su propia instancia de editor, que no se
+  sincroniza con las demás al instante), `Map.set()` sobreescribía en
+  silencio el contenido de los leaves anteriores con el del último
+  iterado. Si ese último leaf todavía no se había enterado del
+  `tt-id::` recién insertado en otro panel, la búsqueda fallaba con
+  "no encontrada" aunque el dato ya fuera correcto — y explica también
+  por qué el error se autocorregía a veces (una vez los paneles
+  convergían) y otras no (si el panel "perdedor" quedaba en segundo
+  plano sin refrescarse).
+- **Fix: buscar en todos los contenidos en vivo de esa ruta, no en uno
+  solo.** `getLiveEditorContents()` pasa a devolver
+  `Map<filePath, string[]>` (todos los leaves de esa nota, no solo el
+  último en iterarse); `searchFiles()` comprueba cada candidato en
+  vivo antes de caer a `cachedRead()`, así que basta con que un solo
+  panel tenga ya el `tt-id::` en memoria (p. ej. el que acaba de
+  iniciar el tracking) para resolver correctamente, sin depender del
+  orden de iteración de los leaves.
+- **Criterio explícito al decidir el fix, confirmado con el usuario
+  antes de escribirlo: no elegir un "leaf ganador" por heurística**
+  (más largo, más reciente, etc.) **sino comprobarlos todos.** Ninguna
+  señal fiable de "cuál pane es el más actual" está expuesta por la
+  API de Obsidian, así que cualquier heurística de desempate sería
+  frágil y arbitraria. Implicación aceptada para el caso — distinto
+  del bug reproducido — de ediciones simultáneas realmente
+  conflictivas entre paneles (no solo "uno no se ha refrescado
+  todavía", sino contenido distinto y no reconciliado entre ellos): la
+  búsqueda puede devolver la versión de cualquiera de los paneles que
+  contenga el `tt-id`, sin prioridad hacia ninguna en particular. Se
+  acepta porque (a) el tracking se indexa por `tt-id` inmutable, no
+  por el texto de la línea — el texto resuelto solo se usa para
+  mostrarlo (título en el Historial, destino de "abrir nota"), nunca
+  decide qué sesión se trackea; (b) esa ambigüedad de "qué pane gana"
+  ya existe hoy en Obsidian mismo, fuera del control del plugin (gana
+  quien guarde en disco al final); y (c) es la misma clase de
+  staleness transitoria que Fase 2 ya acepta explícitamente ("Tarea no
+  encontrada" momentáneo), que se autocorrige en el siguiente
+  `render()`.
+- **Pendiente, sin reproducir de nuevo, no investigado todavía:** se
+  observó una vez, sin patrón claro, la creación de una sesión
+  "fantasma" de 0 segundos junto a la sesión real al iniciar tracking
+  con la nota duplicada en paneles. Anotado para si vuelve a aparecer;
+  no forma parte de este fix.
+
+## Fase 5 — icono de nota en tarjetas "Task not found"
+
+- **Bug de alineación — el icono de nota delante del título desaparecía
+  por completo cuando la tarea estaba en estado "Task not found"** (sin
+  ninguna línea resuelta en el vault para ese `tt-id`), dejando un hueco
+  vacío en `noteCol` que rompía la alineación del título entre tarjetas.
+- **Fix: icono `file-x` en el mismo hueco, mismas clases que el icono
+  normal** (mismo tamaño y posición, solo cambia el glifo — misma
+  familia/trazo que `file-text`), en vez de no renderizar nada.
+- **Al clic, ya no puede abrir una nota que no existe: muestra el mismo
+  aviso (`Notice`) que ya usa `openTaskNote()` cuando la resolución
+  falla** (`notice.noteNotFound`, existente, no se duplica el texto),
+  para no dejar un control muerto sin ningún feedback. Nueva clave de
+  `aria-label` (`log.noteNotFoundAriaLabel`), siguiendo el mismo patrón
+  que `log.openNoteAriaLabel`.
+- **Sin cambios en el resto del comportamiento de "Task not found"**
+  (snapshot del texto de la tarea, sesiones asociadas, título en rojo):
+  solo se tocó el icono de la cabecera y su interacción al clic.
