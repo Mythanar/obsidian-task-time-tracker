@@ -829,3 +829,10 @@
 .cm-line:hover .task-time-tracker-inline-control {
 	opacity: 1;
 }
+
+/* Mobile no tiene hover: el icono de play de una tarea abierta sin
+   historial (unico estado que dependia de .cm-line:hover, arriba) se
+   fuerza siempre visible via esta clase (ver InlineTaskControl.ts). */
+.task-time-tracker-inline-control.is-mobile {
+	opacity: 1;
+}

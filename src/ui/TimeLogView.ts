@@ -9,7 +9,7 @@
 // sesion cerrada se puede editar (fecha/hora) o borrar haciendo clic en
 // toda la fila (sin icono aparte).
 
-import { ItemView, MarkdownView, Notice, TFile, WorkspaceLeaf, setIcon } from "obsidian";
+import { ItemView, MarkdownView, Notice, Platform, TFile, WorkspaceLeaf, setIcon } from "obsidian";
 import { formatDuration, formatDurationCompact } from "../core/TrackingEngine";
 import { parseCheckboxLine, ResolvedTask, TaskIdentifier } from "../core/TaskIdentifier";
 import { t } from "../i18n";
@@ -593,11 +593,16 @@ export class TimeLogView extends ItemView {
 				// a mano la fecha final a partir de la de inicio. Tono
 				// secundario (no el color del badge): el badge es la alerta,
 				// esto es el detalle. Mismo formato que el resto de la fila
-				// (toLocaleDateString(), sin formato propio).
-				rangeSpan.createSpan({
-					text: ` (${new Date(entry.end).toLocaleDateString()})`,
-					cls: "task-time-tracker-log-nextday-date",
-				});
+				// (toLocaleDateString(), sin formato propio). No se renderiza
+				// en mobile (Platform.isMobile): el ancho de pantalla ahi es
+				// mas critico y la fecha completa ya es visible al abrir el
+				// formulario de edicion de esa sesion.
+				if (!Platform.isMobile) {
+					rangeSpan.createSpan({
+						text: ` (${new Date(entry.end).toLocaleDateString()})`,
+						cls: "task-time-tracker-log-nextday-date",
+					});
+				}
 			}
 		} else {
 			rangeSpan.createSpan({ text: t("log.ongoing"), cls: "task-time-tracker-log-ongoing" });

@@ -5,7 +5,7 @@
 // de CM6, solo dibuja el estado y delega el clic a los callbacks que le
 // pasa la integracion.
 
-import { setIcon } from "obsidian";
+import { Platform, setIcon } from "obsidian";
 import { formatDuration } from "../core/TrackingEngine";
 import { TimeEntry } from "../types";
 
@@ -36,6 +36,13 @@ export class InlineTaskControlView {
 		private handlers: InlineTaskControlHandlers,
 	) {
 		this.el = createSpan({ cls: "task-time-tracker-inline-control" });
+		// El icono de play (tarea abierta, sin historial, no activa) solo
+		// se revela por CSS al hacer :hover sobre la linea (ver
+		// styles.css) — en mobile no existe hover, asi que sin esto se
+		// quedaria invisible sin ninguna via para iniciar el tracking.
+		// Platform.isMobile no cambia en caliente, se fija una vez al
+		// montar el widget.
+		this.el.toggleClass("is-mobile", Platform.isMobile);
 		this.iconEl = this.el.createSpan({ cls: "task-time-tracker-inline-icon" });
 		// Punto pulsante, solo visible (via CSS, ver .is-active en
 		// styles.css) mientras esta tarea es la que tiene tracking activo.
