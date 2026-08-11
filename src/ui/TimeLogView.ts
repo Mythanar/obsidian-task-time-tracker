@@ -586,6 +586,16 @@ export class TimeLogView extends ItemView {
 			const daySpan = getDaySpan(entry.start, entry.end);
 			if (daySpan > 0) {
 				rangeSpan.createSpan({ text: ` +${daySpan}`, cls: "task-time-tracker-log-nextday-badge" });
+				// Fecha de fin de apoyo, solo junto al badge: en sesiones
+				// largas (+N grande) evita que el usuario tenga que calcular
+				// a mano la fecha final a partir de la de inicio. Tono
+				// secundario (no el color del badge): el badge es la alerta,
+				// esto es el detalle. Mismo formato que el resto de la fila
+				// (toLocaleDateString(), sin formato propio).
+				rangeSpan.createSpan({
+					text: ` (${new Date(entry.end).toLocaleDateString()})`,
+					cls: "task-time-tracker-log-nextday-date",
+				});
 			}
 		} else {
 			rangeSpan.createSpan({ text: t("log.ongoing"), cls: "task-time-tracker-log-ongoing" });

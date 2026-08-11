@@ -404,14 +404,28 @@
 	font-family: var(--font-monospace);
 }
 
-/* Indicador "+1" de sesion que cruza a la medianoche del dia siguiente. */
+/* Indicador "+N" de sesion que abarca mas de un dia natural (ver
+   getDaySpan() en TimeLogView.ts). */
 .task-time-tracker-log-nextday-badge {
 	color: var(--text-accent);
 	font-weight: 600;
+	margin-left:20px;
+	margin-right:4px;
 }
 
 .task-time-tracker-log-nextday-badge.is-hidden {
 	display: none;
+}
+
+/* Fecha de fin de apoyo junto al badge "+N": tono secundario, no el
+   color de enfasis del badge — el badge es la alerta ("esto cruza
+   dias"), la fecha es el detalle de apoyo, deben leerse con jerarquia
+   distinta. Mismo tono que .task-time-tracker-log-session-date (la
+   fecha de inicio a la izquierda de la fila), para que ambas fechas de
+   la fila se lean como parte del mismo nivel de informacion. */
+.task-time-tracker-log-nextday-date {
+	color: var(--text-muted);
+	color: color-mix(in srgb, var(--text-normal) 82%, transparent);
 }
 
 /* Fondo permanente (no solo hover) mientras la fila esta en edicion o
