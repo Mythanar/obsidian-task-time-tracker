@@ -143,7 +143,9 @@ Fichero: `src/ui/TimeLogView.ts`
 | log.session.singular | sesión | session |
 | log.session.plural | sesiones | sessions |
 
-Sin traducción necesaria (símbolos/datos dinámicos): fecha (`toLocaleDateString()`), snapshot del texto de tarea, total `HH:MM:SS`, `tt-id`.
+Sin traducción necesaria (símbolos/datos dinámicos): fecha (`toLocaleDateString()`), snapshot del texto de tarea, `tt-id`.
+
+> ✅ **Decisión cerrada:** el total agregado de la cabecera de tarjeta (y el de la confirmación de borrado de tarea completa, ver 7.4 — ambos comparten la misma clase CSS `task-time-tracker-totals-duration`) deja de usar `HH:MM:SS` y pasa a un formato compacto sin ceros a la izquierda vía `formatDurationCompact()` (`src/core/TrackingEngine.ts`, separada de `formatDuration()`): `14m 45s`, `1h 45m`, `127h 49m` — nunca la unidad "días", acumulando siempre en horas. Sin segundos salvo que el total sea menor a 1 minuto (`8s`), tanto para no aportar precisión irrelevante a esa escala como para que el ancho del total no cambie cada segundo mientras hay tracking activo sumando en vivo. Las abreviaturas `h`/`m`/`s` NO pasan por `t()`: se tratan como formato/símbolo universal, igual que ya se decidió para `HH:MM:SS`, `→` y `+1` — válidas sin cambio en español e inglés. Las filas de sesión individuales y el formulario de edición NO cambian: siguen en `HH:MM:SS` (ver 7.3), porque ahí el segundo sigue siendo un dato relevante y el ancho fijo importa para la alineación en columna.
 
 ### 7.3 Fila de sesión y formulario de edición
 

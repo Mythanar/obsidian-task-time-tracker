@@ -78,3 +78,32 @@ export function formatDuration(ms: number): string {
 	const seconds = totalSeconds % 60;
 	return [hours, minutes, seconds].map((n) => String(n).padStart(2, "0")).join(":");
 }
+
+// Formato compacto para totales AGREGADOS (varias sesiones sumadas: la
+// cabecera de una tarjeta de tarea, o el resumen de la confirmacion de
+// borrado de tarea completa) — nunca para una sesion individual ni para
+// el formulario de edicion, que se quedan en formatDuration() (HH:MM:SS,
+// ancho fijo, segundos relevantes a esa escala). Criterio Toggl: se
+// acumula siempre en horas, sin limite superior y sin la unidad "dias"
+// (127h 49m es un valor esperado, no un error). Sin ceros a la
+// izquierda y sin unidades en cero salvo la mas pequeña que se muestre.
+// Sin segundos salvo que el total sea menor a un minuto (caso raro con
+// tareas recien creadas): mostrarlos siempre habria hecho que el ancho
+// del total cambiara cada segundo mientras hay tracking activo sumando
+// en vivo, y a la escala de un total agregado no aportan precision
+// util. "h"/"m"/"s" no pasan por t() — mismo criterio ya aplicado a
+// HH:MM:SS, "→" y "+1": formato/simbolo universal, no contenido a
+// traducir (ver docs/glosario-traduccion-i18n.md, seccion 7.2).
+export function formatDurationCompact(ms: number): string {
+	const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+
+	if (hours > 0) {
+		return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+	}
+	if (minutes > 0) {
+		return `${minutes}m`;
+	}
+	return `${totalSeconds}s`;
+}

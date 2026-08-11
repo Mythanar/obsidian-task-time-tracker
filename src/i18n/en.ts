@@ -86,6 +86,8 @@ export const en = {
 	"log.deleteBlockedActive": "Can't delete: this task has an active session. Stop tracking first.",
 	"log.deleteTaskAriaLabel": "Delete task",
 	"log.stopTrackingAriaLabel": "Stop tracking",
+	"log.openNoteAriaLabel": "Open task note",
+	"log.deleteSessionAriaLabel": "Delete session",
 	"log.viewDay": "Day",
 	"log.viewWeek": "Week",
 	"log.today": "Today",

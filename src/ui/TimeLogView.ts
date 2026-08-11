@@ -10,7 +10,7 @@
 // toda la fila (sin icono aparte).
 
 import { ItemView, MarkdownView, Notice, TFile, WorkspaceLeaf, setIcon } from "obsidian";
-import { formatDuration } from "../core/TrackingEngine";
+import { formatDuration, formatDurationCompact } from "../core/TrackingEngine";
 import { parseCheckboxLine, ResolvedTask, TaskIdentifier } from "../core/TaskIdentifier";
 import { t } from "../i18n";
 import { DeleteTaskResult, EntryUpdateResult, TimeEntry } from "../types";
@@ -133,12 +133,21 @@ function combineDateAndTime(dateAtMidnightMs: number, time: ParsedTime): number 
 	return new Date(d.getFullYear(), d.getMonth(), d.getDate(), time.hours, time.minutes, time.seconds, 0).getTime();
 }
 
-// Para sesiones ya guardadas (no en edicion): compara el dia calendario
-// local de inicio y fin para decidir si mostrar el indicador "+1".
-function crossesMidnightRange(startMs: number, endMs: number): boolean {
+// Numero de dias naturales de diferencia entre la fecha (parte de
+// fecha, sin hora) de startMs y la de endMs — para el badge "+N" de la
+// fila de sesion estatica y de la confirmacion de borrado (unico sitio
+// que sigue necesitandolo: el formulario de edicion tiene fecha de fin
+// explicita y ya no infiere nada, ver resolveDraftTimestamps()). Ambas
+// fechas se normalizan con Date.UTC(y, m, d) — no con resta directa de
+// timestamps ni con dias * 86400000 en hora local — para que el
+// resultado sea siempre un entero exacto incluso si el rango cruza un
+// cambio de horario de verano/invierno entre esas dos fechas.
+function getDaySpan(startMs: number, endMs: number): number {
 	const s = new Date(startMs);
 	const e = new Date(endMs);
-	return s.getFullYear() !== e.getFullYear() || s.getMonth() !== e.getMonth() || s.getDate() !== e.getDate();
+	const startUtc = Date.UTC(s.getFullYear(), s.getMonth(), s.getDate());
+	const endUtc = Date.UTC(e.getFullYear(), e.getMonth(), e.getDate());
+	return Math.round((endUtc - startUtc) / 86400000);
 }
 
 // Dos rangos [start, end) se solapan si cada uno empieza antes de que
@@ -149,15 +158,17 @@ function rangesOverlap(startA: number, endA: number, startB: number, endB: numbe
 	return startA < endB && startB < endA;
 }
 
-type DraftResolution =
-	| { ok: true; start: number; end: number; crossesMidnight: boolean }
-	| { ok: false; error: string };
+type DraftResolution = { ok: true; start: number; end: number } | { ok: false; error: string };
 
 // Resuelve el rango final a partir de los cuatro campos del borrador,
 // tal cual los dejo el usuario (segundos incluidos, sin forzar nada).
 // Fecha de fin y fecha de inicio son independientes: quien decide si la
 // sesion cruza medianoche (o varios dias) es la propia fecha de fin
-// tecleada, no una inferencia por comparacion de horas.
+// tecleada, no una inferencia por comparacion de horas. (El campo
+// "crossesMidnight" que llevaba este resultado — resto del mecanismo de
+// inferencia anterior a que la fecha de fin fuera explicita — no lo leia
+// nadie: el formulario de edicion ya no muestra el badge "+N", ver
+// docs/DECISIONES.md.)
 function resolveDraftTimestamps(draft: EditDraft): DraftResolution {
 	const startDateMs = parseDateInput(draft.startDate);
 	const endDateMs = parseDateInput(draft.endDate);
@@ -171,7 +182,6 @@ function resolveDraftTimestamps(draft: EditDraft): DraftResolution {
 		ok: true,
 		start: combineDateAndTime(startDateMs, start),
 		end: combineDateAndTime(endDateMs, end),
-		crossesMidnight: endDateMs !== startDateMs,
 	};
 }
 
@@ -209,11 +219,14 @@ export class TimeLogView extends ItemView {
 	// no hay memoria de la ultima fecha/modo vistos en una apertura anterior.
 	private viewMode: LogViewMode = "day";
 	private anchorDate: number = startOfDay(Date.now());
-	// Contador en vivo de la tarjeta activa (si esta en el rango de fecha
-	// visible tras el ultimo render()): se recalcula cada segundo via el
-	// bus, sin reconstruir el panel entero. null si la tarea con tracking
-	// activo no aparece en ninguna tarjeta actualmente renderizada.
-	private activeCardTick: { el: HTMLElement; completedMs: number; start: number } | null = null;
+	// Elementos con contador en vivo de la tarea activa (si esta en el
+	// rango de fecha visible tras el ultimo render()): se recalculan cada
+	// segundo via el bus, sin reconstruir el panel entero. Puede haber mas
+	// de uno a la vez — el boton de stop de la cabecera y, si la tarjeta
+	// esta expandida, la fila de su sesion en curso dentro del detalle.
+	// Vacio si la tarea con tracking activo no aparece en ningun elemento
+	// actualmente renderizado.
+	private activeCardTicks: Array<{ el: HTMLElement; completedMs: number; start: number }> = [];
 	private busUnsubscribe: (() => void) | null = null;
 	// render() es async (resolveTaskIds lee el vault) y puede dispararse
 	// mas de una vez para la misma accion del usuario (p.ej. al guardar
@@ -263,9 +276,9 @@ export class TimeLogView extends ItemView {
 	}
 
 	private tickActiveCard(): void {
-		if (!this.activeCardTick) return;
-		const { el, completedMs, start } = this.activeCardTick;
-		el.setText(formatDuration(completedMs + (Date.now() - start)));
+		for (const { el, completedMs, start } of this.activeCardTicks) {
+			el.setText(formatDuration(completedMs + (Date.now() - start)));
+		}
 	}
 
 	private async resolveTaskIds(entries: TimeEntry[]): Promise<Map<string, ResolvedTask | null>> {
@@ -351,20 +364,45 @@ export class TimeLogView extends ItemView {
 
 		const card = list.createDiv({ cls: "task-time-tracker-log-row" });
 		card.toggleClass("is-tracking-active", activeEntry !== null);
-		const header = card.createDiv({ cls: "task-time-tracker-log-card-header" });
+		// Mobile — sin hover, el trash de tarea se revela mientras la
+		// tarjeta esta expandida en vez de con :hover/:focus-within (ver
+		// styles.css, @media (hover: none)).
+		card.toggleClass("is-expanded", expanded);
 
-		// Linea 1: solo el enlace a la nota de origen (o el texto si la tarea
-		// no se resuelve). Ninguna accion de expandir/colapsar vive aqui, asi
-		// que el chevron se movio a la linea 2 — ver comentario ahi.
+		// Rediseno de interaccion: toda la cabecera (titulo + meta) abre/
+		// cierra las sesiones; el icono de nota y el trash de tarea son las
+		// unicas excepciones (stopPropagation en su click, mas abajo). El
+		// titulo deja de ser un link — abrir la nota pasa a un icono propio
+		// delante del texto.
+		const header = card.createDiv({ cls: "task-time-tracker-log-card-header" });
+		header.addEventListener("click", () => {
+			if (expanded) this.expandedTaskIds.delete(expandKey);
+			else this.expandedTaskIds.add(expandKey);
+			void this.render();
+		});
+
+		// Columna de icono de ancho fijo (task-time-tracker-log-card-icon-col,
+		// ver styles.css), repetida en las dos lineas de la cabecera —
+		// nota en la linea 1, chevron en la linea 2 — para que el titulo y
+		// "N sessions..." arranquen siempre en el mismo margen izquierdo,
+		// tenga o no icono de nota esta tarea (isMissing). Se reserva
+		// aunque no haya boton que renderizar dentro.
 		const titleRow = header.createDiv({ cls: "task-time-tracker-log-card-title-row" });
+		const noteCol = titleRow.createDiv({ cls: "task-time-tracker-log-card-icon-col" });
+		if (!isMissing) {
+			const noteBtn = noteCol.createEl("button", {
+				cls: "task-time-tracker-log-card-note task-time-tracker-icon-btn clickable-icon",
+			});
+			setIcon(noteBtn, "file-text");
+			noteBtn.setAttribute("aria-label", t("log.openNoteAriaLabel"));
+			noteBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				void this.openTaskNote(taskId, taskEntries);
+			});
+		}
 		const title = titleRow.createDiv({ text: label, cls: "task-time-tracker-log-task" });
 		if (isMissing) {
 			title.addClass("task-time-tracker-log-task-missing");
-		} else {
-			title.addClass("task-time-tracker-log-task-link");
-			title.addEventListener("click", () => {
-				void this.openTaskNote(taskId, taskEntries);
-			});
 		}
 
 		if (isMissing) {
@@ -372,11 +410,9 @@ export class TimeLogView extends ItemView {
 			header.createDiv({ text: mostRecent.taskText, cls: "task-time-tracker-log-task-snapshot" });
 		}
 
-		// Linea 2: chevron + nº sesiones + total + tt-id. Unico disparador de
-		// expandir/colapsar la tarjeta (antes compartia el clic con toda la
-		// cabecera, incluido el titulo) — con el mismo estilo de hover que ya
-		// usan las filas de sesion individuales, para marcarla como clicable.
-		const meta = header.createDiv({ cls: "task-time-tracker-log-meta task-time-tracker-log-meta-toggle" });
+		// Linea 2: chevron (decorativo, aria-hidden — el trigger real es
+		// toda la cabecera, ver arriba) + nº sesiones + total + tt-id.
+		const meta = header.createDiv({ cls: "task-time-tracker-log-meta" });
 		// Chevron + sesiones + total + tt-id viven en su propio grupo
 		// alineado (task-time-tracker-log-summary): asi su alineacion
 		// vertical entre si no depende del alto del boton que los acompana
@@ -384,19 +420,24 @@ export class TimeLogView extends ItemView {
 		// padding del pill). align-items: center en .task-time-tracker-log-meta
 		// centra ambos grupos entre si sin que ninguno "estire" al otro.
 		const summary = meta.createDiv({ cls: "task-time-tracker-log-summary" });
-		const toggleIcon = summary.createSpan({ cls: "task-time-tracker-log-card-toggle" });
+		const toggleCol = summary.createDiv({ cls: "task-time-tracker-log-card-icon-col" });
+		const toggleIcon = toggleCol.createSpan({ cls: "task-time-tracker-log-card-toggle" });
+		toggleIcon.setAttribute("aria-hidden", "true");
 		setIcon(toggleIcon, expanded ? "chevron-down" : "chevron-right");
 		summary.createSpan({
 			text: `${taskEntries.length} ${taskEntries.length === 1 ? t("log.session.singular") : t("log.session.plural")}`,
 		});
-		summary.createSpan({ text: formatDuration(totalMs), cls: "task-time-tracker-totals-duration" });
+		// Total agregado (varias sesiones sumadas): formato compacto, no
+		// HH:MM:SS — ver formatDurationCompact(). Icono de cronometro +
+		// valor agrupados (task-time-tracker-totals-duration-group) para
+		// que el numero compita visualmente con el titulo en vez de
+		// perderse entre el resto de metadatos de la cabecera (tt-id,
+		// nº de sesiones) — mismo patron que el bloque "Calculated
+		// duration" del formulario de edicion.
+		const totalGroup = summary.createSpan({ cls: "task-time-tracker-totals-duration-group" });
+		setIcon(totalGroup.createSpan({ cls: "task-time-tracker-totals-duration-icon" }), "timer");
+		totalGroup.createSpan({ text: formatDurationCompact(totalMs), cls: "task-time-tracker-totals-duration" });
 		summary.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
-
-		meta.addEventListener("click", () => {
-			if (expanded) this.expandedTaskIds.delete(expandKey);
-			else this.expandedTaskIds.add(expandKey);
-			void this.render();
-		});
 
 		if (activeEntry) {
 			// Reemplaza la papelera (deshabilitada mientras la tarea esta
@@ -419,7 +460,7 @@ export class TimeLogView extends ItemView {
 				.filter((entry) => entry.id !== activeEntry.id)
 				.reduce((sum, entry) => sum + ((entry.end as number) - entry.start), 0);
 			stopDuration.setText(formatDuration(completedMs + (Date.now() - activeEntry.start)));
-			this.activeCardTick = { el: stopDuration, completedMs, start: activeEntry.start };
+			this.activeCardTicks.push({ el: stopDuration, completedMs, start: activeEntry.start });
 
 			stopBtn.addEventListener("click", (evt) => {
 				evt.stopPropagation();
@@ -432,7 +473,9 @@ export class TimeLogView extends ItemView {
 			// contiene. El chequeo de sesion activa usa this.getEntries() sin
 			// acotar por dia/semana — la tarea puede tener su sesion activa hoy
 			// aunque esta tarjeta en concreto muestre otro dia (vista semanal).
-			const deleteBtn = meta.createEl("button", { cls: "task-time-tracker-log-card-delete clickable-icon" });
+			const deleteBtn = meta.createEl("button", {
+				cls: "task-time-tracker-log-card-delete task-time-tracker-icon-btn clickable-icon",
+			});
 			setIcon(deleteBtn, "trash-2");
 			deleteBtn.setAttribute("aria-label", t("log.deleteTaskAriaLabel"));
 			deleteBtn.addEventListener("click", (evt) => {
@@ -478,7 +521,12 @@ export class TimeLogView extends ItemView {
 		meta.createSpan({
 			text: `${fullTaskEntries.length} ${fullTaskEntries.length === 1 ? t("log.session.singular") : t("log.session.plural")}`,
 		});
-		meta.createSpan({ text: formatDuration(totalMs), cls: "task-time-tracker-totals-duration" });
+		// Mismo total agregado que la cabecera de la tarjeta (misma clase
+		// CSS, mismo icono de cronometro), formato compacto — ver
+		// formatDurationCompact().
+		const totalGroup = meta.createSpan({ cls: "task-time-tracker-totals-duration-group" });
+		setIcon(totalGroup.createSpan({ cls: "task-time-tracker-totals-duration-icon" }), "timer");
+		totalGroup.createSpan({ text: formatDurationCompact(totalMs), cls: "task-time-tracker-totals-duration" });
 		meta.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
 
 		confirm.createEl("p", {
@@ -514,28 +562,77 @@ export class TimeLogView extends ItemView {
 		}
 	}
 
-	// Fecha + hora inicio + hora fin (con indicador "+1" si cruza
-	// medianoche) + duracion. Comun a la fila normal de una sesion y al
-	// aviso de confirmacion de borrado (para que los datos de la sesion
-	// sigan visibles mientras se confirma).
+	// Fecha + hora inicio + hora fin (con indicador "+N" si abarca mas de
+	// un dia natural) + duracion. Comun a la fila normal de una sesion y
+	// al aviso de confirmacion de borrado (para que los datos de la
+	// sesion sigan visibles mientras se confirma) — unico sitio que
+	// calcula el badge, ver getDaySpan().
 	private renderSessionInfo(container: Element, entry: TimeEntry): void {
 		const info = container.createDiv({ cls: "task-time-tracker-log-session-info" });
-		const startDate = new Date(entry.start);
-		info.createSpan({ text: startDate.toLocaleDateString() });
 
-		const rangeSpan = info.createSpan();
+		// Columna izquierda (fecha + rango horario): agrupada aparte de la
+		// duracion para que esta ultima quede siempre alineada a la
+		// derecha, con un min-width fijo en la fecha (ver styles.css) para
+		// que actue como columna consistente entre filas.
+		const left = info.createDiv({ cls: "task-time-tracker-log-session-left" });
+		const startDate = new Date(entry.start);
+		left.createSpan({ text: startDate.toLocaleDateString(), cls: "task-time-tracker-log-session-date" });
+
+		const rangeSpan = left.createSpan({ cls: "task-time-tracker-log-session-range" });
 		rangeSpan.createSpan({ text: startDate.toLocaleTimeString() });
 		rangeSpan.createSpan({ text: " → " });
 		if (entry.end !== null) {
 			rangeSpan.createSpan({ text: new Date(entry.end).toLocaleTimeString() });
-			if (crossesMidnightRange(entry.start, entry.end)) {
-				rangeSpan.createSpan({ text: " +1", cls: "task-time-tracker-log-nextday-badge" });
+			const daySpan = getDaySpan(entry.start, entry.end);
+			if (daySpan > 0) {
+				rangeSpan.createSpan({ text: ` +${daySpan}`, cls: "task-time-tracker-log-nextday-badge" });
 			}
 		} else {
-			rangeSpan.createSpan({ text: t("log.ongoing") });
+			rangeSpan.createSpan({ text: t("log.ongoing"), cls: "task-time-tracker-log-ongoing" });
 		}
 
-		info.createSpan({ text: entry.end !== null ? formatDuration(entry.end - entry.start) : "—" });
+		if (entry.end !== null) {
+			info.createSpan({
+				text: formatDuration(entry.end - entry.start),
+				cls: "task-time-tracker-log-session-duration",
+			});
+			return;
+		}
+
+		// Sesion en curso: mismo punto pulsante + contador en vivo que ya
+		// usan el badge junto al checkbox y el boton de stop de la tarjeta
+		// activa (misma clase, mismo bus), en vez de un guion suelto — asi
+		// un cambio futuro de diseno del indicador de "activo" se propaga
+		// a los tres sitios a la vez.
+		const live = info.createDiv({
+			cls: "task-time-tracker-log-session-duration task-time-tracker-log-session-live",
+		});
+		live.createSpan({ cls: "task-time-tracker-inline-dot" });
+		const counter = live.createSpan({ cls: "task-time-tracker-log-session-live-value" });
+		counter.setText(formatDuration(Date.now() - entry.start));
+		this.activeCardTicks.push({ el: counter, completedMs: 0, start: entry.start });
+	}
+
+	// Abre el formulario de edicion de una sesion (confirmingDelete: false,
+	// clic en la fila) o directamente su confirmacion de borrado
+	// (confirmingDelete: true, icono de papelera de la fila — mismo modal,
+	// sin construir uno nuevo: renderEditForm() ya rama a el si el draft
+	// nace con este flag en true).
+	private openEditDraft(entry: TimeEntry, confirmingDelete: boolean): void {
+		this.editDraft = {
+			entryId: entry.id,
+			startDate: formatDateInput(entry.start),
+			startDateEvaluated: false,
+			startTime: formatHMS(entry.start),
+			startTimeEvaluated: false,
+			endDate: formatDateInput(entry.end as number),
+			endDateEvaluated: false,
+			endTime: formatHMS(entry.end as number),
+			endTimeEvaluated: false,
+			error: null,
+			confirmingDelete,
+		};
+		void this.render();
 	}
 
 	private renderSessionRow(container: Element, entry: TimeEntry): void {
@@ -553,21 +650,26 @@ export class TimeLogView extends ItemView {
 		// no hay un icono de editar aparte.
 		if (entry.end !== null) {
 			row.addClass("task-time-tracker-log-session-row-editable");
-			row.addEventListener("click", () => {
-				this.editDraft = {
-					entryId: entry.id,
-					startDate: formatDateInput(entry.start),
-					startDateEvaluated: false,
-					startTime: formatHMS(entry.start),
-					startTimeEvaluated: false,
-					endDate: formatDateInput(entry.end as number),
-					endDateEvaluated: false,
-					endTime: formatHMS(entry.end as number),
-					endTimeEvaluated: false,
-					error: null,
-					confirmingDelete: false,
-				};
-				void this.render();
+			row.addEventListener("click", () => this.openEditDraft(entry, false));
+
+			// Icono de borrado directo, alineado a la derecha, visible en
+			// hover/focus-within de la fila (desktop) — oculto en touch, ver
+			// @media (hover: none) en styles.css: en mobile el borrado sigue
+			// viviendo dentro del formulario de edicion, como hoy. Abre el
+			// mismo modal de confirmacion que el boton "Eliminar" del
+			// formulario (openEditDraft con confirmingDelete: true), no uno
+			// nuevo.
+			const deleteBtn = row.createEl("button", {
+				cls: "task-time-tracker-log-session-delete task-time-tracker-icon-btn clickable-icon",
+			});
+			setIcon(deleteBtn, "trash-2");
+			// title nativo ademas del aria-label (misma clave, sin
+			// duplicar): refuerzo visual en desktop sin coste añadido.
+			deleteBtn.setAttribute("aria-label", t("log.deleteSessionAriaLabel"));
+			deleteBtn.setAttribute("title", t("log.deleteSessionAriaLabel"));
+			deleteBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				this.openEditDraft(entry, true);
 			});
 		}
 	}
@@ -647,9 +749,19 @@ export class TimeLogView extends ItemView {
 		endInput.toggleClass("is-invalid", draft.endTimeEvaluated && parseTimeInput(draft.endTime) === null);
 
 		// Bloque resaltado de solo lectura: duracion calculada en vivo a
-		// partir de los cuatro campos.
+		// partir de los cuatro campos. Icono + label a la izquierda, valor
+		// a la derecha con mayor peso tipografico — a proposito sin la
+		// affordance de input de los 4 campos de arriba (ver
+		// .task-time-tracker-log-edit-input en styles.css): la ausencia de
+		// borde/fondo tipo-input es lo que comunica "esto no se edita
+		// directamente".
 		const durationBlock = form.createDiv({ cls: "task-time-tracker-log-edit-duration" });
-		durationBlock.createSpan({ text: t("log.editDurationLabel"), cls: "task-time-tracker-log-edit-duration-label" });
+		const durationLabelGroup = durationBlock.createDiv({ cls: "task-time-tracker-log-edit-duration-label-group" });
+		setIcon(durationLabelGroup.createSpan(), "timer");
+		durationLabelGroup.createSpan({
+			text: t("log.editDurationLabel"),
+			cls: "task-time-tracker-log-edit-duration-label",
+		});
 		const durationPreview = durationBlock.createSpan({ cls: "task-time-tracker-log-edit-duration-value" });
 
 		// Bloque de aviso unico y fijo, justo debajo del bloque de
@@ -998,7 +1110,7 @@ export class TimeLogView extends ItemView {
 		// Se recalcula desde cero en cada render(): si la tarjeta activa no
 		// se vuelve a renderizar (p. ej. se navega a otra fecha), el tick
 		// deja de tener efecto en vez de apuntar a un nodo ya desmontado.
-		this.activeCardTick = null;
+		this.activeCardTicks = [];
 
 		container.empty();
 		container.createEl("h4", { text: t("log.title") });

@@ -51,8 +51,29 @@
 	font-family: var(--font-monospace);
 }
 
+/* Icono de cronometro + valor agrupados (mismo patron que el bloque
+   "Calculated duration" del formulario de edicion): el icono en acento
+   es solo grafico, la legibilidad del numero no depende de el — el
+   valor va en --text-normal, peso 500, con tamaño por encima del resto
+   de metadatos de la cabecera (tt-id a 0.8em, "N sessions" a 0.85em via
+   .task-time-tracker-log-meta) para que compita visualmente con el
+   titulo en vez de perderse entre ellos. */
+.task-time-tracker-totals-duration-group {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3em;
+}
+
+.task-time-tracker-totals-duration-icon svg {
+	width: 0.9em;
+	height: 0.9em;
+	color: var(--interactive-accent);
+}
+
 .task-time-tracker-totals-duration {
-	font-weight: 600;
+	font-size: 1.05em;
+	font-weight: 500;
+	color: var(--text-normal);
 }
 
 .task-time-tracker-recovery-buttons {
@@ -66,33 +87,57 @@
 	color: var(--text-error);
 }
 
-/* Fase 5 UX — panel de Historial: tarjetas de tarea expandibles.
-   Cabecera en dos lineas, cada una con su propia accion (sin
-   solapamiento de clics): titulo/link a la nota arriba, meta
-   (sesiones + total + tt-id, con el chevron) abajo — esta ultima es la
-   unica que expande/colapsa la tarjeta, ver .task-time-tracker-log-meta-toggle. */
+/* Rediseno de interaccion — toda la cabecera (titulo + meta) expande o
+   colapsa las sesiones; unica excepcion, el icono de nota y el trash de
+   tarea (stopPropagation en su click, ver TimeLogView.ts). Bleed hacia
+   arriba/izquierda/derecha (margen negativo cancelando el padding, mismo
+   patron que .task-time-tracker-log-edit-form) para que el fondo de
+   hover llegue hasta el borde real de la tarjeta; no hacia abajo, para
+   no comerse el espacio antes del detalle expandido. */
 .task-time-tracker-log-card-header {
 	display: flex;
 	flex-direction: column;
 	gap: 0.25em;
+	cursor: pointer;
+	margin: -0.5em -0.5em 0;
+	padding: 0.5em 0.5em 0;
+	border-radius: 4px 4px 0 0;
+}
+
+.task-time-tracker-log-card-header:hover,
+.task-time-tracker-log-card-header:focus-within {
+	background-color: var(--background-modifier-hover);
 }
 
 .task-time-tracker-log-card-title-row {
 	display: flex;
-	align-items: baseline;
-	gap: 0.5em;
+	align-items: center;
+	gap: 13px;
+}
+
+/* Columna de icono de ancho fijo, repetida en las dos lineas de la
+   cabecera (nota junto al titulo, chevron junto a "N sessions..."): el
+   mismo ancho en ambas hace que el texto de despues arranque siempre en
+   el mismo margen izquierdo, exista o no el icono de nota en esta
+   tarjeta (tarea no encontrada, ver TimeLogView.ts#renderTaskCard).
+   Centrado por flex, no por line-height ni margenes sueltos. */
+.task-time-tracker-log-card-icon-col {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 16px;
+	flex-shrink: 0;
 }
 
 .task-time-tracker-log-card-toggle {
 	display: flex;
 	align-items: center;
 	color: var(--text-muted);
-	flex-shrink: 0;
 }
 
 .task-time-tracker-log-card-toggle svg {
-	width: 0.9em;
-	height: 0.9em;
+	width: 12px;
+	height: 12px;
 }
 
 .task-time-tracker-log-card-title-row .task-time-tracker-log-task {
@@ -100,41 +145,66 @@
 	margin-bottom: 0;
 }
 
-.task-time-tracker-log-task-link {
+/* Area de toque minima 44x44px (punto 7 del rediseno de interaccion) en
+   los botones-icono solo-icono de la cabecera de tarjeta y de la fila de
+   sesion (nota, trash de tarea, trash de sesion), sin inflar el icono
+   visual ni la altura real de la fila que los contiene: el hit-area
+   extra es un pseudo-elemento invisible posicionado fuera del propio
+   boton (::after con inset negativo), no padding/tamaño real. */
+.task-time-tracker-icon-btn {
+	position: relative;
+}
+
+.task-time-tracker-icon-btn::after {
+	content: "";
+	position: absolute;
+	inset: -10px;
+}
+
+/* Icono de nota delante del titulo: mismo color atenuado que el resto de
+   metadatos de la cabecera, no el color de acento que llevaba el titulo
+   cuando era un link (ver DECISIONES.md — el titulo deja de ser
+   clicable). stopPropagation en su click (TimeLogView.ts) evita que
+   tambien dispare el toggle de la cabecera. */
+.task-time-tracker-log-card-note {
+	color: var(--text-muted);
+	flex-shrink: 0;
 	cursor: pointer;
 }
 
-.task-time-tracker-log-task-link:hover {
+.task-time-tracker-log-card-note:hover {
 	color: var(--text-accent);
-	text-decoration: underline;
-}
-
-/* Linea de sesiones/total/tt-id: unico disparador de expandir/colapsar
-   la tarjeta. Mismo estilo de hover que las filas de sesion individuales
-   (.task-time-tracker-log-session-row-editable), para que se lea igual
-   de clicable. */
-.task-time-tracker-log-meta-toggle {
-	cursor: pointer;
-	padding: 0.2em 0.35em;
-	margin: 0 -0.35em;
-	border-radius: 4px;
-}
-
-.task-time-tracker-log-meta-toggle:hover {
-	background-color: var(--background-modifier-hover);
 }
 
 /* Backlog Fase 5 — boton de borrar la tarea completa, al final de la
    linea de meta. Empujado al extremo derecho de la fila con
    margin-left: auto, sin importar el ancho de sesiones/total/tt-id que
-   lo precede. */
+   lo precede. Oculto salvo hover/foco (desktop) o tarjeta expandida
+   (mobile, sin hover — ver @media (hover: none) mas abajo). */
 .task-time-tracker-log-card-delete {
 	margin-left: auto;
 	color: var(--text-muted);
+	opacity: 0;
+	cursor: pointer;
+}
+
+.task-time-tracker-log-row:hover .task-time-tracker-log-card-delete,
+.task-time-tracker-log-row:focus-within .task-time-tracker-log-card-delete {
+	opacity: 1;
 }
 
 .task-time-tracker-log-card-delete:hover {
 	color: var(--text-error);
+}
+
+@media (hover: none) {
+	.task-time-tracker-log-card-delete {
+		opacity: 0;
+	}
+
+	.task-time-tracker-log-row.is-expanded .task-time-tracker-log-card-delete {
+		opacity: 1;
+	}
 }
 
 /* Tarjeta cuya tarea tiene el tracking activo en este momento: borde de
@@ -201,6 +271,17 @@
 	border-top: 1px solid var(--background-modifier-border);
 }
 
+/* Separador entre filas de sesion (linea fina, no fondos alternos tipo
+   cebra: en filas cortas el zebra anade ruido en vez de claridad). Se
+   aplica por posicion, no por clase: cubre tanto una fila estatica como
+   el formulario de edicion o la confirmacion de borrado cuando
+   sustituyen a una fila dentro de la misma lista. */
+.task-time-tracker-log-card-detail > *:not(:last-child) {
+	border-bottom: 1px solid var(--background-modifier-border);
+	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
+	padding-bottom: 0.35em;
+}
+
 .task-time-tracker-log-session-row {
 	display: flex;
 	align-items: center;
@@ -222,11 +303,105 @@
 	background-color: var(--background-modifier-hover);
 }
 
+/* Icono de borrado directo de la fila (punto 6 del rediseno de
+   interaccion): oculto salvo hover/foco de la fila en desktop; oculto
+   del todo en touch (@media (hover: none) mas abajo), donde el borrado
+   sigue viviendo dentro del formulario de edicion, como ya hacia antes
+   de este cambio. stopPropagation en su click evita que tambien abra el
+   formulario de edicion completo (TimeLogView.ts). */
+.task-time-tracker-log-session-delete {
+	color: var(--text-muted);
+	opacity: 0;
+	flex-shrink: 0;
+	cursor: pointer;
+}
+
+.task-time-tracker-log-session-row:hover .task-time-tracker-log-session-delete,
+.task-time-tracker-log-session-row:focus-within .task-time-tracker-log-session-delete {
+	opacity: 1;
+}
+
+.task-time-tracker-log-session-delete:hover {
+	color: var(--text-error);
+}
+
+@media (hover: none) {
+	.task-time-tracker-log-session-delete {
+		display: none;
+	}
+}
+
+/* flex: 1 1 auto (no width: 100%) es el fix real aqui: este div ya no es
+   siempre el unico hijo de .task-time-tracker-log-session-row (ahora
+   puede convivir con el icono de borrado a la derecha, ver arriba), asi
+   que necesita crecer para llenar el espacio disponible en vez de fijar
+   un ancho que no deja hueco para ese hermano. Sin esto, su propio
+   justify-content: space-between no tenia espacio que repartir y la
+   fecha/rango y la duracion quedaban pegados en vez de a los extremos.
+   Se estira automaticamente tanto en el sidebar estrecho como en el
+   panel central, sin media queries. */
 .task-time-tracker-log-session-info {
 	display: flex;
+	flex: 1 1 auto;
+	min-width: 0;
+	align-items: baseline;
+	justify-content: space-between;
 	gap: 1em;
 	font-size: 0.85em;
+}
+
+/* Columna izquierda: fecha + rango horario, agrupados para dejar la
+   duracion (columna derecha) siempre alineada al extremo opuesto. */
+.task-time-tracker-log-session-left {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 1em;
+	min-width: 0;
+}
+
+/* min-width fijo: actua como columna alineada entre filas en vez de
+   texto corrido de ancho variable segun la fecha de cada sesion. */
+.task-time-tracker-log-session-date {
+	min-width: 6em;
 	color: var(--text-muted);
+	color: color-mix(in srgb, var(--text-normal) 82%, transparent);
+}
+
+.task-time-tracker-log-session-range {
+	color: var(--text-normal);
+}
+
+/* Texto "ongoing" del rango horario: color de enfasis en vez de tono
+   neutro, para que la fila se lea como distinta de una sesion cerrada
+   incluso antes de llegar al indicador de la columna derecha. */
+.task-time-tracker-log-ongoing {
+	color: var(--interactive-accent);
+	font-weight: 600;
+}
+
+/* Columna derecha: duracion, con mas peso que el resto de la fila pero
+   sin ser tan marcada como un titulo — texto normal en vez de muted. */
+.task-time-tracker-log-session-duration {
+	font-weight: 500;
+	color: var(--text-normal);
+	text-align: right;
+	white-space: nowrap;
+	flex-shrink: 0;
+}
+
+/* Sesion en curso: mismo punto pulsante + contador que el badge junto al
+   checkbox y el boton de stop de la tarjeta activa (ver
+   .task-time-tracker-inline-dot), no un indicador nuevo. */
+.task-time-tracker-log-session-duration.task-time-tracker-log-session-live {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4em;
+	color: var(--interactive-accent);
+}
+
+.task-time-tracker-log-session-live-value {
+	font-family: var(--font-monospace);
 }
 
 /* Indicador "+1" de sesion que cruza a la medianoche del dia siguiente. */
@@ -243,13 +418,18 @@
    en confirmacion de borrado: sin esto, al mover el raton fuera de la
    fila (p.ej. para hacer clic en un boton) se pierde la referencia
    visual de sobre que sesion se esta actuando. Mismo color que el hover
-   de la fila normal, pero fijo mientras dure el estado. */
+   de la fila normal, pero fijo mientras dure el estado.
+   Padding real de 20px (ya no el truco de margen negativo cancelando un
+   padding pequeño que usan las filas estaticas): los 4 campos + bloque
+   de duracion + botones necesitan aire propio respecto al borde de la
+   tarjeta, no solo quedar a ras como una fila mas de la lista. El fondo
+   sigue pintando el border-box completo (Obsidian/CSS ya lo hace por
+   defecto), asi que este padding no dejaba un hueco sin colorear. */
 .task-time-tracker-log-edit-form {
 	display: flex;
 	flex-direction: column;
 	gap: 0.4em;
-	padding: 0.2em 0.35em;
-	margin: 0 -0.35em;
+	padding: 20px;
 	border-radius: 4px;
 	background-color: var(--background-modifier-hover);
 }
@@ -282,12 +462,20 @@
 	flex: 1 1 100px;
 }
 
+/* Contraste: --text-muted queda reservado para metadatos realmente
+   secundarios (tt-id, "N sesiones" — ver .task-time-tracker-log-taskid /
+   .task-time-tracker-log-meta). Los labels de campo suben a --text-normal
+   atenuado via color-mix() (declaracion plana antes, como respaldo para
+   motores sin soporte de color-mix, relevante en mobile) en vez de
+   --text-muted a secas. El icono no lleva color propio: hereda de aqui
+   via currentColor (ver regla de abajo, sin "color:"). */
 .task-time-tracker-log-edit-field-label {
 	display: flex;
 	align-items: center;
 	gap: 0.3em;
 	font-size: 0.75em;
 	color: var(--text-muted);
+	color: color-mix(in srgb, var(--text-normal) 82%, transparent);
 }
 
 .task-time-tracker-log-edit-field-label svg {
@@ -295,26 +483,86 @@
 	height: 0.85em;
 }
 
+/* Affordance de input: antes texto plano indistinguible del resto del
+   formulario. Fondo con el token correcto de Obsidian para campos de
+   formulario (no hereda --background-primary por error: se comprobo
+   antes de tocar nada mas). En el tema por defecto ese token por si
+   solo no da contraste suficiente contra el fondo circundante,
+   sobre todo con el panel del Historial en pestaña central (incluida
+   dentro de --background-modifier-hover del formulario, que a su vez
+   esta sobre --background-primary): --background-modifier-border-hover
+   (mas marcado que el --background-modifier-border normal) refuerza el
+   borde para que el contraste no dependa de un unico valor que puede
+   fallar segun el tema activo. */
 .task-time-tracker-log-edit-input {
 	width: 100%;
 	font-size: 0.85em;
 	font-family: var(--font-monospace);
+	padding: 7px 10px;
+	background-color: var(--background-modifier-form-field);
+	border: 1px solid var(--background-modifier-border-hover);
+	border-radius: var(--radius-s);
 }
 
+.task-time-tracker-log-edit-input:focus {
+	outline: none;
+	border-color: var(--interactive-accent);
+}
+
+/* Declarada despues de :focus a proposito: mismo nivel de especificidad,
+   asi que un campo invalido mantiene el borde de error aunque tenga el
+   foco encima. */
 .task-time-tracker-log-edit-input.is-invalid {
 	border-color: var(--text-error);
 }
 
-/* Bloque resaltado de solo lectura con la duracion calculada en vivo a
-   partir de los cuatro campos. */
+/* Bloque resaltado con la duracion calculada en vivo a partir de los
+   cuatro campos, icono + label a la izquierda, valor a la derecha con
+   mas peso tipografico que el resto del formulario. Sin fondo/borde
+   tipo-input a proposito (ver comentario en
+   TimeLogView.ts#renderEditForm): la ausencia de esa affordance es lo
+   que comunica que este bloque no se edita directamente.
+   Contraste: fondo mezclado con --background-primary (no con
+   transparent) para que el tinte no dependa del fondo real detras del
+   panel; label y valor pasan a --text-muted/--text-normal en vez de
+   --interactive-accent, que en el tema por defecto de Obsidian (claro y
+   oscuro) no da contraste suficiente como color de texto sobre este
+   fondo. El accent conserva identidad visual solo via el borde
+   izquierdo y el icono — los unicos elementos que no son texto de
+   lectura critica.
+   Padding simetrico (10px a cada lado): el valor no debe tocar el
+   borde derecho del bloque, ni el icono/label quedar mas pegados al
+   borde de acento izquierdo que el valor al derecho — antes solo
+   llevaba padding a la izquierda (para alinear el valor con la
+   papelera de la cabecera y la duracion de una fila de sesion; ver
+   docs/DECISIONES.md); con el formulario ahora en padding real de
+   20px (.task-time-tracker-log-edit-form) esa alineacion exacta ya no
+   se sostiene sin desbordar el borde de la tarjeta, asi que se prioriza
+   que la caja quede visualmente compensada en vez de perfectamente
+   alineada con esos otros elementos. */
 .task-time-tracker-log-edit-duration {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 0.5em;
-	padding: 0.4em 0.6em;
-	border-radius: 4px;
-	background-color: var(--background-modifier-hover);
+	padding: 10px;
+	border-left: 3px solid var(--interactive-accent);
+	border-radius: 0 var(--radius-s) var(--radius-s) 0;
+	background-color: var(--background-secondary);
+	background-color: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary));
+}
+
+.task-time-tracker-log-edit-duration-label-group {
+	display: flex;
+	align-items: center;
+	gap: 0.4em;
+}
+
+/* Unico elemento que conserva el color accent: el icono. */
+.task-time-tracker-log-edit-duration-label-group svg {
+	width: 0.9em;
+	height: 0.9em;
+	color: var(--interactive-accent);
 }
 
 .task-time-tracker-log-edit-duration-label {
@@ -323,8 +571,10 @@
 }
 
 .task-time-tracker-log-edit-duration-value {
-	font-weight: 600;
+	font-weight: 700;
+	font-size: 1.05em;
 	font-family: var(--font-monospace);
+	color: var(--text-normal);
 }
 
 /* Icono de "Eliminar sesion", en la misma fila que Guardar/Cancelar,
@@ -333,6 +583,7 @@
 .task-time-tracker-log-edit-delete {
 	margin-left: auto;
 	color: var(--text-muted);
+	cursor: pointer;
 }
 
 .task-time-tracker-log-edit-delete:hover {
@@ -382,6 +633,17 @@
 	gap: 0.4em;
 }
 
+/* Guardar/Cancelar del formulario de edicion y Si-eliminar/Cancelar de
+   ambas confirmaciones de borrado (sesion y tarea completa) comparten
+   este mismo contenedor — ninguno lleva una clase propia del plugin
+   (solo .mod-cta/.mod-warning de Obsidian, o ninguna), asi que el
+   cursor de mano se fija aqui una sola vez para los cuatro en vez de
+   depender de que Obsidian ya lo resuelva por su cuenta dentro de una
+   vista de plugin (no es un modal ni un Setting, donde si lo hace). */
+.task-time-tracker-log-edit-actions button {
+	cursor: pointer;
+}
+
 /* Bloque 2 — navegador de fecha del Historial: toggle dia/semana +
    flechas prev/siguiente + boton "Hoy". */
 .task-time-tracker-log-datenav {
@@ -391,6 +653,13 @@
 	gap: 0.5em;
 	margin-bottom: 0.75em;
 	flex-wrap: wrap;
+}
+
+/* Dia/Semana, flechas prev/siguiente y "Hoy": mismo motivo que
+   .task-time-tracker-log-edit-actions button de arriba — sin esto se
+   quedan con el cursor por defecto del navegador en esta vista. */
+.task-time-tracker-log-datenav button {
+	cursor: pointer;
 }
 
 .task-time-tracker-log-datenav-mode {
@@ -522,9 +791,11 @@
 }
 
 /* Punto pulsante junto al icono, solo mientras hay tracking activo:
-   compartido por el badge inline (.is-active) y por el boton de stop
-   del Historial (.task-time-tracker-log-card-stop), que siempre esta
-   "en ejecucion" por definicion. */
+   compartido por el badge inline (.is-active), por el boton de stop del
+   Historial (.task-time-tracker-log-card-stop, siempre "en ejecucion"
+   por definicion) y por la fila de sesion en curso dentro del detalle
+   expandido de una tarjeta (.task-time-tracker-log-session-live) —
+   mismo tamaño/color/animacion en los tres sitios. */
 .task-time-tracker-inline-dot {
 	display: none;
 	width: 6px;
@@ -535,7 +806,8 @@
 }
 
 .task-time-tracker-inline-control.is-active .task-time-tracker-inline-dot,
-.task-time-tracker-log-card-stop .task-time-tracker-inline-dot {
+.task-time-tracker-log-card-stop .task-time-tracker-inline-dot,
+.task-time-tracker-log-session-live .task-time-tracker-inline-dot {
 	display: inline-block;
 	animation: task-time-tracker-pulse 1.8s ease-in-out infinite;
 }
