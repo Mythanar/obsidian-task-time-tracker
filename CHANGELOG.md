@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 **Task linking**
 - Each tracked task gets a short, unique identifier stored inline with the task text (`[tt-id:: ...]` format, compatible with Dataview queries if you use it).
 - The link between a task and its time history is preserved even if you edit the task text; if you delete it, the history isn't lost — it's shown as "Task not found".
+- If you use Dataview, a new "Task id format" setting lets you tone down or fully hide how the `tt-id` field looks in its rendered view (Reading mode / Live Preview) — purely visual, your Dataview queries on `tt-id` keep working exactly the same. Defaults to a toned-down look on a fresh install.
 
 **History**
 - A panel with one card per task: recorded sessions, a compact total, and a note icon that opens the source note directly. Tap or click anywhere on a card's header to expand or collapse its sessions. The active task's card shows a stop button with a live counter, matching the style of the inline badge.

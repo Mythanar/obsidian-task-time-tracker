@@ -900,3 +900,45 @@ una entrada aquí.
   estados: colapsada, el clic en esa zona ahora cae en el `header`
   (toggle); expandida, sigue abriendo la confirmación de borrado como
   siempre.
+
+## Fase 7 — ajuste "Formato del id de tarea"
+
+- **Nuevo ajuste en Settings, sección general: "Formato del id de
+  tarea"** (desplegable Normal/Reducido/Oculto), que controla cómo se
+  ve el inline field `tt-id::` cuando **Dataview** lo renderiza
+  (Reading mode / Live Preview sin el cursor en la línea). Puramente
+  visual — el texto fuente de la nota (`[tt-id:: valor]`) nunca cambia,
+  y sin Dataview instalado no tiene ningún efecto (Obsidian no genera
+  los atributos `data-dv-key` que el CSS necesita; limitación conocida,
+  no se cubre).
+- **Implementación: clase en `document.body`, no CSS inyectado en
+  caliente.** `applyTaskIdFormatClass()` (`main.ts`) pone/quita
+  `task-time-tracker-taskid-reduced`/`task-time-tracker-taskid-hidden`
+  en `document.body` según el valor elegido, y el CSS correspondiente
+  vive tal cual en `styles.css` (bundled con el plugin, sin generar
+  strings de CSS en tiempo de ejecución). **"Normal" no lleva clase ni
+  CSS propio del plugin en absoluto** — es literalmente el renderizado
+  por defecto de Dataview, sin ninguna intervención; los otros dos
+  estados sí acotan sus selectores siempre a `[data-dv-key="tt-id"]`,
+  para no afectar a ningún otro inline field que el usuario tenga en
+  sus notas.
+- **Valor por defecto en instalación nueva: "Reducido", no "Normal"**
+  (`DEFAULT_SETTINGS.taskIdFormat` en `types.ts`) — la etiqueta
+  completa "tt-id" que renderiza Dataview por defecto es ruido visual
+  desde el primer momento para la mayoría de usuarios. Una instalación
+  ya existente sin este campo guardado cae en el mismo valor por
+  defecto (no hay una migración distinta para "instalación nueva" vs.
+  "instalación previa sin el campo": no hay forma de distinguirlas, y
+  no se pidió una).
+- **Todos los textos nuevos (nombre del ajuste, las tres opciones,
+  descripción) van al glosario de i18n existente** (`en.ts`/`es.ts`,
+  claves tipadas), sin reabrir Fase 6 — un añadido puntual al mismo
+  patrón ya cerrado.
+- **Verificado con un harness estático** (estructura real de Dataview:
+  `inline-field-key`/`inline-field-value` con `data-dv-key`, más un
+  segundo inline field de control sin relación con `tt-id`) que
+  confirma los tres estados y que ni ese otro campo ni el badge
+  play/stop junto al checkbox cambian de tamaño o posición en ninguno
+  de los tres. **No se pudo probar en Obsidian real con Dataview
+  activo** (limitación conocida de este entorno, ver notas de fases
+  anteriores) — pendiente de confirmación del usuario en su vault.

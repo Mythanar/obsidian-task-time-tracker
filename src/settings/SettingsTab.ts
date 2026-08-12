@@ -8,12 +8,20 @@
 import { AbstractInputSuggest, App, PluginSettingTab, Setting, TFolder } from "obsidian";
 import type TaskTimeTrackerPlugin from "../main";
 import { t } from "../i18n";
-import { DEFAULT_SETTINGS, isValidEmail, LogViewLocation, TogglDateFormat, TogglTimeFormat } from "../types";
+import { DEFAULT_SETTINGS, isValidEmail, LogViewLocation, TaskIdFormat, TogglDateFormat, TogglTimeFormat } from "../types";
 
 function logViewLocationOptions(): Record<string, string> {
 	return {
 		sidebar: t("settings.logLocation.sidebar"),
 		tab: t("settings.logLocation.tab"),
+	};
+}
+
+function taskIdFormatOptions(): Record<string, string> {
+	return {
+		normal: t("settings.taskIdFormat.normal"),
+		reduced: t("settings.taskIdFormat.reduced"),
+		hidden: t("settings.taskIdFormat.hidden"),
 	};
 }
 
@@ -87,6 +95,26 @@ export class SettingsTab extends PluginSettingTab {
 				dropdown.setValue(this.plugin.pluginState.settings.logViewLocation);
 				dropdown.onChange(async (value) => {
 					this.plugin.pluginState.settings.logViewLocation = value as LogViewLocation;
+					await this.plugin.saveSettings();
+				});
+			});
+
+		// Fase 7 — como se ve el inline field tt-id:: cuando Dataview lo
+		// renderiza (Reading mode / Live Preview sin el cursor en la linea).
+		// Puramente visual (clase en document.body, ver
+		// applyTaskIdFormatClass() en main.ts); no tiene ningun efecto sin
+		// Dataview instalado (Obsidian no genera los atributos data-dv-key
+		// que el CSS necesita) y no afecta a otros inline fields del
+		// usuario ni a las queries de Dataview sobre tt-id.
+		new Setting(containerEl)
+			.setName(t("settings.taskIdFormat.name"))
+			.setDesc(t("settings.taskIdFormat.desc"))
+			.addDropdown((dropdown) => {
+				dropdown.addOptions(taskIdFormatOptions());
+				dropdown.setValue(this.plugin.pluginState.settings.taskIdFormat);
+				dropdown.onChange(async (value) => {
+					this.plugin.pluginState.settings.taskIdFormat = value as TaskIdFormat;
+					this.plugin.applyTaskIdFormatClass();
 					await this.plugin.saveSettings();
 				});
 			});

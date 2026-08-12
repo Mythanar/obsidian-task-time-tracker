@@ -906,3 +906,32 @@
 .task-time-tracker-inline-control.is-mobile {
 	opacity: 1;
 }
+
+/* Fase 7 — ajuste "Formato del id de tarea" (Settings): estas clases
+   las pone/quita applyTaskIdFormatClass() en document.body segun el
+   valor elegido ("normal" no lleva clase ni CSS propio, es el
+   renderizado por defecto de Dataview). Puramente visual sobre lo que
+   Dataview ya renderiza (Reading mode / Live Preview sin el cursor en
+   la linea) — nunca sobre el texto fuente de la nota, y sin efecto si
+   Dataview no esta instalado (no se generan estos atributos
+   data-dv-key). Selectores acotados a [data-dv-key="tt-id"] a
+   proposito: no deben afectar a ningun otro inline field que el
+   usuario tenga en sus notas. */
+body.task-time-tracker-taskid-reduced .dataview .inline-field-key[data-dv-key="tt-id"] {
+	display: none;
+}
+
+body.task-time-tracker-taskid-reduced span[data-dv-key="tt-id"] + span {
+	font-size: 0.6rem;
+	opacity: 0.5;
+	margin: 0;
+	padding: 1px;
+}
+
+body.task-time-tracker-taskid-hidden .dataview .inline-field-key[data-dv-key="tt-id"] {
+	display: none;
+}
+
+body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
+	display: none;
+}

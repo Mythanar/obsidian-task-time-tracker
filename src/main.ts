@@ -45,6 +45,9 @@ import { t } from "./i18n";
 // transitorio de la linea mientras el usuario sigue editando.
 const EDITOR_CHANGE_DEBOUNCE_MS = 300;
 
+// Fase 7 — ver applyTaskIdFormatClass().
+const TASKID_FORMAT_BODY_CLASSES = ["task-time-tracker-taskid-reduced", "task-time-tracker-taskid-hidden"];
+
 export default class TaskTimeTrackerPlugin extends Plugin {
 	trackingEngine!: TrackingEngine;
 	statusBarWidget!: StatusBarWidget;
@@ -62,8 +65,10 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 				toggl: { ...DEFAULT_SETTINGS.toggl, ...savedState?.settings?.toggl },
 				logViewLocation: savedState?.settings?.logViewLocation ?? DEFAULT_SETTINGS.logViewLocation,
 				exportsFolder: savedState?.settings?.exportsFolder ?? DEFAULT_SETTINGS.exportsFolder,
+				taskIdFormat: savedState?.settings?.taskIdFormat ?? DEFAULT_SETTINGS.taskIdFormat,
 			},
 		};
+		this.applyTaskIdFormatClass();
 
 		this.trackingEngine = new TrackingEngine(this.pluginState, (s) => this.saveData(s));
 		this.taskIdentifier = new TaskIdentifier(this.app);
@@ -189,7 +194,20 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		}
 	}
 
-	onunload() {}
+	onunload() {
+		document.body.classList.remove(...TASKID_FORMAT_BODY_CLASSES);
+	}
+
+	// Fase 7 — aplica (o retira) la clase en document.body que activa el
+	// CSS correspondiente en styles.css (ver ajuste "Formato del id de
+	// tarea" en SettingsTab.ts). "normal" no lleva clase: es el
+	// comportamiento por defecto de Dataview, sin CSS del plugin.
+	applyTaskIdFormatClass(): void {
+		document.body.classList.remove(...TASKID_FORMAT_BODY_CLASSES);
+		const format = this.pluginState.settings.taskIdFormat;
+		if (format === "reduced") document.body.classList.add("task-time-tracker-taskid-reduced");
+		else if (format === "hidden") document.body.classList.add("task-time-tracker-taskid-hidden");
+	}
 
 	private async startTrackingFromCursor(editor: Editor, ctx: MarkdownView | MarkdownFileInfo): Promise<void> {
 		const cursor = editor.getCursor();

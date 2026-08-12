@@ -29,6 +29,14 @@ manual y por lotes a plataformas externas (Toggl y otras a futuro).
    formato de fecha/hora para Toggl) son campos manuales en settings,
    nunca se consultan via API ni siquiera en modo solo lectura.
 5. Un solo timer activo a la vez (no tracking paralelo) en el MVP.
+6. La vault del usuario es su casa, no la nuestra. Cualquier cosa que el
+   plugin escriba o dibuje dentro de una nota (identificadores inline,
+   badges, marcas de cualquier tipo) debe justificar su presencia, y por
+   defecto debe usar la opción menos intrusiva que siga siendo funcional.
+   Si hace falta dejar una marca visible, el aspecto por defecto es el
+   más discreto posible sin romper la función; ir a un aspecto más
+   visible o más completo es una elección explícita del usuario (vía
+   Settings), nunca el punto de partida de una instalación nueva.
 
 ## Estructura de carpetas
 /src

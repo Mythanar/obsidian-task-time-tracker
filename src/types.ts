@@ -30,6 +30,14 @@ export interface TogglSettings {
 // que se abra (ver activateLogView() en main.ts).
 export type LogViewLocation = "sidebar" | "tab";
 
+// Fase 7 — como se ve el inline field `tt-id::` cuando Dataview lo
+// renderiza (Reading mode / Live Preview sin el cursor en la linea).
+// Puramente visual (clase en document.body + CSS en styles.css, ver
+// applyTaskIdFormatClass() en main.ts); el texto fuente de la nota
+// nunca cambia, y sin Dataview instalado no tiene ningun efecto (ver
+// SettingsTab.ts).
+export type TaskIdFormat = "normal" | "reduced" | "hidden";
+
 export interface PluginSettings {
 	toggl: TogglSettings;
 	logViewLocation: LogViewLocation;
@@ -38,6 +46,7 @@ export interface PluginSettings {
 	// no mueve exportaciones ya hechas en la carpeta anterior; solo aplica
 	// a partir de la proxima exportacion.
 	exportsFolder: string;
+	taskIdFormat: TaskIdFormat;
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -48,6 +57,11 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	},
 	logViewLocation: "sidebar",
 	exportsFolder: "task-tracker-exports",
+	// Fase 7 — "reducido" es el valor por defecto en una instalacion
+	// nueva (decision explicita, no "normal"): la etiqueta completa
+	// "tt-id" que renderiza Dataview por defecto es ruido visual para
+	// la mayoria de usuarios desde el primer momento.
+	taskIdFormat: "reduced",
 };
 
 // Fase 5 — resultado de editar los horarios de una sesión desde el
