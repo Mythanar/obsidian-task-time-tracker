@@ -297,8 +297,9 @@ export class TimeLogView extends ItemView {
 	}
 
 	// Agrupa por tt-id preservando el orden de aparicion en `entries` (ya
-	// viene ordenado por fecha de inicio descendente desde render()), asi
-	// que cada tarea queda ordenada por la fecha de su sesion mas reciente.
+	// viene ordenado por fecha de inicio ascendente desde renderDaySection()),
+	// asi que cada tarea queda ordenada por la fecha de su sesion mas
+	// antigua de ese dia.
 	private groupByTaskId(entries: TimeEntry[]): Map<string, TimeEntry[]> {
 		const grouped = new Map<string, TimeEntry[]>();
 		for (const entry of entries) {
@@ -599,7 +600,7 @@ export class TimeLogView extends ItemView {
 
 		const rangeSpan = left.createSpan({ cls: "task-time-tracker-log-session-range" });
 		rangeSpan.createSpan({ text: startDate.toLocaleTimeString() });
-		rangeSpan.createSpan({ text: " → " });
+		rangeSpan.createSpan({ text: " → ", cls: "task-time-tracker-log-session-arrow" });
 		if (entry.end !== null) {
 			rangeSpan.createSpan({ text: new Date(entry.end).toLocaleTimeString() });
 			const daySpan = getDaySpan(entry.start, entry.end);
@@ -1009,19 +1010,21 @@ export class TimeLogView extends ItemView {
 		return null;
 	}
 
-	// Bloque 2 — barra de navegacion de fecha: dos grupos atomicos (nunca
-	// se rompen por dentro) dentro de un unico flex-wrap, sin media
-	// queries: Grupo A (Dia/Semana/Hoy) y Grupo B (flechas + fecha). Con
-	// espacio de sobra ambos caben en una linea (A a la izquierda, B
-	// ocupando y centrando el resto — ver .task-time-tracker-log-datenav
-	// en styles.css); en mobile, con el panel mas estrecho que la
-	// pantalla, cada grupo baja a su propia linea, ambos centrados.
+	// Bloque 2 / rediseno de cabecera — barra de navegacion de fecha: tres
+	// bloques atomicos, siempre en el mismo orden en el DOM (toggle Dia/
+	// Semana, rango de fecha, boton Hoy). En ventanas anchas caben los
+	// tres en una sola linea con el rango en medio (unico con flex-grow,
+	// ver .task-time-tracker-log-datenav-range en styles.css: crece para
+	// ocupar el espacio libre entre toggle y Hoy, y centra su contenido
+	// dentro de ese espacio). En ventanas estrechas (panel lateral,
+	// mobile), el toggle y Hoy se agrupan en su propia linea (mismo
+	// truco, pero via CSS order dentro de una @container query — no hay
+	// combinacion de flex-wrap puro que agrupe "primero y tercero" sin
+	// tocar el segundo) y el rango de fecha baja solo a la suya.
 	private renderDateNav(container: Element): void {
 		const nav = container.createDiv({ cls: "task-time-tracker-log-datenav" });
 
-		const groupA = nav.createDiv({ cls: "task-time-tracker-log-datenav-group-a" });
-
-		const modeToggle = groupA.createDiv({ cls: "task-time-tracker-log-datenav-mode" });
+		const modeToggle = nav.createDiv({ cls: "task-time-tracker-log-datenav-mode" });
 		const dayBtn = modeToggle.createEl("button", {
 			text: t("log.viewDay"),
 			cls: "task-time-tracker-log-datenav-mode-btn",
@@ -1043,12 +1046,6 @@ export class TimeLogView extends ItemView {
 			void this.render();
 		});
 
-		const todayBtn = groupA.createEl("button", { text: t("log.today") });
-		todayBtn.addEventListener("click", () => {
-			this.anchorDate = startOfDay(Date.now());
-			void this.render();
-		});
-
 		const range = nav.createDiv({ cls: "task-time-tracker-log-datenav-range" });
 		const prevBtn = range.createEl("button", { cls: "clickable-icon" });
 		setIcon(prevBtn, "chevron-left");
@@ -1067,16 +1064,37 @@ export class TimeLogView extends ItemView {
 			this.anchorDate = addDays(this.anchorDate, this.viewMode === "day" ? 1 : 7);
 			void this.render();
 		});
+
+		const todayBtn = nav.createEl("button", {
+			text: t("log.today"),
+			cls: "task-time-tracker-log-datenav-today",
+		});
+		todayBtn.addEventListener("click", () => {
+			// "Hoy" siempre lleva a la vista diaria de hoy, incluso si se
+			// pulsa desde vista semanal — no solo mueve la fecha dentro del
+			// modo activo.
+			this.viewMode = "day";
+			this.anchorDate = startOfDay(Date.now());
+			void this.render();
+		});
 	}
 
+	// Formato corto de fecha (dia): "Mié, 12 ago 2026" en vez de la forma
+	// larga anterior ("miércoles, 12 de agosto de 2026") — la barra de
+	// navegacion ya no necesita competir en ancho con el toggle y el
+	// boton Hoy en la misma linea. Intl da el nombre de dia/mes en
+	// minuscula (locale es); solo la primera letra se pone en mayuscula
+	// a mano, no toda la cadena (text-transform: capitalize la pondria
+	// tambien en "ago").
 	private formatRangeLabel(): string {
 		if (this.viewMode === "day") {
-			return new Date(this.anchorDate).toLocaleDateString(undefined, {
-				weekday: "long",
+			const label = new Date(this.anchorDate).toLocaleDateString(undefined, {
+				weekday: "short",
 				day: "numeric",
-				month: "long",
+				month: "short",
 				year: "numeric",
 			});
+			return label.charAt(0).toUpperCase() + label.slice(1);
 		}
 		const weekStart = startOfWeek(this.anchorDate);
 		const weekEnd = addDays(weekStart, 6);
@@ -1101,7 +1119,7 @@ export class TimeLogView extends ItemView {
 	): Promise<void> {
 		const dayEntries = allEntries
 			.filter((entry) => isSameLocalDay(entry.start, dayStart))
-			.sort((a, b) => b.start - a.start);
+			.sort((a, b) => a.start - b.start);
 
 		if (withHeading) {
 			container.createEl("h6", { text: this.formatDayHeading(dayStart), cls: "task-time-tracker-log-day-heading" });
@@ -1134,12 +1152,16 @@ export class TimeLogView extends ItemView {
 		this.activeCardTicks = [];
 
 		container.empty();
-		container.createEl("h4", { text: t("log.title") });
 
 		if (allEntries.length === 0) {
+			container.createEl("h4", { text: t("log.title") });
 			container.createEl("p", { text: t("log.emptyAll") });
 			return;
 		}
+
+		const titleRow = container.createDiv({ cls: "task-time-tracker-log-title-row" });
+		titleRow.createEl("h4", { text: t("log.title") });
+		this.renderViewTotal(titleRow, allEntries);
 
 		this.renderDateNav(container);
 
@@ -1151,6 +1173,32 @@ export class TimeLogView extends ItemView {
 				if (token !== this.renderToken) return;
 				await this.renderDaySection(container, addDays(weekStart, i), allEntries, true, token);
 			}
+		}
+	}
+
+	// Total de tiempo trackeado en la vista actual (dia o semana),
+	// junto al titulo. A diferencia del total compacto de cada tarjeta
+	// (formatDurationCompact), aqui se usa formatDuration (HH:MM:SS): es
+	// un unico numero destacado, no una lista de totales por tarea donde
+	// el formato compacto evita que compita visualmente con el titulo de
+	// cada tarjeta.
+	private renderViewTotal(container: Element, allEntries: TimeEntry[]): void {
+		const rangeStart = this.viewMode === "day" ? startOfDay(this.anchorDate) : startOfWeek(this.anchorDate);
+		const rangeEnd = this.viewMode === "day" ? addDays(rangeStart, 1) : addDays(rangeStart, 7);
+		const viewEntries = allEntries.filter((entry) => entry.start >= rangeStart && entry.start < rangeEnd);
+
+		const activeEntry = viewEntries.find((entry) => entry.end === null) ?? null;
+		const completedMs = viewEntries
+			.filter((entry) => entry.end !== null)
+			.reduce((sum, entry) => sum + ((entry.end as number) - entry.start), 0);
+		const totalMs = completedMs + (activeEntry ? Date.now() - activeEntry.start : 0);
+
+		const totalGroup = container.createSpan({ cls: "task-time-tracker-totals-duration-group" });
+		setIcon(totalGroup.createSpan({ cls: "task-time-tracker-totals-duration-icon" }), "clock");
+		const value = totalGroup.createSpan({ text: formatDuration(totalMs), cls: "task-time-tracker-totals-duration" });
+
+		if (activeEntry) {
+			this.activeCardTicks.push({ el: value, completedMs, start: activeEntry.start });
 		}
 	}
 }

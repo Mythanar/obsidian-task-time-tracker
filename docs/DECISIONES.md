@@ -942,3 +942,118 @@ una entrada aquí.
   de los tres. **No se pudo probar en Obsidian real con Dataview
   activo** (limitación conocida de este entorno, ver notas de fases
   anteriores) — pendiente de confirmación del usuario en su vault.
+
+## Fase 5 — orden ascendente en el panel diario y botón "Hoy"
+
+- **Las tarjetas de tarea y las sesiones dentro de cada tarjeta pasan de
+  orden descendente a ascendente** (sesión más antigua del día primero,
+  en vez de la más reciente) en `renderDaySection()`. Como
+  `groupByTaskId()` preserva el orden de aparición de `entries` para
+  decidir el orden de las tarjetas, el cambio de sort ahí basta para
+  invertir ambos niveles a la vez, sin tocar `groupByTaskId()` en sí.
+  El sort independiente de `renderTaskDeleteConfirm()` (confirmación de
+  borrado de tarea completa, con el histórico completo de todas las
+  fechas) se deja igual a propósito — descendente — al ser una vista
+  distinta, fuera del alcance de "el panel diario".
+- **El botón "Hoy" ahora fuerza también la vista diaria**, no solo
+  mueve la fecha dentro del modo activo (día o semana). Antes, pulsarlo
+  desde la vista semanal dejaba la semana que contiene "hoy" pero sin
+  cambiar a vista día — comportamiento inconsistente con lo que el
+  nombre del botón sugiere.
+
+## Fase 5 — rediseño de la tarjeta con tracking activo
+
+- **La tarjeta cuya tarea tiene el tracking activo se distingue ahora
+  también por su fondo**, no solo por el borde (`border-color:
+  var(--interactive-accent)`, ya existente): un tinte muy sutil del
+  accent vía `color-mix(in srgb, var(--interactive-accent) 4%,
+  var(--background-primary))`, con el valor plano de
+  `--background-primary` declarado antes como fallback (mismo patrón
+  que el resto del proyecto para navegadores sin `color-mix`).
+- **El icono de nota de esa tarjeta pasa a `opacity: 0.5`** (antes
+  `opacity: 1`, igual que en cualquier otra tarjeta): con la tarjeta ya
+  distinguida por fondo y borde, este icono puede pesar menos sin
+  perder legibilidad. Solo se toca `opacity`, nunca color/tamaño — el
+  botón sigue siendo el mismo control funcional, con el mismo hover en
+  `--text-accent` de siempre.
+- **La flecha `→` entre hora de inicio y hora de fin, dentro de esa
+  misma tarjeta, pasa a `--text-faint`** en vez de heredar el color de
+  las horas que separa (`--text-normal`) — es un separador visual, no
+  un dato en sí. Requirió una clase nueva en el span
+  (`task-time-tracker-log-session-arrow`, `TimeLogView.ts`), ya que
+  antes era texto suelto sin ningún selector propio.
+- Estas tres reglas quedan acotadas a `.task-time-tracker-log-row.is-tracking-active`
+  — no afectan a ninguna otra tarjeta del panel.
+
+## Fase 5 — total de la vista y rediseño del navegador de fecha
+
+- **Nuevo total de tiempo junto al título del panel** ("Time tracker"),
+  alineado a la derecha: icono de reloj + duración en formato HH:MM:SS
+  (`formatDuration`, no el formato compacto de las tarjetas) del rango
+  actualmente visible (día o semana). Si la tarea activa cae dentro de
+  ese rango, el número tickea en vivo por segundo, reutilizando el
+  mismo mecanismo (`activeCardTicks` + bus) que ya usan las tarjetas —
+  sin un `setInterval` propio.
+- **El toggle Día/Semana pasa a ser un único control segmentado** (un
+  borde y un fondo compartidos, `overflow: hidden` para recortar las
+  esquinas de los botones internos) en vez de dos botones sueltos con
+  su propio borde cada uno.
+- **El botón "Hoy" se separa del toggle** y pasa a alinearse al extremo
+  derecho de la barra de navegación (antes vivía pegado al toggle, a la
+  izquierda). El navegador de fecha (flechas + fecha) queda en medio.
+- **Formato de fecha más corto en vista día:** "Mié, 12 ago 2026" en
+  vez de "miércoles, 12 de agosto de 2026" — ya no necesita competir en
+  ancho con el toggle y "Hoy" en la misma línea. `Intl` devuelve el
+  nombre de día/mes en minúscula en locale `es`; solo la primera letra
+  se pasa a mayúscula a mano en JS (`label.charAt(0).toUpperCase() +
+  label.slice(1)`), no toda la cadena — `text-transform: capitalize`
+  también habría afectado a "ago".
+- **Layout responsive: toggle + fecha + "Hoy" en una sola línea en
+  ventanas anchas (rango centrado entre los otros dos, único elemento
+  con `flex-grow`), y toggle + "Hoy" agrupados en una línea con la
+  fecha debajo en ventanas estrechas.** No hay combinación de
+  `flex-wrap` puro que agrupe "primero y tercero sin tocar el segundo"
+  cuando el segundo es el único con crecimiento — a diferencia del
+  ajuste de mobile anterior (Historial, tarjetas), aquí sí hizo falta
+  una **`@container` query** (`container-type: inline-size` en
+  `.task-time-tracker-log-datenav`) que reordena los tres bloques vía
+  `order` según el ancho del propio contenedor, no del viewport.
+- **Bug encontrado y corregido en la misma ronda: el punto de corte de
+  la query (420px, estimado a ojo) se quedaba corto una vez el rango de
+  fecha reservó `min-width: 21ch`** (ver bullet siguiente) — el orden
+  se reseteaba a "una sola línea" antes de que el contenido cupiera de
+  verdad, y el resultado era una agrupación rota: toggle + rango
+  compartiendo la primera línea, "Hoy" solo en la segunda. Fix en dos
+  partes: (a) se subió el punto de corte a 480px, con margen sobre el
+  ancho real medido (~465px con un harness estático fuera de Obsidian,
+  iconos/fuente aproximados) por si el tema o idioma real del usuario
+  usa botones o iconos algo más anchos; (b) `flex-basis: 100%` en el
+  rango de fecha por defecto (antes solo `flex: 1 1 auto`, con `basis`
+  implícito en `auto`), para que ocupe siempre su propia línea completa
+  por debajo del punto de corte, sin importar si el contenido cabría
+  "por accidente" en una sola línea a un ancho menor — sin esto, quedaba
+  una franja donde "Hoy" aparecía pegado al toggle en vez de al extremo
+  derecho. Verificado con un harness estático variando el ancho del
+  panel de 200 a 600px, en vista día y semana.
+- **`min-width: 21ch` en la etiqueta de fecha** (petición del usuario,
+  verificado empíricamente por él en su propio Obsidian): sin esto, el
+  texto de la vista semana ("8/10/2026 – 8/16/2026") es más ancho que
+  el de la vista día ("Mié, 12 ago 2026"), así que alternar entre
+  ambas cambiaba el ancho de esa fila con el panel en el mismo ancho —
+  pudiendo cruzar por su cuenta el punto de corte de la `@container`
+  query y hacer saltar de línea el navegador de fecha solo por
+  cambiar de modo, no por cambiar el ancho del panel.
+
+## Fase 5 — tipografía monoespaciada en todas las sesiones
+
+- **Fecha, rango horario (hora inicio → hora fin), fecha de fin de
+  apoyo junto al badge "+N" y duración total: todas en
+  `var(--font-monospace)` en cualquier tarjeta**, no solo en la que
+  tiene tracking activo. La regla vive en el contenedor común
+  (`.task-time-tracker-log-session-info`), del que las cuatro heredan
+  por posición en el DOM, en vez de una declaración por clase. Se
+  retira la regla scoped a `.is-tracking-active` que aplicaba esto
+  antes solo ahí (quedaba redundante una vez generalizada) — la regla
+  de la flecha muted (ver entrada anterior) sí se mantiene scoped, al
+  ser un ajuste de color deliberadamente distinto solo para esa
+  tarjeta, no de tipografía.

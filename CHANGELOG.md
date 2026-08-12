@@ -22,8 +22,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - If you use Dataview, a new "Task id format" setting lets you tone down or fully hide how the `tt-id` field looks in its rendered view (Reading mode / Live Preview) — purely visual, your Dataview queries on `tt-id` keep working exactly the same. Defaults to a toned-down look on a fresh install.
 
 **History**
-- A panel with one card per task: recorded sessions, a compact total, and a note icon that opens the source note directly. Tap or click anywhere on a card's header to expand or collapse its sessions. The active task's card shows a stop button with a live counter, matching the style of the inline badge.
-- Day and week navigation, with a "Today" button to jump back to the current date.
+- A panel with one card per task: recorded sessions (oldest first), a compact total, and a note icon that opens the source note directly. Tap or click anywhere on a card's header to expand or collapse its sessions. The active task's card shows a stop button with a live counter, matching the style of the inline badge, and is highlighted with a subtle tint of your theme's accent color; its session details use a monospaced font for easier scanning.
+- The panel title shows the total tracked time for whichever range (day or week) is currently visible.
+- Day and week navigation with a single Day/Week toggle and a compact date label (e.g. "Wed, 12 Aug 2026"), plus a "Today" button that always jumps back to today's day view, even from the week view.
 - Editing and deleting individual sessions, with a live preview of the calculated duration and a warning if two sessions overlap in time.
 - Sessions spanning more than one calendar day show a "+N" badge with the end date, so you don't have to work it out by hand.
 - Deleting a task's entire history at once.

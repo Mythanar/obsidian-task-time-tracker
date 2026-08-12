@@ -218,6 +218,23 @@
    fuerza a aparecer una tarjeta fuera de ese rango. */
 .task-time-tracker-log-row.is-tracking-active {
 	border-color: var(--interactive-accent);
+	background-color: var(--background-primary);
+	background-color: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-primary));
+}
+
+/* Icono de nota mas discreto mientras la tarjeta esta activa: la tarjeta
+   ya se distingue por su cuenta (borde + fondo con tinte de accent), asi
+   que este icono puede pesar menos sin perder legibilidad. Solo opacity,
+   no color/tamaño: sigue siendo el mismo boton funcional, con su mismo
+   hover (color: var(--text-accent), ver arriba) intacto. */
+.task-time-tracker-log-row.is-tracking-active .task-time-tracker-log-card-note {
+	opacity: 0.5;
+}
+
+/* Flecha entre horas de inicio/fin, tono atenuado en vez del mismo color
+   que las horas que separa — es un separador, no un dato. */
+.task-time-tracker-log-row.is-tracking-active .task-time-tracker-log-session-arrow {
+	color: var(--text-faint);
 }
 
 /* Boton de stop + contador en vivo, en el lugar de la papelera mientras
@@ -329,6 +346,11 @@
 	justify-content: space-between;
 	gap: 1em;
 	font-size: 0.85em;
+	/* Fecha, rango horario (incluida la fecha de fin de apoyo junto al
+	   badge "+N") y duracion: todos numeros/horas de ancho fijo, se leen
+	   mejor en monoespaciada — mismo criterio que ya usaba el contador en
+	   vivo (.task-time-tracker-log-session-live-value). */
+	font-family: var(--font-monospace);
 }
 
 /* Columna izquierda: fecha + rango horario, agrupados para dejar la
@@ -639,30 +661,45 @@
 	cursor: pointer;
 }
 
-/* Bloque 2 — navegador de fecha del Historial: Grupo A (Dia/Semana/Hoy)
-   y Grupo B (flechas + fecha), cada uno un bloque atomico (nunca se
-   rompen por dentro, ver flex-shrink: 0 + white-space: nowrap mas
-   abajo). Sin flex-grow, Grupo A queda a su tamaño natural — con
-   flex-grow: 1 en Grupo B (unico item con crecimiento en la fila) este
-   consume TODO el espacio libre de la linea, dejando 0 espacio libre a
-   nivel de contenedor: el resultado es Grupo A pegado a la izquierda y
-   Grupo B centrando su propio contenido (flechas + fecha) dentro del
-   espacio restante que ocupa por completo — sin necesidad de una clase
-   condicional para el caso de una sola linea.
-   Si no cabe todo junto, flex-wrap manda cada grupo a su propia linea:
-   Grupo A, ahora solo en su linea, SI tiene espacio libre alrededor —
-   justify-content: center en el contenedor lo centra en ella. Grupo B,
-   solo en la suya, vuelve a crecer al 100% de esa linea (flex-grow: 1
-   sigue activo) y centra su contenido dentro de ese ancho completo, que
-   ya es el ancho total del panel: mismo resultado sin ninguna logica
-   adicional en JS. */
+/* Cabecera del panel: titulo a la izquierda, total de la vista actual
+   (dia/semana) a la derecha — mismo patron icono+valor que
+   .task-time-tracker-totals-duration-group. flex-wrap: por si el total
+   no cupiera junto al titulo en un panel muy estrecho, baja debajo en
+   vez de desbordar. */
+.task-time-tracker-log-title-row {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 0.35em 1em;
+}
+
+.task-time-tracker-log-title-row h4 {
+	margin: 0;
+}
+
+/* Bloque 2 — navegador de fecha del Historial: tres bloques atomicos
+   (toggle Dia/Semana, rango de fecha con flechas, boton Hoy), siempre en
+   ese orden en el DOM. container-type habilita la @container query de
+   mas abajo, que reagrupa toggle+Hoy en ventanas estrechas — no hay
+   combinacion de flex-wrap puro que agrupe "primero y tercero" sin
+   tocar el segundo (el rango, en medio, es el unico con flex-grow: 1).
+   En ventanas anchas, el rango consume todo el espacio libre entre
+   toggle y Hoy y centra su contenido ahi (mismo truco de flex-grow
+   asimetrico que antes usaba el Grupo B); en estrechas, se reordena via
+   CSS order para que toggle+Hoy comparten linea y el rango cae solo a
+   la suya, centrado por el mismo flex-grow al ser el unico elemento de
+   esa linea. */
 .task-time-tracker-log-datenav {
+	container-type: inline-size;
 	display: flex;
 	align-items: center;
 	justify-content: center;
 	gap: 0.5em;
 	margin-bottom: 0.75em;
 	flex-wrap: wrap;
+	padding-top:0.5rem;
+	padding-bottom:0.5rem;
 }
 
 /* Dia/Semana, flechas prev/siguiente y "Hoy": mismo motivo que
@@ -672,17 +709,25 @@
 	cursor: pointer;
 }
 
-.task-time-tracker-log-datenav-group-a {
-	display: flex;
-	align-items: center;
-	gap: 0.5em;
-	flex: 0 0 auto;
-	white-space: nowrap;
-}
-
+/* Toggle Dia/Semana como un solo control segmentado (un borde, un fondo,
+   sin huecos entre los dos botones) en vez de dos botones sueltos. */
 .task-time-tracker-log-datenav-mode {
 	display: flex;
-	gap: 0.25em;
+	flex-shrink: 0;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 6px;
+	overflow: hidden;
+	/* Ver comentario junto a .task-time-tracker-log-datenav-range: en
+	   ventanas estrechas, orden 1 lo agrupa junto al boton Hoy (orden 2)
+	   en su propia linea, antes que el rango de fecha (orden 3). */
+	order: 1;
+}
+
+.task-time-tracker-log-datenav-mode-btn {
+	border: none;
+	border-radius: 0;
+	background-color: transparent;
+	box-shadow: none;
 }
 
 .task-time-tracker-log-datenav-mode-btn.is-active {
@@ -697,12 +742,64 @@
 	gap: 0.35em;
 	flex: 1 1 auto;
 	white-space: nowrap;
+	/* Orden 3 (despues del toggle y de Hoy) en ventanas estrechas: al ser
+	   el unico elemento de su propia linea, flex: 1 1 auto lo hace ocupar
+	   todo el ancho de esa linea y justify-content: center centra su
+	   contenido ahi, igual que en ventanas anchas.
+	   flex-basis: 100% (en vez del "auto" implicito en flex: 1 1 auto) lo
+	   fuerza a ocupar su propia linea completa SIEMPRE por debajo del
+	   punto de corte de la @container query, sin importar si el rango
+	   (toggle + Hoy + fecha) cabria por accidente en una sola linea a un
+	   ancho menor: sin esto, entre el ancho donde el contenido empieza a
+	   caber de casualidad y el ancho fijado en la query, Hoy aparecia
+	   pegado junto al toggle (orden de DOM) en vez de al extremo derecho
+	   — una sola linea, pero en el orden equivocado. La query de mas
+	   abajo lo devuelve a flex-basis auto para que si pueda compartir
+	   linea con toggle y Hoy en ventanas anchas. */
+	flex-basis: 100%;
+	order: 3;
 }
 
+/* min-width igual para el rango de dia ("Mie, 12 ago 2026") y el de
+   semana ("8/10/2026 - 8/16/2026", mas ancho): sin esto, cambiar de
+   Dia a Semana angosta o ensancha esta fila y puede cruzar el punto de
+   corte de la @container query de mas abajo, haciendo saltar de linea
+   el navegador de fecha solo por alternar el modo, con el panel en el
+   mismo ancho. 21ch cubre el mas ancho de los dos formatos (semana). */
 .task-time-tracker-log-datenav-label {
 	font-weight: 600;
 	text-align: center;
 	white-space: nowrap;
+	min-width: 21ch;
+}
+
+.task-time-tracker-log-datenav-today {
+	flex-shrink: 0;
+	order: 2;
+}
+
+/* A partir de este ancho de panel, toggle + rango + boton Hoy caben
+   comodos en una sola linea: se restaura el orden natural del DOM
+   (toggle, rango en medio, Hoy) en vez del reagrupado de mas arriba.
+   420px se quedaba corto una vez el rango reservo min-width: 21ch (mas
+   ancho que el texto real de la vista de dia): el orden se reseteaba
+   antes de que el contenido cupiera de verdad, y el resultado era
+   toggle+rango compartiendo la primera linea con Hoy solo en la
+   segunda — la mala agrupacion que este ajuste corrige. 480px deja
+   margen de sobra sobre el ancho real medido (toggle + rango con
+   min-width + Hoy + gaps), para no volver a quedarse corto si el tema/
+   idioma del usuario usa botones o iconos ligeramente mas anchos que
+   los de esta medicion. */
+@container (min-width: 480px) {
+	.task-time-tracker-log-datenav-mode,
+	.task-time-tracker-log-datenav-range,
+	.task-time-tracker-log-datenav-today {
+		order: 0;
+	}
+
+	.task-time-tracker-log-datenav-range {
+		flex-basis: auto;
+	}
 }
 
 /* Titulo de cada dia dentro de la vista semanal (7 secciones). */
