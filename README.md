@@ -75,7 +75,7 @@ Two export formats are available whenever you need them:
 
 *More export formats (Clockify, Harvest, and others) are planned.*
 
-<img src="docs/images/toggl-track-logo-crop.png" alt="Toggl logo" width="230">
+<a href="https://toggl.com/" target="_blank"><img src="docs/images/toggl-track-logo-crop.png" alt="Toggl logo" width="230"></a>
 
 
 ## Installation
