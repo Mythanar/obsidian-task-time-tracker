@@ -24,19 +24,19 @@ manual y por lotes a plataformas externas (Toggl y otras a futuro).
    adapter de exportacion genera un archivo nuevo e independiente; evitar
    duplicados al importarlo es responsabilidad del usuario y/o del propio
    importador de cada plataforma (algunas, como Toggl, ya deduplican por
-   su cuenta filas identicas en fecha/hora de inicio). Los ajustes
-   especificos de cada plataforma que SI hacen falta (p.ej. email y
-   formato de fecha/hora para Toggl) son campos manuales en settings,
-   nunca se consultan via API ni siquiera en modo solo lectura.
+   su cuenta filas identicas en fecha/hora de inicio).
 5. Un solo timer activo a la vez (no tracking paralelo) en el MVP.
 6. La vault del usuario es su casa, no la nuestra. Cualquier cosa que el
    plugin escriba o dibuje dentro de una nota (identificadores inline,
    badges, marcas de cualquier tipo) debe justificar su presencia, y por
-   defecto debe usar la opción menos intrusiva que siga siendo funcional.
+   defecto debe usar la opcion menos intrusiva que siga siendo funcional.
    Si hace falta dejar una marca visible, el aspecto por defecto es el
-   más discreto posible sin romper la función; ir a un aspecto más
-   visible o más completo es una elección explícita del usuario (vía
-   Settings), nunca el punto de partida de una instalación nueva.
+   mas discreto posible sin romper la funcion; ir a un aspecto mas
+   visible o mas completo es una eleccion explicita del usuario (via
+   Settings), nunca el punto de partida de una instalacion nueva. Ejemplo
+   aplicado: el `[tt-id:: <id>]` se renderiza (via Dataview) en estilo
+   Reducido por defecto, con Normal y Oculto como opciones explicitas en
+   Settings > Task identifier format.
 
 ## Estructura de carpetas
 /src
@@ -52,36 +52,36 @@ manual y por lotes a plataformas externas (Toggl y otras a futuro).
     ExportManager.ts        # orquesta exportacion, elige el adapter de formato
     /adapters
       CsvAdapter.ts          # CSV generico, agnostico de plataforma (Fase 3)
-      TogglCsvAdapter.ts      # genera el CSV de importacion de Toggl (Fase 4):
-                               # columnas Email, Description, Start date,
-                               # Start time, Duration unicamente. Sin Task ni
-                               # Billable (plan de pago), sin Client/Project
-                               # (el plugin no tiene ese concepto). No llama a
-                               # la API de Toggl en ningun momento.
-      (backlog explicito, sin fecha: ClockifyAdapter.ts, HarvestAdapter.ts,
-       EverhourAdapter.ts, TimelyAdapter.ts — mismo patron cuando se
-       prioricen: generar el archivo que el importador de cada plataforma
-       espera, sin tocar su API)
+      TogglCsvAdapter.ts      # genera CSV con las columnas que espera el
+                               # importador oficial de Toggl (Fase 4). No llama
+                               # a la API de Toggl en ningun momento.
+      (futuros: ClockifyAdapter.ts, HarvestAdapter.ts, EverhourAdapter.ts,
+       TimelyAdapter.ts, etc. — mismo patron: generar el archivo que el
+       importador de cada plataforma espera, sin tocar su API)
   /settings
-    SettingsTab.ts           # configuracion del plugin, organizada en
-                              # secciones. "General": placeholder para Fase 5,
-                              # sin contenido funcional todavia. "Toggl":
-                              # campos manuales (email, formato de fecha/hora)
-                              # que TogglCsvAdapter.ts necesita para generar el
-                              # CSV — nunca se consultan via API. No gestiona
-                              # tokens/API keys de ninguna plataforma externa.
+    SettingsTab.ts           # configuracion del plugin (formato de export,
+                              # carpeta de destino, formato del tt-id). No
+                              # gestiona tokens/API keys de ninguna plataforma
+                              # externa.
+  /i18n
+    en.ts, es.ts             # diccionarios de traduccion (Fase 6). Ingles por
+                              # defecto, espanol si Obsidian esta en ese idioma.
+                              # NO se traduce: el identificador `[tt-id:: <id>]`
+                              # inline, las columnas de los CSV de exportacion,
+                              # ni los nombres de archivos/carpetas de export.
   types.ts
 
 ## Estado actual
-Fase 3 completada (exportacion CSV generica). Fase 4 redefinida el 9 de
-agosto de 2026 (ver docs/DECISIONES.md, "Fase 4 — redefinicion completa")
-y su alcance/formato cerrados ese mismo dia (ver "Fase 4 — alcance y
-formato cerrados"): solo Toggl por ahora, CSV con Email/Description/
-Start date/Start time/Duration, email y formato de fecha/hora como
-campos manuales en settings. Pendiente de implementar.
+Fases 0 a 6 completadas y probadas en Obsidian (tracking local, vinculacion
+robusta de tareas, exportacion CSV generica y CSV para Toggl, mejoras de UX,
+i18n en/es). En curso la Fase 7 (checklist de pre-release, sin funcionalidad
+de producto nueva): licencia, verificacion en mobile, bug del doble panel
+con la misma nota abierta en varios paneles (corregido — ver
+docs/DECISIONES.md), README con contenido completo e ilustrado. Ver
+docs/DECISIONES.md para el detalle fase a fase.
 
 ## Como trabajar
-- Construye por fases segun el roadmap (Fase 0 -> 5), no todo de una vez.
+- Construye por fases segun el roadmap (Fase 0 -> 7), no todo de una vez.
 - Antes de construir el adapter de exportacion de cada plataforma (Toggl,
   Clockify, etc.), confirma con el usuario el formato exacto que espera su
   importador (columnas, estructura, requisitos de cuenta/permisos) —
@@ -92,3 +92,7 @@ campos manuales en settings. Pendiente de implementar.
   de Obsidian salvo que sea estrictamente necesario.
 - Sigue las convenciones del plugin de ejemplo oficial de Obsidian
   (obsidian-sample-plugin) para manifest.json, esbuild config y estructura.
+- Ante cualquier bug que dependa de timing o de estado en memoria (p. ej.
+  varios paneles con la misma nota abierta a la vez), instrumenta con
+  logging temporal con timestamps antes de proponer un fix — no se
+  diagnostica a ciegas. Retira el logging antes de cualquier commit.
