@@ -849,3 +849,54 @@ una entrada aquí.
 - **Sin cambios en el resto del comportamiento de "Task not found"**
   (snapshot del texto de la tarea, sesiones asociadas, título en rojo):
   solo se tocó el icono de la cabecera y su interacción al clic.
+
+## Fase 5 — badge play siempre visible en reposo (sin tracking, sin historial)
+
+- **El badge play/stop junto al checkbox, en su estado "tarea abierta,
+  sin tracking activo, sin historial" (equivalente a "sin `tt-id`
+  todavía"), pasa a ser siempre visible en vez de revelarse solo con
+  `:hover` de la línea** (o vía la clase `.is-mobile` en pantallas
+  táctiles, que hasta ahora era la única vía de verlo en mobile). Es el
+  único estado que dependía de eso — el resto (`has-history`,
+  `is-active`, `is-static`) ya forzaban `opacity: 1` por su cuenta.
+- **Estilo en reposo: el mismo tinte apagado que `.is-static`**
+  (`color: var(--text-faint)`, fondo transparente, borde
+  `--background-modifier-border`), sin heredar su `cursor: default` —
+  este botón sí hace algo al pulsarlo (inicia tracking), a diferencia
+  del de una tarea cerrada, que no tiene ninguna acción asociada.
+- **Bug encontrado y corregido en la misma ronda: la nueva regla en
+  reposo pisaba el hover ya existente.** El selector nuevo
+  (`:not(.is-active):not(.has-history):not(.is-static)`, 4 clases) es
+  más específico que el hover genérico ya existente
+  (`:hover:not(.is-static)`, 3 clases) y ganaba incluso durante el
+  hover, dejando fondo/borde sin iluminar aunque el icono sí cambiara
+  de color (ese sí tenía su propia regla de hover dedicada). Fix:
+  duplicar los mismos valores de fondo/borde del hover genérico dentro
+  de una regla de hover propia de este estado, en vez de depender de
+  que la regla compartida ganara por especificidad.
+- **Sin cambios en `InlineTaskControl.ts`/`InlineTaskControlExtension.ts`:**
+  el cambio es puramente CSS. Las reglas `.cm-line:hover` y
+  `.is-mobile { opacity: 1 }` quedan redundantes para este estado
+  concreto (ya es `opacity: 1` siempre) pero no producen ningún efecto
+  visual distinto ni en desktop ni en mobile, así que se dejan
+  intactas.
+
+## Fase 5 — bug: clic en el hueco invisible del boton de borrar tarea
+
+- **Bug reproducido — con la tarjeta colapsada, un clic en la zona
+  donde aparecería el botón de borrar tarea (una vez expandida) abría
+  la confirmación de borrado igualmente, sin ningún indicio visual.**
+  Causa: `.task-time-tracker-log-card-delete` solo se ocultaba con
+  `opacity: 0` en reposo (revelándose con `opacity: 1` al expandir, ver
+  entrada de "rediseño de interacción" más arriba) — `opacity` no
+  desactiva la interactividad, así que el botón (y su hit-area
+  ampliada de 44×44px vía `.task-time-tracker-icon-btn::after`) seguía
+  totalmente clicable aunque invisible, interceptando el clic antes de
+  que llegara al `header` (cuyo `click` es el que debe togglear
+  expandir/colapsar).
+- **Fix: `pointer-events: none` en reposo, `pointer-events: auto` al
+  expandir** — mismo patrón espejo que ya usa `opacity` en las mismas
+  dos reglas. Verificado con clics reales (Playwright) en ambos
+  estados: colapsada, el clic en esa zona ahora cae en el `header`
+  (toggle); expandida, sigue abriendo la confirmación de borrado como
+  siempre.

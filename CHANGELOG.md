@@ -45,6 +45,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Starting tracking on a task while its note was open in more than one pane at once (a split view, or Edit and Reading mode side by side) could momentarily show it as "Task not found" in the History panel, even though the tracked time was correct.
 - A "Task not found" card no longer leaves an empty gap where its note icon would be; it now shows a distinct icon and, if clicked, a short notice explaining the source note couldn't be found.
+- Clicking a collapsed task card in the exact spot where its (hidden) delete button would appear once expanded no longer opens the delete confirmation by mistake — that area is now only clickable once the button is actually visible.
 
 ## [0.0.1] - 2026-08-08
 

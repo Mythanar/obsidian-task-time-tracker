@@ -194,12 +194,17 @@
 	margin-left: auto;
 	color: var(--text-muted);
 	opacity: 0;
+	/* opacity: 0 no desactiva el clic — sin esto, su propia hit-area
+	   ampliada (.task-time-tracker-icon-btn::after) sigue interceptando
+	   clics en la zona donde el boton se veria, aunque sea invisible. */
+	pointer-events: none;
 	cursor: pointer;
 	flex-shrink: 0;
 }
 
 .task-time-tracker-log-row.is-expanded .task-time-tracker-log-card-delete {
 	opacity: 1;
+	pointer-events: auto;
 }
 
 .task-time-tracker-log-card-delete:hover {
@@ -763,6 +768,33 @@
 }
 
 .task-time-tracker-inline-control:hover:not(.is-static) {
+	background-color: var(--background-modifier-hover);
+	background-color: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
+	border-color: color-mix(in srgb, var(--interactive-accent) 50%, transparent);
+}
+
+/* Tarea abierta, sin tracking activo y sin historial (sin tt-id
+   todavia): mismo tinte apagado que .is-static (color/fondo/borde),
+   sin heredar su cursor: default — este boton si hace algo al
+   pulsarlo (inicia tracking), a diferencia del de una tarea cerrada.
+   Siempre visible (opacity: 1), ya no depende de :hover ni de
+   .is-mobile para revelarse. */
+.task-time-tracker-inline-control:not(.is-active):not(.has-history):not(.is-static) {
+	opacity: 1;
+	color: var(--text-faint);
+	background-color: transparent;
+	border-color: var(--background-modifier-border);
+}
+
+/* El color/fondo/borde base de ese mismo estado ya no son los del
+   accent (ver regla de arriba) — con mas clases en su selector
+   (:not(.is-active):not(.has-history) de mas), esa regla es mas
+   especifica que :hover:not(.is-static) de mas arriba y ganaria
+   incluso en hover, dejando fondo/borde sin iluminar. Se repiten aqui
+   los mismos valores de esa regla junto al color, para que el hover
+   de este estado concreto vuelva a verse igual que el resto. */
+.task-time-tracker-inline-control:hover:not(.is-active):not(.has-history):not(.is-static) {
+	color: var(--interactive-accent);
 	background-color: var(--background-modifier-hover);
 	background-color: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
 	border-color: color-mix(in srgb, var(--interactive-accent) 50%, transparent);
