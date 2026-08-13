@@ -226,7 +226,15 @@ export class TimeLogView extends ItemView {
 	// esta expandida, la fila de su sesion en curso dentro del detalle.
 	// Vacio si la tarea con tracking activo no aparece en ningun elemento
 	// actualmente renderizado.
-	private activeCardTicks: Array<{ el: HTMLElement; completedMs: number; start: number }> = [];
+	// kind "duration": formatDuration (HH:MM:SS), se redibuja cada tick.
+	// kind "total": formatDurationCompact (Xh Ym) del sumatorio de la
+	// tarjeta — mismo tick de cada segundo, pero solo toca el DOM cuando
+	// el minuto mostrado cambia (lastMinute), ya que el formato compacto
+	// no tiene segundos y redibujar cada segundo seria trabajo de sobra.
+	private activeCardTicks: Array<
+		| { kind: "duration"; el: HTMLElement; completedMs: number; start: number }
+		| { kind: "total"; el: HTMLElement; completedMs: number; start: number; lastMinute: number }
+	> = [];
 	private busUnsubscribe: (() => void) | null = null;
 	// render() es async (resolveTaskIds lee el vault) y puede dispararse
 	// mas de una vez para la misma accion del usuario (p.ej. al guardar
@@ -276,8 +284,23 @@ export class TimeLogView extends ItemView {
 	}
 
 	private tickActiveCard(): void {
-		for (const { el, completedMs, start } of this.activeCardTicks) {
-			el.setText(formatDuration(completedMs + (Date.now() - start)));
+		for (const entry of this.activeCardTicks) {
+			const elapsedMs = entry.completedMs + (Date.now() - entry.start);
+			if (entry.kind === "duration") {
+				entry.el.setText(formatDuration(elapsedMs));
+				continue;
+			}
+			// Por debajo del minuto, formatDurationCompact ya devuelve "Ns"
+			// (mismo criterio que el resto del panel para sesiones cortas):
+			// se redibuja cada tick, igual que el contador "duration" de al
+			// lado, para no dar sensacion de que el sumatorio esta clavado
+			// durante el primer minuto de una sesion activa. A partir del
+			// minuto (formato "Xh Ym"/"Ym"), vuelve a redibujarse solo si
+			// el minuto mostrado cambia.
+			const minute = Math.floor(elapsedMs / 60000);
+			if (minute > 0 && minute === entry.lastMinute) continue;
+			entry.lastMinute = minute;
+			entry.el.setText(formatDurationCompact(elapsedMs));
 		}
 	}
 
@@ -455,7 +478,10 @@ export class TimeLogView extends ItemView {
 		// duration" del formulario de edicion.
 		const totalGroup = meta.createSpan({ cls: "task-time-tracker-totals-duration-group" });
 		setIcon(totalGroup.createSpan({ cls: "task-time-tracker-totals-duration-icon" }), "timer");
-		totalGroup.createSpan({ text: formatDurationCompact(totalMs), cls: "task-time-tracker-totals-duration" });
+		const totalDuration = totalGroup.createSpan({
+			text: formatDurationCompact(totalMs),
+			cls: "task-time-tracker-totals-duration",
+		});
 		meta.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
 
 		if (activeEntry) {
@@ -479,7 +505,18 @@ export class TimeLogView extends ItemView {
 				.filter((entry) => entry.id !== activeEntry.id)
 				.reduce((sum, entry) => sum + ((entry.end as number) - entry.start), 0);
 			stopDuration.setText(formatDuration(completedMs + (Date.now() - activeEntry.start)));
-			this.activeCardTicks.push({ el: stopDuration, completedMs, start: activeEntry.start });
+			this.activeCardTicks.push({ kind: "duration", el: stopDuration, completedMs, start: activeEntry.start });
+			// Sumatorio de la cabecera ("N sessions · Xh Ym"): mismo completedMs/
+			// start que el contador de arriba, pero en formato compacto y sin
+			// redibujar cada segundo (ver tickActiveCard) — bug reportado por el
+			// usuario: antes solo se actualizaba con un refresh externo del panel.
+			this.activeCardTicks.push({
+				kind: "total",
+				el: totalDuration,
+				completedMs,
+				start: activeEntry.start,
+				lastMinute: Math.floor(totalMs / 60000),
+			});
 
 			stopBtn.addEventListener("click", (evt) => {
 				evt.stopPropagation();
@@ -645,7 +682,7 @@ export class TimeLogView extends ItemView {
 		live.createSpan({ cls: "task-time-tracker-inline-dot" });
 		const counter = live.createSpan({ cls: "task-time-tracker-log-session-live-value" });
 		counter.setText(formatDuration(Date.now() - entry.start));
-		this.activeCardTicks.push({ el: counter, completedMs: 0, start: entry.start });
+		this.activeCardTicks.push({ kind: "duration", el: counter, completedMs: 0, start: entry.start });
 	}
 
 	// Abre el formulario de edicion de una sesion (clic en la fila). El
@@ -1198,7 +1235,7 @@ export class TimeLogView extends ItemView {
 		const value = totalGroup.createSpan({ text: formatDuration(totalMs), cls: "task-time-tracker-totals-duration" });
 
 		if (activeEntry) {
-			this.activeCardTicks.push({ el: value, completedMs, start: activeEntry.start });
+			this.activeCardTicks.push({ kind: "duration", el: value, completedMs, start: activeEntry.start });
 		}
 	}
 }
