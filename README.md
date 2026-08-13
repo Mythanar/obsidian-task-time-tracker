@@ -3,10 +3,13 @@
 # Task Time Tracker
 
  <img src="docs/images/ttt-logo-dark.png" width="300" alt="Task Time Tracker logo">
+ 
 
 A local-first Obsidian plugin for **tracking time directly on the checkboxes in your notes** — compatible with the Tasks plugin format, with no external services involved at any point.
 
 **Obsidian has no native way to track time on your work**. Existing plugins mostly focus on Pomodoro-style sessions, or don't integrate with the checkbox-based task format already used across vaults — and none of them combine tracking with exporting your time to the tools you already use.
+
+ <a href="https://community.obsidian.md/plugins/task-time-tracker">➔ Install it from the Obsidian Community Plugins store.</a>
 
 <img src="docs/images/obsidian-dark.png" alt="Task Time Tracker plugin shown in Obsidian, with a note open and the History panel visible" width="100%" style="max-width:800px; margin-bottom:1rem; border-radius:10px;">
 
@@ -45,7 +48,6 @@ To start or stop tracking, switch to Edit mode on the note, or use the **History
 
 The status bar at the bottom of Obsidian always shows the active task (or "No active tracking"). Clicking anywhere on it opens the History panel — this works regardless of the note's mode, and even with no timer running.
 
-<!-- SCREENSHOT: status bar, clickable to open History -->
 <img src="docs/images/status-bar-dark.png" alt="Status bar, clickable to open History" style="border-radius:12px;">
 
 
@@ -59,12 +61,15 @@ Every tracked task gets a short, unique identifier stored inline with the task t
 - In Source mode, the raw identifier is always visible regardless of this setting, so you can always find and inspect it if needed.
 
 **Normal** — shown as Dataview would normally render any inline field.
+
 <img src="docs/images/id-normal-dark.png" alt="Task identifier, Normal visibility mode" style="border-radius:12px;">
 
 **Reduced** *(default)* — same information, styled to blend in and stay out of the way while you read your notes.
+
 <img src="docs/images/id-reduced-dark.png" alt="Task identifier, Reduced visibility mode" style="border-radius:12px;">
 
 **Hidden** — the identifier isn't rendered at all, though it's still there in the note and your Dataview queries on `tt-id` keep working.
+
 <img src="docs/images/id-hidden-dark.png" alt="Task identifier, Hidden visibility mode" style="border-radius:12px;">
 
 ## Features
@@ -77,7 +82,7 @@ Every tracked task gets a short, unique identifier stored inline with the task t
 - **Export on your terms** — generate a generic CSV or one formatted for Toggl's official importer. You choose when to export — never automatic, never in the background.
 - **Zero external API calls** — the plugin never connects to any third-party service, at any point in its operation. Your time data stays in your vault.
 
-<img src="docs/images/history-panel.png" alt="The History panel, showing a couple of expanded task cards" width="100%" style="border-radius:12px;margin:2rem 0;max-width:515px;">
+<img src="docs/images/history-panel.png" alt="The History panel, showing a couple of expanded task cards" width="515" style="border-radius:12px;margin:2rem 0;">
 
 ## Commands
 
@@ -129,6 +134,9 @@ Two export formats are available whenever you need them:
 ## About
 
 Built by [Mythanar](https://mythanar.com). This plugin started as something I needed for myself, built alongside AI, because I couldn't find one that did what I actually wanted. If it works for me, maybe it'll work for someone else too.
+
+<a href='https://ko-fi.com/V1G5250ECI' target='_blank'><img height='36' style='border:0px;height:36px;' src='https://storage.ko-fi.com/cdn/kofi2.png?v=6' border='0' alt='Buy Me a Coffee at ko-fi.com' /></a>
+
 
 ## License
 
