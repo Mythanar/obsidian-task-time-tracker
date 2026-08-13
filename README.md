@@ -8,7 +8,7 @@ A local-first Obsidian plugin for tracking time directly on the checkboxes in yo
 
 Obsidian has no native way to track time on your work. Existing plugins mostly focus on Pomodoro-style sessions, or don't integrate with the checkbox-based task format already used across vaults — and none of them combine tracking with exporting your time to the tools you already use.
 
-> **Status:** not yet published on Obsidian's Community Plugins directory. Install manually or via [BRAT](https://github.com/TfTHacker/obsidian42-brat) for now.
+> **Available on Obsidian's Community Plugins directory**. Search for "Task Time Tracker" inside Obsidian, or use one of the manual options below.
 
 <img src="docs/images/obsidian-dark.png" alt="Task Time Tracker plugin shown in Obsidian, with a note open and the History panel visible" width="700" style="margin-bottom:1rem; border-radius:10px;">
 
@@ -82,12 +82,18 @@ Two export formats are available whenever you need them:
 
 Task Time Tracker is not yet available on Obsidian's Community Plugins directory. Until then:
 
-**Option A — BRAT (recommended)**
+**Option A — Obsidian Community Plugins (recommended)**
+
+1. Open Settings → Community plugins in Obsidian.
+2. Click Browse and search for "Task Time Tracker".
+3. Click Install, then Enable.
+
+**Option B — BRAT** (for beta versions ahead of the official release)
 1. Install the [BRAT](https://github.com/TfTHacker/obsidian42-brat) plugin from Community Plugins.
 2. In BRAT's settings, add this repository: `Mythanar/obsidian-task-time-tracker`.
 3. Enable Task Time Tracker in Community Plugins.
 
-**Option B — Manual**
+**Option C — Manual**
 1. Download `main.js`, `manifest.json`, and `styles.css` from the [latest release](https://github.com/Mythanar/obsidian-task-time-tracker/releases).
 2. Create a folder named `task-time-tracker` inside your vault's `.obsidian/plugins/` directory and place the three files there.
 3. Reload Obsidian and enable the plugin in Community Plugins.
