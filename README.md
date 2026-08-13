@@ -8,7 +8,7 @@ A local-first Obsidian plugin for tracking time directly on the checkboxes in yo
 
 Obsidian has no native way to track time on your work. Existing plugins mostly focus on Pomodoro-style sessions, or don't integrate with the checkbox-based task format already used across vaults — and none of them combine tracking with exporting your time to the tools you already use.
 
-> **Available on Obsidian's Community Plugins directory**. Search for "Task Time Tracker" inside Obsidian, or use one of the manual options below.
+> **Available on Obsidian's Community Plugins directory**. <a href="https://community.obsidian.md/plugins/task-time-tracker">View it on Obsidian Community</a>, or search "Task Time Tracker" inside Obsidian's plugin browser.
 
 <img src="docs/images/obsidian-dark.png" alt="Task Time Tracker plugin shown in Obsidian, with a note open and the History panel visible" width="700" style="margin-bottom:1rem; border-radius:10px;">
 
