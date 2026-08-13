@@ -4,15 +4,22 @@
 
  <img src="docs/images/ttt-logo-dark.png" width="300" alt="Task Time Tracker logo">
 
-A local-first Obsidian plugin for tracking time directly on the checkboxes in your notes — compatible with the Tasks plugin format, with no external services involved at any point.
+A local-first Obsidian plugin for **tracking time directly on the checkboxes in your notes** — compatible with the Tasks plugin format, with no external services involved at any point.
 
-Obsidian has no native way to track time on your work. Existing plugins mostly focus on Pomodoro-style sessions, or don't integrate with the checkbox-based task format already used across vaults — and none of them combine tracking with exporting your time to the tools you already use.
+**Obsidian has no native way to track time on your work**. Existing plugins mostly focus on Pomodoro-style sessions, or don't integrate with the checkbox-based task format already used across vaults — and none of them combine tracking with exporting your time to the tools you already use.
 
-> **Available on Obsidian's Community Plugins directory**. <a href="https://community.obsidian.md/plugins/task-time-tracker">View it on Obsidian Community</a>, or search "Task Time Tracker" inside Obsidian's plugin browser.
+<img src="docs/images/obsidian-dark.png" alt="Task Time Tracker plugin shown in Obsidian, with a note open and the History panel visible" width="100%" style="max-width:800px; margin-bottom:1rem; border-radius:10px;">
 
-<img src="docs/images/obsidian-dark.png" alt="Task Time Tracker plugin shown in Obsidian, with a note open and the History panel visible" width="700" style="margin-bottom:1rem; border-radius:10px;">
+## Contents
 
-
+- [How it works](#how-it-works)
+- [Features](#features)
+- [Commands](#commands)
+- [Privacy & architecture](#privacy--architecture)
+- [Export](#export)
+- [Installation](#installation)
+- [About](#about)
+- [License](#license)
 
 ## How it works
 
@@ -23,7 +30,7 @@ Obsidian has no native way to track time on your work. Existing plugins mostly f
 5. **Check off the task — and tracking wraps up on its own**. Marking a task done (or cancelled) stops any active tracking automatically and saves the session, no extra step needed. Reopen the task later and you can pick up tracking again.
 6. **Review your history** — sessions grouped by task, with day and week navigation.
 
-<img src="docs/images/badges-demo.gif" alt="Animated demo of the task badge states — play, active tracking, and completed" width="450" style="border-radius:12px; margin:2rem;">
+<img src="docs/images/badges-demo.gif" alt="Animated demo of the task badge states — play, active tracking, and completed" width="450" style="border-radius:12px; margin:2rem 0;">
 
 ### Where you can interact with the tracker
 
@@ -36,6 +43,12 @@ They won't appear in any read-only rendering of the task, even though the task a
 
 To start or stop tracking, switch to Edit mode on the note, or use the **History panel** — which works everywhere, regardless of how the task is normally displayed.
 
+The status bar at the bottom of Obsidian always shows the active task (or "No active tracking"). Clicking anywhere on it opens the History panel — this works regardless of the note's mode, and even with no timer running.
+
+<!-- SCREENSHOT: status bar, clickable to open History -->
+<img src="docs/images/status-bar-dark.png" alt="Status bar, clickable to open History" style="border-radius:12px;">
+
+
 ### The task identifier
 
 Every tracked task gets a short, unique identifier stored inline with the task text (`[tt-id:: ...]`), so your history stays linked to the right task even if you edit or move it. Keeping your notes uncluttered matters to us, so this identifier is **subtle by default** — and you're never stuck with how it looks out of the box:
@@ -44,6 +57,15 @@ Every tracked task gets a short, unique identifier stored inline with the task t
 - This styling requires the [Dataview](https://github.com/blacksmithgu/obsidian-dataview) plugin — Dataview is what renders the identifier at all, so it's also what makes it queryable (e.g. `WHERE tt-id = "..."`) and stylable. **Dataview is entirely optional**: tracking, history, and export all work exactly the same without it.
 - Without Dataview installed, the identifier is shown as plain text (e.g. `[tt-id:: a3f9k2mp]`) — this is a known limitation of relying on Dataview for the styling, not a bug.
 - In Source mode, the raw identifier is always visible regardless of this setting, so you can always find and inspect it if needed.
+
+**Normal** — shown as Dataview would normally render any inline field.
+<img src="docs/images/id-normal-dark.png" alt="Task identifier, Normal visibility mode" style="border-radius:12px;">
+
+**Reduced** *(default)* — same information, styled to blend in and stay out of the way while you read your notes.
+<img src="docs/images/id-reduced-dark.png" alt="Task identifier, Reduced visibility mode" style="border-radius:12px;">
+
+**Hidden** — the identifier isn't rendered at all, though it's still there in the note and your Dataview queries on `tt-id` keep working.
+<img src="docs/images/id-hidden-dark.png" alt="Task identifier, Hidden visibility mode" style="border-radius:12px;">
 
 ## Features
 
@@ -55,8 +77,16 @@ Every tracked task gets a short, unique identifier stored inline with the task t
 - **Export on your terms** — generate a generic CSV or one formatted for Toggl's official importer. You choose when to export — never automatic, never in the background.
 - **Zero external API calls** — the plugin never connects to any third-party service, at any point in its operation. Your time data stays in your vault.
 
-<img src="docs/images/history-panel.png" alt="The History panel, showing a couple of expanded task cards" style="border-radius:12px;margin:2rem;">
+<img src="docs/images/history-panel.png" alt="The History panel, showing a couple of expanded task cards" width="100%" style="border-radius:12px;margin:2rem 0;max-width:515px;">
 
+## Commands
+
+All actions are also available from Obsidian's Command Palette (`Cmd/Ctrl + P`), so you're never dependent on hovering over a checkbox or finding the status bar:
+
+- **Time Tracker: Start tracking on current task** — starts tracking the task under your cursor.
+- **Time Tracker: Stop active tracking** — stops whatever timer is currently running.
+- **Time Tracker: Open time log panel** — opens the History panel.
+- **Time Tracker: Export time entries...** — opens the export dialog to generate a CSV (generic or Toggl-formatted) for a chosen date range.
 
 ## Privacy & architecture
 
@@ -75,12 +105,10 @@ Two export formats are available whenever you need them:
 
 *More export formats (Clockify, Harvest, and others) are planned.*
 
-<a href="https://toggl.com/" target="_blank"><img src="docs/images/toggl-track-logo-crop.png" alt="Toggl logo" width="230"></a>
+<a href="https://toggl.com/" target="_blank"><img src="docs/images/toggl-track-logo-crop.png" alt="Toggl logo" width="120"></a>
 
 
 ## Installation
-
-Task Time Tracker is not yet available on Obsidian's Community Plugins directory. Until then:
 
 **Option A — Obsidian Community Plugins (recommended)**
 
