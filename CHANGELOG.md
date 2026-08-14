@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - History panel: the "N sessions · total" summary on an actively-tracked task's card now updates live instead of only on the next external refresh (opening/closing the panel, editing a session, stopping tracking, etc.). Below one minute it ticks every second (e.g. "3s", "9s"), same pace as the card's stop-button counter; from one minute onward it switches to the compact "Xh Ym" format, redrawing only when the displayed minute changes.
+- History panel: editing a session, or confirming its deletion, no longer shows a stray warning-colored border around the form — leftover debug styling from an earlier change.
 
 ## [0.0.26] - 2026-08-13
 
