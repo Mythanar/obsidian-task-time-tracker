@@ -17,6 +17,7 @@ import { t } from "../i18n";
 import { DeleteTaskResult, EntryUpdateResult, Project, TimeEntry } from "../types";
 import { EditTaskModal } from "./EditTaskModal";
 import { InlineTrackingBus } from "./InlineTrackingBus";
+import { openProjectPickerPopover } from "./ProjectPickerList";
 import { renderSessionInfo } from "./sessionEdit";
 
 export const TIME_LOG_VIEW_TYPE = "task-time-tracker-log-view";
@@ -91,6 +92,11 @@ export class TimeLogView extends ItemView {
 	// no hay memoria de la ultima fecha/modo vistos en una apertura anterior.
 	private viewMode: LogViewMode = "day";
 	private anchorDate: number = startOfDay(Date.now());
+	// Filtro por proyecto del header (ver renderProjectFilter()): en
+	// memoria del componente, nunca persistido en data.json — cada
+	// apertura del panel arranca sin filtro, igual que arranca siempre en
+	// "hoy"/vista diaria (ver comentario de viewMode arriba).
+	private projectFilterId: string | null = null;
 	// Elementos con contador en vivo de la tarea activa (si esta en el
 	// rango de fecha visible tras el ultimo render()): se recalculan cada
 	// segundo via el bus, sin reconstruir el panel entero. Puede haber mas
@@ -740,6 +746,8 @@ export class TimeLogView extends ItemView {
 			void this.render();
 		});
 
+		this.renderProjectFilter(nav);
+
 		const range = nav.createDiv({ cls: "task-time-tracker-log-datenav-range" });
 		const prevBtn = range.createEl("button", { cls: "clickable-icon" });
 		setIcon(prevBtn, "chevron-left");
@@ -769,6 +777,71 @@ export class TimeLogView extends ItemView {
 			// modo activo.
 			this.viewMode = "day";
 			this.anchorDate = startOfDay(Date.now());
+			void this.render();
+		});
+	}
+
+	// Boton de filtro por proyecto, junto al toggle Dia/Semana: icono
+	// "filter" + "Filtrar" en reposo; nombre del proyecto seleccionado +
+	// fondo tintado (no el fill solido del toggle activo) en estado
+	// activo. El icono "x" para quitar el filtro es un boton independiente
+	// (hit-area propia), solo presente en estado activo — separado a
+	// proposito del boton principal, que solo abre/cierra el popover.
+	private renderProjectFilter(nav: HTMLElement): void {
+		const wrap = nav.createDiv({ cls: "task-time-tracker-log-filter" });
+		const activeProject = this.projectFilterId
+			? (this.actions.getProjects().find((p) => p.id === this.projectFilterId) ?? null)
+			: null;
+
+		const filterBtn = wrap.createEl("button", { cls: "task-time-tracker-log-filter-btn" });
+		filterBtn.toggleClass("is-active", activeProject !== null);
+		setIcon(filterBtn.createSpan(), "filter");
+		filterBtn.createSpan({
+			text: activeProject ? activeProject.name : t("log.filterButton"),
+			cls: "task-time-tracker-log-filter-btn-label",
+		});
+		filterBtn.addEventListener("click", () => {
+			openProjectPickerPopover({
+				anchorEl: filterBtn,
+				projects: this.actions.getProjects(),
+				selectedId: this.projectFilterId,
+				showClearOption: false,
+				onSelect: (projectId) => {
+					this.projectFilterId = projectId;
+					void this.render();
+				},
+			});
+		});
+
+		if (activeProject) {
+			const clearBtn = wrap.createEl("button", {
+				cls: "task-time-tracker-log-filter-clear task-time-tracker-icon-btn clickable-icon",
+			});
+			setIcon(clearBtn, "x");
+			clearBtn.setAttribute("aria-label", t("log.filterClearAriaLabel"));
+			setTooltip(clearBtn, t("log.filterClearAriaLabel"));
+			clearBtn.addEventListener("click", (evt) => {
+				evt.stopPropagation();
+				this.projectFilterId = null;
+				void this.render();
+			});
+		}
+	}
+
+	// Sustituye al estado vacio normal de dia/semana solo cuando hay un
+	// filtro de proyecto activo y el rango visible completo (el dia, o
+	// los 7 dias de la semana) no tiene ninguna sesion de ese proyecto —
+	// un dia suelto vacio dentro de una semana con resultados en otros
+	// dias sigue mostrando el "No sessions this day" normal (ver render()).
+	private renderFilteredEmptyState(container: Element): void {
+		const projectName = this.actions.getProjects().find((p) => p.id === this.projectFilterId)?.name ?? "";
+		const key = this.viewMode === "day" ? "log.filterEmptyDay" : "log.filterEmptyWeek";
+
+		const wrap = container.createDiv({ cls: "task-time-tracker-log-filter-empty" });
+		wrap.createEl("p", { text: t(key, { project: projectName }), cls: "task-time-tracker-log-empty-day" });
+		const clearBtn = wrap.createEl("button", { text: t("log.filterRemoveButton") });
+		clearBtn.addEventListener("click", () => {
+			this.projectFilterId = null;
 			void this.render();
 		});
 	}
@@ -853,19 +926,34 @@ export class TimeLogView extends ItemView {
 			return;
 		}
 
+		// Filtro por proyecto (ver renderProjectFilter()): acota TODO el
+		// listado visible (total de la cabecera, navegacion incluida) a las
+		// entries de tareas asignadas a ese proyecto — allEntries (sin
+		// filtrar) se conserva arriba solo para decidir el estado vacio
+		// global del plugin ("No sessions recorded yet"), que no tiene
+		// relacion con el filtro.
+		const visibleEntries = this.projectFilterId
+			? allEntries.filter((entry) => this.actions.getProjectForTask(entry.taskId)?.id === this.projectFilterId)
+			: allEntries;
+
 		const titleRow = container.createDiv({ cls: "task-time-tracker-log-title-row" });
 		titleRow.createEl("h4", { text: t("log.title") });
-		this.renderViewTotal(titleRow, allEntries);
+		this.renderViewTotal(titleRow, visibleEntries);
 
 		this.renderDateNav(container);
 
-		if (this.viewMode === "day") {
-			await this.renderDaySection(container, startOfDay(this.anchorDate), allEntries, false, token);
+		const rangeStart = this.viewMode === "day" ? startOfDay(this.anchorDate) : startOfWeek(this.anchorDate);
+		const rangeEnd = this.viewMode === "day" ? addDays(rangeStart, 1) : addDays(rangeStart, 7);
+		const rangeHasEntries = visibleEntries.some((entry) => entry.start >= rangeStart && entry.start < rangeEnd);
+
+		if (this.projectFilterId && !rangeHasEntries) {
+			this.renderFilteredEmptyState(container);
+		} else if (this.viewMode === "day") {
+			await this.renderDaySection(container, rangeStart, visibleEntries, false, token);
 		} else {
-			const weekStart = startOfWeek(this.anchorDate);
 			for (let i = 0; i < 7; i++) {
 				if (token !== this.renderToken) return;
-				await this.renderDaySection(container, addDays(weekStart, i), allEntries, true, token);
+				await this.renderDaySection(container, addDays(rangeStart, i), visibleEntries, true, token);
 			}
 		}
 	}

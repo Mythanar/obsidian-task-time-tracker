@@ -128,6 +128,13 @@ export const en = {
 	"log.editModalProjectUpdated": "Project updated",
 	"log.editModalSessionsHeading": "Sessions",
 	"log.close": "Close",
+	"log.projectPicker.searchPlaceholder": "Search project or client",
+	"log.projectPicker.noMatches": 'No matches for "{query}"',
+	"log.filterButton": "Filter",
+	"log.filterClearAriaLabel": "Clear filter",
+	"log.filterRemoveButton": "Remove filter",
+	"log.filterEmptyDay": "No tasks for {project} today",
+	"log.filterEmptyWeek": "No tasks for {project} this week",
 
 	// 8. Notices adicionales (src/main.ts, src/ui/TimeLogView.ts)
 	"notice.noActiveSession": "No active tracking session.",

@@ -11,6 +11,7 @@ import { App, Modal, Setting, setIcon } from "obsidian";
 import { formatDuration, formatDurationCompact } from "../core/TrackingEngine";
 import { t } from "../i18n";
 import { EntryUpdateResult, Project, TimeEntry } from "../types";
+import { openProjectPickerPopover } from "./ProjectPickerList";
 import {
 	EditDraft,
 	effectiveRange,
@@ -107,26 +108,44 @@ export class EditTaskModal extends Modal {
 		// de raiz, sin necesidad de parchear un margin-top a mano.
 		this.setTitle(this.label);
 
-		// Alineado a la izquierda (label + dropdown juntos, no el dropdown
-		// empujado al extremo derecho del modal como en un Setting normal —
-		// ver .task-time-tracker-edit-modal-project-setting en styles.css).
-		const projectSetting = new Setting(contentEl)
-			.setName(t("log.editModalProjectLabel"))
-			.addDropdown((dropdown) => {
-				dropdown.addOption("", t("log.editModalNoProject"));
-				for (const project of this.projects) {
-					dropdown.addOption(project.id, project.client ? `${project.name} — ${project.client}` : project.name);
-				}
-				dropdown.setValue(this.currentProjectId);
-				dropdown.onChange((value) => {
-					this.currentProjectId = value;
-					void this.actions.assignProject(this.taskId, value || null).then(() => {
+		// Boton + popover (componente compartido "Project picker list", ver
+		// ProjectPickerList.ts) en vez del <select> nativo anterior: label y
+		// boton juntos, alineados a la izquierda.
+		const projectRow = contentEl.createDiv({ cls: "task-time-tracker-edit-modal-project-row" });
+		projectRow.createSpan({ text: t("log.editModalProjectLabel"), cls: "task-time-tracker-edit-modal-project-label" });
+		const projectBtn = projectRow.createEl("button", {
+			cls: "task-time-tracker-log-filter-btn task-time-tracker-edit-modal-project-btn",
+		});
+		setIcon(projectBtn.createSpan(), "briefcase");
+		const projectBtnLabel = projectBtn.createSpan({ cls: "task-time-tracker-log-filter-btn-label" });
+		this.updateProjectBtnLabel(projectBtnLabel);
+		projectBtn.addEventListener("click", () => {
+			// Guard permanente mientras el popover este abierto (no solo los
+			// 300ms del detector automatico de arriba): el popover vive fuera
+			// de modalEl (appendeado a document.body para poder posicionarse
+			// con position: fixed), asi que buscar o clicar una fila dentro
+			// de el se veria como un click "fuera del modal" y lo cerraria —
+			// mismo problema que el <select> nativo que este boton reemplaza
+			// (ver el comentario junto a outsideMousedownGuardUntil arriba).
+			this.outsideMousedownGuardUntil = Number.MAX_SAFE_INTEGER;
+			openProjectPickerPopover({
+				anchorEl: projectBtn,
+				projects: this.projects,
+				selectedId: this.currentProjectId || null,
+				showClearOption: true,
+				onSelect: (projectId) => {
+					this.currentProjectId = projectId ?? "";
+					this.updateProjectBtnLabel(projectBtnLabel);
+					void this.actions.assignProject(this.taskId, projectId).then(() => {
 						this.onChange();
 						this.showProjectFeedback();
 					});
-				});
+				},
+				onClose: () => {
+					this.outsideMousedownGuardUntil = 0;
+				},
 			});
-		projectSetting.settingEl.addClass("task-time-tracker-edit-modal-project-setting");
+		});
 
 		// Espacio reservado (una linea, ver styles.css min-height) desde el
 		// primer render, vacio por defecto — evita que el aviso "Project
@@ -183,6 +202,11 @@ export class EditTaskModal extends Modal {
 			// presente (accesibilidad) mas alla de lo necesario.
 			window.setTimeout(() => el.setText(""), 300);
 		}, 3000);
+	}
+
+	private updateProjectBtnLabel(el: HTMLElement): void {
+		const project = this.projects.find((p) => p.id === this.currentProjectId);
+		el.setText(project ? project.name : t("log.editModalNoProject"));
 	}
 
 	private renderSummary(): void {

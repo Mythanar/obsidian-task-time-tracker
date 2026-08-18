@@ -129,6 +129,13 @@ export const es: Record<TranslationKey, string> = {
 	"log.editModalProjectUpdated": "Proyecto actualizado",
 	"log.editModalSessionsHeading": "Sesiones",
 	"log.close": "Cerrar",
+	"log.projectPicker.searchPlaceholder": "Buscar proyecto o cliente",
+	"log.projectPicker.noMatches": "Sin coincidencias para «{query}»",
+	"log.filterButton": "Filtrar",
+	"log.filterClearAriaLabel": "Quitar filtro",
+	"log.filterRemoveButton": "Quitar filtro",
+	"log.filterEmptyDay": "Sin tareas para {project} hoy",
+	"log.filterEmptyWeek": "Sin tareas para {project} esta semana",
 
 	// 8. Notices adicionales (src/main.ts, src/ui/TimeLogView.ts)
 	"notice.noActiveSession": "No hay ninguna sesión de tracking activa.",

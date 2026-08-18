@@ -848,22 +848,22 @@
 	gap: 0.35em;
 	flex: 1 1 auto;
 	white-space: nowrap;
-	/* Orden 3 (despues del toggle y de Hoy) en ventanas estrechas: al ser
-	   el unico elemento de su propia linea, flex: 1 1 auto lo hace ocupar
-	   todo el ancho de esa linea y justify-content: center centra su
-	   contenido ahi, igual que en ventanas anchas.
+	/* Orden 4 (despues del toggle, el filtro y de Hoy) en ventanas
+	   estrechas: al ser el unico elemento de su propia linea, flex: 1 1
+	   auto lo hace ocupar todo el ancho de esa linea y justify-content:
+	   center centra su contenido ahi, igual que en ventanas anchas.
 	   flex-basis: 100% (en vez del "auto" implicito en flex: 1 1 auto) lo
 	   fuerza a ocupar su propia linea completa SIEMPRE por debajo del
 	   punto de corte de la @container query, sin importar si el rango
-	   (toggle + Hoy + fecha) cabria por accidente en una sola linea a un
-	   ancho menor: sin esto, entre el ancho donde el contenido empieza a
-	   caber de casualidad y el ancho fijado en la query, Hoy aparecia
-	   pegado junto al toggle (orden de DOM) en vez de al extremo derecho
-	   — una sola linea, pero en el orden equivocado. La query de mas
-	   abajo lo devuelve a flex-basis auto para que si pueda compartir
-	   linea con toggle y Hoy en ventanas anchas. */
+	   (toggle + filtro + Hoy + fecha) cabria por accidente en una sola
+	   linea a un ancho menor: sin esto, entre el ancho donde el contenido
+	   empieza a caber de casualidad y el ancho fijado en la query, Hoy
+	   aparecia pegado junto al toggle (orden de DOM) en vez de al extremo
+	   derecho — una sola linea, pero en el orden equivocado. La query de
+	   mas abajo lo devuelve a flex-basis auto para que si pueda compartir
+	   linea con toggle, filtro y Hoy en ventanas anchas. */
 	flex-basis: 100%;
-	order: 3;
+	order: 4;
 }
 
 /* min-width igual para el rango de dia ("Mie, 12 ago 2026") y el de
@@ -881,23 +881,38 @@
 
 .task-time-tracker-log-datenav-today {
 	flex-shrink: 0;
+	order: 3;
+}
+
+/* Filtro por proyecto (ver TimeLogView.ts#renderProjectFilter): agrupado
+   junto al toggle Dia/Semana, igual criterio de orden que el resto de
+   este bloque — order: 1 lo situa justo despues del toggle (order: 0
+   normalmente pero 1 aqui en ventana estrecha, ver mas abajo) y antes de
+   Hoy en el reagrupado de ventana estrecha. */
+.task-time-tracker-log-filter {
+	display: flex;
+	align-items: center;
+	gap: 0.15em;
+	flex-shrink: 0;
 	order: 2;
 }
 
-/* A partir de este ancho de panel, toggle + rango + boton Hoy caben
-   comodos en una sola linea: se restaura el orden natural del DOM
-   (toggle, rango en medio, Hoy) en vez del reagrupado de mas arriba.
-   420px se quedaba corto una vez el rango reservo min-width: 21ch (mas
-   ancho que el texto real de la vista de dia): el orden se reseteaba
-   antes de que el contenido cupiera de verdad, y el resultado era
-   toggle+rango compartiendo la primera linea con Hoy solo en la
-   segunda — la mala agrupacion que este ajuste corrige. 480px deja
-   margen de sobra sobre el ancho real medido (toggle + rango con
-   min-width + Hoy + gaps), para no volver a quedarse corto si el tema/
-   idioma del usuario usa botones o iconos ligeramente mas anchos que
-   los de esta medicion. */
-@container (min-width: 480px) {
+/* A partir de este ancho de panel, toggle + filtro + rango + boton Hoy
+   caben comodos en una sola linea: se restaura el orden natural del DOM
+   (toggle, filtro, rango en medio, Hoy) en vez del reagrupado de mas
+   arriba. 420px se quedaba corto una vez el rango reservo min-width: 21ch
+   (mas ancho que el texto real de la vista de dia): el orden se
+   reseteaba antes de que el contenido cupiera de verdad, y el resultado
+   era toggle+rango compartiendo la primera linea con Hoy solo en la
+   segunda — la mala agrupacion que este ajuste corrige. 480px dejaba
+   margen de sobra sobre el ancho real medido con solo 3 bloques (toggle +
+   rango con min-width + Hoy + gaps); 560px cubre el mismo margen ahora
+   que el boton de filtro se suma a ese grupo, para no volver a quedarse
+   corto si el tema/idioma del usuario usa botones o iconos ligeramente
+   mas anchos que los de esta medicion. */
+@container (min-width: 560px) {
 	.task-time-tracker-log-datenav-mode,
+	.task-time-tracker-log-filter,
 	.task-time-tracker-log-datenav-range,
 	.task-time-tracker-log-datenav-today {
 		order: 0;
@@ -906,6 +921,77 @@
 	.task-time-tracker-log-datenav-range {
 		flex-basis: auto;
 	}
+}
+
+/* Boton de filtro por proyecto (ver TimeLogView.ts#renderProjectFilter) y
+   el boton "Proyecto" del modal de Editar (ver
+   .task-time-tracker-edit-modal-project-btn mas abajo) comparten esta
+   misma clase base: icono + texto, estilo de boton nativo de Obsidian por
+   defecto (sin fondo/borde propios en reposo). max-width + ellipsis: el
+   nombre de un proyecto largo no debe romper el layout de la barra de
+   navegacion ni del modal. */
+.task-time-tracker-log-filter-btn {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35em;
+	cursor: pointer;
+	max-width: 12em;
+}
+
+.task-time-tracker-log-filter-btn svg {
+	flex-shrink: 0;
+}
+
+.task-time-tracker-log-filter-btn-label {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Estado activo: fondo tintado sutil de --interactive-accent a baja
+   opacidad + texto en --text-accent — a proposito distinto del fill
+   solido que usa el toggle Dia/Semana activo
+   (.task-time-tracker-log-datenav-mode-btn.is-active), para no competir
+   visualmente con el en la misma barra. */
+.task-time-tracker-log-filter-btn.is-active {
+	background-color: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+	border-color: color-mix(in srgb, var(--interactive-accent) 40%, transparent);
+	color: var(--text-accent);
+}
+
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+	.task-time-tracker-log-filter-btn.is-active {
+		background-color: var(--background-modifier-hover);
+		color: var(--text-accent);
+	}
+}
+
+/* Icono "x" para quitar el filtro: boton independiente del principal
+   (hit-area propia), mismo patron que el resto de botones-icono solo-
+   icono del panel (menu kebab, nota). */
+.task-time-tracker-log-filter-clear {
+	flex-shrink: 0;
+	color: var(--text-muted);
+}
+
+.task-time-tracker-log-filter-clear:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+	border-radius: 50%;
+}
+
+/* Estado "sin resultados" del rango visible completo con un filtro de
+   proyecto activo (ver TimeLogView.ts#renderFilteredEmptyState) —
+   sustituye a .task-time-tracker-log-empty-day normal solo en ese caso.
+   Boton "Quitar filtro" sin mod-cta/mod-warning (estilo neutro tipo
+   "ghost"): es una salida secundaria, no la accion principal de la
+   vista. */
+.task-time-tracker-log-filter-empty {
+	margin-bottom: 1em;
+}
+
+.task-time-tracker-log-filter-empty p {
+	margin: 0 0 0.5em;
 }
 
 /* Titulo de cada dia dentro de la vista semanal (7 secciones). */
@@ -1495,34 +1581,26 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	margin: 0;
 }
 
-/* Selector de Proyecto/Cliente del modal de Editar: a diferencia de un
-   Setting normal (info a la izquierda, control empujado al extremo
-   derecho via justify-content: space-between), aqui la etiqueta y el
-   dropdown van juntos, alineados a la izquierda — pedido explicito de QA.
-   Sin cambio de comportamiento, solo layout. !important: el estilo base
-   de Obsidian para .setting-item puede ganar por especificidad de
-   selector (p.ej. ".modal .setting-item") a un selector de una sola clase
-   como este — sin !important, la alineacion no se aplicaba de forma
-   fiable (regresion detectada en la ronda 2 de QA). El dropdown tambien
-   se fuerza a su ancho de contenido: sin esto seguia estirandose a todo
-   el ancho disponible aunque el layout ya empezara desde la izquierda. */
-.task-time-tracker-edit-modal-project-setting {
-	justify-content: flex-start !important;
+/* Selector de Proyecto del modal de Editar: boton + popover (componente
+   compartido "Project picker list", ver ProjectPickerList.ts) en vez del
+   <select> nativo anterior — etiqueta y boton juntos, alineados a la
+   izquierda, mismo pedido de QA que ya regia para el <select>. */
+.task-time-tracker-edit-modal-project-row {
+	display: flex;
 	align-items: center;
 	gap: 0.75em;
+	margin: 0.75em 0;
 }
 
-.task-time-tracker-edit-modal-project-setting .setting-item-info {
-	flex: 0 0 auto;
+.task-time-tracker-edit-modal-project-label {
+	color: var(--text-muted);
 }
 
-.task-time-tracker-edit-modal-project-setting .setting-item-control {
-	margin-left: 0 !important;
-	flex: 0 0 auto;
-}
-
-.task-time-tracker-edit-modal-project-setting .setting-item-control select {
-	width: auto !important;
+/* El modal tiene mas ancho disponible que la barra de navegacion del
+   header — permite un nombre de proyecto algo mas largo antes de
+   truncar (ver max-width en .task-time-tracker-log-filter-btn). */
+.task-time-tracker-edit-modal-project-btn {
+	max-width: 20em;
 }
 
 /* Espacio reservado para el feedback inline tras reasignar proyecto (QA
@@ -1551,4 +1629,153 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
    sin duplicar CSS. */
 .task-time-tracker-edit-modal-summary {
 	flex-shrink: 0;
+}
+
+/* "Project picker list" — componente compartido (ver ProjectPickerList.ts),
+   usado por el filtro del header del Historial y por el selector de
+   Proyecto del modal de Editar. Vive siempre dentro del popover flotante
+   de abajo. */
+.task-time-tracker-project-picker-popover {
+	position: fixed;
+	display: flex;
+	flex-direction: column;
+	/* var(--layer-menu): capa estandar de Obsidian para elementos
+	   flotantes tipo menu, por encima de var(--layer-modal) — el popover
+	   debe verse por encima del modal de Editar cuando se abre desde ahi,
+	   no solo del panel del Historial. El fallback numerico (70) cubre el
+	   caso, poco probable, de que la variable no este definida. */
+	z-index: var(--layer-menu, 70);
+	background-color: var(--background-primary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	box-shadow: var(--shadow-s);
+	padding: 0.5em;
+}
+
+.task-time-tracker-project-picker-search {
+	width: 100%;
+	font-size: 0.9em;
+	padding: 7px 10px;
+	margin-bottom: 0.35em;
+	background-color: var(--background-modifier-form-field);
+	border: 1px solid var(--background-modifier-border-hover);
+	border-radius: var(--radius-s);
+	flex-shrink: 0;
+}
+
+.task-time-tracker-project-picker-search:focus {
+	outline: none;
+	border-color: var(--interactive-accent);
+}
+
+.task-time-tracker-project-picker-list {
+	overflow-y: auto;
+	max-height: 320px;
+}
+
+/* Fila plana: check (columna de ancho fijo) + nombre/cliente en dos
+   lineas (ver renderRow() en ProjectPickerList.ts). El alto de fila es
+   variable: mas baja sin cliente (una sola linea), mas alta con cliente
+   (dos) — align-items: center centra el check contra el alto real de
+   cada fila. */
+.task-time-tracker-project-picker-row {
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+	padding: 0.45em 0.35em;
+	border-radius: var(--radius-s);
+	cursor: pointer;
+}
+
+.task-time-tracker-project-picker-row:hover,
+.task-time-tracker-project-picker-row:focus-visible {
+	background-color: var(--background-modifier-hover);
+}
+
+.task-time-tracker-project-picker-check {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 1.1em;
+	color: var(--interactive-accent);
+}
+
+.task-time-tracker-project-picker-check svg {
+	width: 0.9em;
+	height: 0.9em;
+}
+
+/* Dos lineas — nombre arriba, cliente debajo (si lo hay): revertido tras
+   QA con datos reales (agosto 2026), ver comentario en renderRow() en
+   ProjectPickerList.ts. flex-direction: column + min-width: 0 en el
+   contenedor deja que CADA linea trunque de forma independiente con su
+   propio ellipsis (min-width: 0 en cada hijo, no solo en el padre) — un
+   cliente muy largo ya no puede hacer desaparecer el nombre del proyecto
+   ni al reves. */
+.task-time-tracker-project-picker-label {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	flex: 1 1 auto;
+	gap: 0.1em;
+}
+
+.task-time-tracker-project-picker-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-normal);
+}
+
+.task-time-tracker-project-picker-client {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-muted);
+	font-size: 0.85em;
+}
+
+/* Fila fija "Sin proyecto" (solo si showClearOption): cursiva + muted
+   para diferenciarla de una fila de proyecto real, con un separador
+   propio antes del resto de la lista alfabetica. */
+.task-time-tracker-project-picker-row-clear {
+	font-style: italic;
+	color: var(--text-muted);
+	border-bottom: 1px solid var(--background-modifier-border);
+	border-radius: 0;
+	margin-bottom: 0.2em;
+	padding-bottom: 0.6em;
+}
+
+/* .name fija su propio color (var(--text-normal), ver arriba) para la
+   fila de proyecto normal — aqui se restaura la herencia del muted de
+   .row-clear, que nunca tiene cliente y depende de heredar su color. */
+.task-time-tracker-project-picker-row-clear .task-time-tracker-project-picker-name {
+	color: inherit;
+}
+
+.task-time-tracker-project-picker-empty {
+	padding: 0.75em 0.35em;
+	color: var(--text-muted);
+	font-size: 0.9em;
+}
+
+/* Skeleton de carga: mismo alto/padding que una fila real, sin texto ni
+   icono — solo un bloque atenuado a modo de placeholder. */
+.task-time-tracker-project-picker-skeleton {
+	cursor: default;
+	height: 1.5em;
+}
+
+.task-time-tracker-project-picker-skeleton::before {
+	content: "";
+	display: block;
+	width: 60%;
+	height: 0.9em;
+	border-radius: var(--radius-s);
+	background-color: var(--background-modifier-border);
+	opacity: 0.6;
 }
