@@ -1370,6 +1370,55 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	color: var(--text-error);
 }
 
+/* Edicion inline por campo (Settings > Projects & clients). El nombre y
+   el cliente son clicables para entrar en modo edicion — mismo affordance
+   en desktop (hover) y mobile (tap, ver ProjectsSection.ts que no
+   depende de :hover para funcionar). */
+.task-time-tracker-projects-row-editable {
+	cursor: pointer;
+	border-radius: var(--radius-s);
+	padding: 0.1em 0.3em;
+	margin: -0.1em -0.3em;
+}
+
+.task-time-tracker-projects-row-editable:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+/* Marcador visual de "sin cliente todavia": mismo texto que el
+   placeholder del formulario de alta, en cursiva y mas tenue que un
+   cliente real para no confundirse con un valor guardado. */
+.task-time-tracker-projects-row-client-empty {
+	font-style: italic;
+	opacity: 0.7;
+}
+
+.task-time-tracker-projects-row-save {
+	flex-shrink: 0;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.task-time-tracker-projects-row-save:hover {
+	color: var(--text-success, var(--text-accent));
+}
+
+/* Input de edicion inline: mismo campo que el resto del plugin
+   (.task-time-tracker-log-edit-input), pero a ancho completo de su
+   celda en vez del ancho fijo por defecto de un <input>. */
+.task-time-tracker-projects-row-edit-field {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.task-time-tracker-projects-row-edit-field input {
+	width: 100%;
+}
+
+.task-time-tracker-projects-row-edit-field .task-time-tracker-log-edit-error {
+	margin: 0.3em 0 0;
+}
+
 /* Bug QA ronda 4 (mobile) — el titleEl nativo de Obsidian (this.setTitle(),
    ver EditTaskModal.ts#onOpen) trae por defecto un truncado con ellipsis
    pensado para titulos cortos de un modal generico, no para el nombre de

@@ -71,6 +71,7 @@ export const es: Record<TranslationKey, string> = {
 	"settings.projects.countSingular": "proyecto guardado",
 	"settings.projects.countPlural": "proyectos guardados",
 	"settings.projects.deleteAriaLabel": "Eliminar proyecto",
+	"settings.projects.saveAriaLabel": "Guardar proyecto",
 	"settings.projects.deleteConfirmSingular": "{count} tarea está usando este proyecto. ¿Eliminar de todas formas?",
 	"settings.projects.deleteConfirmPlural": "{count} tareas están usando este proyecto. ¿Eliminar de todas formas?",
 	"settings.toggl.heading": "Toggl",

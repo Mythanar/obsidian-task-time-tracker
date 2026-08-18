@@ -28,8 +28,10 @@ export class ProjectManager {
 	// La identidad unica de un proyecto es la pareja (name, client) exacta;
 	// "sin cliente" cuenta como su propio valor, distinto de cualquier
 	// client real (ver types.ts#Project).
-	private exists(name: string, client: string | undefined): boolean {
-		return this.state.projects.some((p) => p.name === name && (p.client ?? "") === (client ?? ""));
+	private exists(name: string, client: string | undefined, excludeId?: string): boolean {
+		return this.state.projects.some(
+			(p) => p.id !== excludeId && p.name === name && (p.client ?? "") === (client ?? ""),
+		);
 	}
 
 	async addProject(rawName: string, rawClient: string): Promise<AddProjectResult> {
@@ -40,6 +42,31 @@ export class ProjectManager {
 		if (this.exists(name, client)) return { ok: false, error: "duplicate" };
 
 		this.state.projects.push({ id: generateId(), name, client });
+		await this.persist(this.state);
+		return { ok: true };
+	}
+
+	// Edicion inline desde Settings > Projects & clients (un campo a la
+	// vez, ver ProjectsSection.ts). Misma validacion que addProject
+	// (nombre no vacio, pareja name+client unica), excluyendo el propio
+	// proyecto del chequeo de duplicado — si no, un proyecto sin cambios
+	// reales chocaria contra si mismo. Muta el objeto Project existente en
+	// vez de reemplazarlo: es la misma referencia que ya sostienen
+	// TimeLogView (via getProjectForTask, lectura en vivo en cada render)
+	// y el array pasado a EditTaskModal, asi que el nombre/cliente nuevo
+	// aparece donde ya se usa sin necesidad de propagar una copia.
+	async updateProject(id: string, rawName: string, rawClient: string): Promise<AddProjectResult> {
+		const project = this.state.projects.find((p) => p.id === id);
+		if (!project) return { ok: true };
+
+		const name = rawName.trim();
+		if (name.length === 0) return { ok: false, error: "empty-name" };
+
+		const client = rawClient.trim() || undefined;
+		if (this.exists(name, client, id)) return { ok: false, error: "duplicate" };
+
+		project.name = name;
+		project.client = client;
 		await this.persist(this.state);
 		return { ok: true };
 	}

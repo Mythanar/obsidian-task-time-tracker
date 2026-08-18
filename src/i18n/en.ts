@@ -70,6 +70,7 @@ export const en = {
 	"settings.projects.countSingular": "project saved",
 	"settings.projects.countPlural": "projects saved",
 	"settings.projects.deleteAriaLabel": "Delete project",
+	"settings.projects.saveAriaLabel": "Save project",
 	"settings.projects.deleteConfirmSingular": "{count} task is using this project. Delete anyway?",
 	"settings.projects.deleteConfirmPlural": "{count} tasks are using this project. Delete anyway?",
 	"settings.toggl.heading": "Toggl",
