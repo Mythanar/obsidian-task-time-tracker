@@ -12,12 +12,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - History panel: each task's card is now read-only with three independent, clickable zones — an icon to open the source note, a "⋮" menu (Edit / Delete), and the sessions line, which expands or collapses a read-only detail. Clicking anywhere else on the card no longer does anything.
 - A new "Edit task" dialog (opened from the "⋮" menu) is now the only place to reassign a task's project/client (applied live, no Save button), edit a session's date/time, or delete a session — it lists the task's entire session history, not just what's currently visible in the panel. Deleting the whole task also moved here, into the "⋮" menu.
 - History panel: a new "Filter" button in the header lets you filter the task list by a single project — pick one from a searchable list (each entry shows the project name and its client, if any), or clear it with the small "x" next to the button once a filter is active. The filter never persists between sessions; it resets every time you reopen Obsidian.
+- Generic CSV export: two new columns, Project and Client, right after Task — the project assigned to each task (Settings > Projects & clients), if any. Empty for tasks without a project, or for projects without a client. The Toggl CSV format isn't affected.
 
 ### Fixed
 
 - History panel: the "N sessions · total" summary on an actively-tracked task's card now updates live instead of only on the next external refresh (opening/closing the panel, editing a session, stopping tracking, etc.). Below one minute it ticks every second (e.g. "3s", "9s"), same pace as the card's stop-button counter; from one minute onward it switches to the compact "Xh Ym" format, redrawing only when the displayed minute changes.
 - History panel: editing a session, or confirming its deletion, no longer shows a stray warning-colored border around the form — leftover debug styling from an earlier change.
 - History panel: tasks with a session recorded on the current day could briefly show as "Task not found" right after a cold start of Obsidian, until you expanded that task's card. Fixed a race condition where the panel's first render could run before an already-open note had finished loading its content into the editor.
+- Generic CSV export: column headers were hardcoded in Spanish, regardless of Obsidian's language setting. Now they follow Obsidian's language, same as the rest of the plugin's interface (the Toggl CSV format was never affected).
 
 ## [0.0.26] - 2026-08-13
 

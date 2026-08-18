@@ -37,6 +37,21 @@ export const en = {
 	"export.emailInvalidNotice": "Add your Toggl account email before exporting",
 	"export.exportButton": "Export",
 
+	// 5b. Cabeceras del CSV generico (src/export/adapters/CsvAdapter.ts) —
+	// a diferencia de las del CSV de Toggl (fijas, las lee su importador),
+	// estas SI siguen el idioma de Obsidian: es un CSV de proposito
+	// general, sin importador externo que imponga nombres de columna.
+	// "tt-id" queda fuera de esta lista: es un identificador tecnico, no
+	// texto de interfaz (ver docs/glosario-traduccion-i18n.md, seccion 9).
+	"export.csv.headerDate": "Date",
+	"export.csv.headerStartTime": "Start time",
+	"export.csv.headerEndTime": "End time",
+	"export.csv.headerDuration": "Duration",
+	"export.csv.headerTask": "Task",
+	"export.csv.headerProject": "Project",
+	"export.csv.headerClient": "Client",
+	"export.csv.headerSourceNote": "Source note",
+
 	// 6. Settings (src/settings/SettingsTab.ts)
 	"settings.logLocation.name": "Time Log location",
 	"settings.logLocation.desc": "Where the Time Log panel opens. If it's already open, the change applies next time you open it.",

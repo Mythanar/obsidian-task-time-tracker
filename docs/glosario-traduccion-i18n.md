@@ -222,7 +222,8 @@ Ficheros: `src/main.ts` y `src/ui/TimeLogView.ts`. `src/core/` y `src/export/` c
 ## 9. Fuera del alcance de traducción (decisiones ya cerradas)
 
 - **`[tt-id:: <id>]`** inline en las notas del usuario — nunca se traduce.
-- **Columnas del CSV** (genérico y Toggl: `Email`, `Description`, `Start date`, `Start time`, `Duration`, etc.) — nunca se traducen, las lee un importador externo.
+- **Columnas del CSV de Toggl** (`Email`, `Description`, `Start date`, `Start time`, `Duration`) — nunca se traducen, las lee el importador nativo de Toggl.
+- **Columnas del CSV genérico** (`export.csv.header*` en `src/i18n/`) — **decisión revertida** (agosto 2026): SÍ se traducen, siguen el idioma de Obsidian igual que el resto de la interfaz. No hay importador externo que le imponga nombres fijos; es de propósito general. Solo `tt-id` (la última columna) queda fuera de la traducción, por ser un identificador técnico.
 - **Nombres de archivos y carpetas de exportación** (`task-tracker-exports`, `task-tracker-export_...csv`) — nunca se traducen.
 - **`name` / `description` del `manifest.json`** — fijo en inglés siempre, no entra en el sistema de i18n (Obsidian no soporta metadata de plugin por idioma). Pendiente de que el usuario lo revise cuando lo tenga a mano.
 

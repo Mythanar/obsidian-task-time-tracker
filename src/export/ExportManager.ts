@@ -15,6 +15,7 @@
 
 import { App } from "obsidian";
 import { formatDuration } from "../core/TrackingEngine";
+import { ProjectManager } from "../core/ProjectManager";
 import { parseCheckboxLine, TaskIdentifier } from "../core/TaskIdentifier";
 import { TimeEntry, TogglSettings } from "../types";
 import { buildCsv, ExportRow } from "./adapters/CsvAdapter";
@@ -44,6 +45,7 @@ export class ExportManager {
 	constructor(
 		private app: App,
 		private taskIdentifier: TaskIdentifier,
+		private projectManager: ProjectManager,
 	) {}
 
 	// Exporta a un CSV nuevo las sesiones cerradas cuya fecha de inicio
@@ -56,12 +58,20 @@ export class ExportManager {
 
 		const rows: ExportRow[] = [];
 		for (const entry of inRange) {
+			// Vinculo vivo por tt-id (ver ProjectManager#getProjectForTask),
+			// no snapshot: si la tarea se reasigna despues de una sesion ya
+			// exportada, la proxima exportacion refleja la asignacion actual.
+			// Cadena vacia (no bloquea la exportacion) si no hay proyecto, o
+			// si el proyecto no tiene cliente.
+			const project = this.projectManager.getProjectForTask(entry.taskId);
 			rows.push({
 				date: formatDate(entry.start),
 				startTime: formatTime(entry.start),
 				endTime: formatTime(entry.end),
 				duration: formatDuration(entry.end - entry.start),
 				taskName: await this.resolveTaskName(entry),
+				projectName: project?.name ?? "",
+				clientName: project?.client ?? "",
 				// La nota de origen es el snapshot inmutable de la sesion
 				// (donde estaba la tarea cuando se inicio el tracking), no la
 				// ubicacion actual del tt-id:: — esa puede haber cambiado

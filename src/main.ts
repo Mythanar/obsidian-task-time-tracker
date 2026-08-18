@@ -77,7 +77,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		this.trackingEngine = new TrackingEngine(this.pluginState, (s) => this.saveData(s));
 		this.projectManager = new ProjectManager(this.pluginState, (s) => this.saveData(s));
 		this.taskIdentifier = new TaskIdentifier(this.app);
-		this.exportManager = new ExportManager(this.app, this.taskIdentifier);
+		this.exportManager = new ExportManager(this.app, this.taskIdentifier, this.projectManager);
 		this.statusBarWidget = new StatusBarWidget(
 			this,
 			() => this.trackingEngine.getActiveEntry(),

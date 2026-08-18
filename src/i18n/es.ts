@@ -38,6 +38,16 @@ export const es: Record<TranslationKey, string> = {
 	"export.emailInvalidNotice": "Agrega el email de tu cuenta de Toggl antes de exportar",
 	"export.exportButton": "Exportar",
 
+	// 5b. Cabeceras del CSV generico (src/export/adapters/CsvAdapter.ts)
+	"export.csv.headerDate": "Fecha",
+	"export.csv.headerStartTime": "Hora inicio",
+	"export.csv.headerEndTime": "Hora fin",
+	"export.csv.headerDuration": "Duración",
+	"export.csv.headerTask": "Tarea",
+	"export.csv.headerProject": "Proyecto",
+	"export.csv.headerClient": "Cliente",
+	"export.csv.headerSourceNote": "Nota de origen",
+
 	// 6. Settings (src/settings/SettingsTab.ts)
 	"settings.logLocation.name": "Ubicación del Historial",
 	"settings.logLocation.desc": "Dónde se abre el panel de Historial. Si ya está abierto, el cambio se aplica la próxima vez que lo abras.",
