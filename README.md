@@ -17,6 +17,7 @@ A local-first Obsidian plugin for **tracking time directly on the checkboxes in 
 
 - [How it works](#how-it-works)
 - [Features](#features)
+- [Projects & clients](#projects--clients)
 - [Commands](#commands)
 - [Privacy & architecture](#privacy--architecture)
 - [Export](#export)
@@ -79,10 +80,27 @@ Every tracked task gets a short, unique identifier stored inline with the task t
 - **Fits your task format** — works with Tasks-style checkboxes (`- [ ]`, `* [ ]`, `+ [ ]`), numbered lists, and nested tasks.
 - **Plays nicely with Dataview, but never depends on it** — an optional, subtle-by-default identifier keeps your history linked to each task and makes it queryable, without cluttering your notes.
 - **A clear history** — a dedicated panel with per-task cards, day/week navigation, and inline editing or deletion of sessions.
+- **Organize with projects & clients** — group your tasks under projects (each with an optional client) from Settings, then filter the History panel down to a single one at a time.
 - **Export on your terms** — generate a generic CSV or one formatted for Toggl's official importer. You choose when to export — never automatic, never in the background.
 - **Zero external API calls** — the plugin never connects to any third-party service, at any point in its operation. Your time data stays in your vault.
 
 <img src="docs/images/history-panel.png" alt="The History panel, showing a couple of expanded task cards" width="515" style="border-radius:12px;margin:2rem 0;">
+
+## Projects & clients
+
+Group your tasks by project, and optionally by client, right from Settings.
+
+<img src="docs/images/project-and-clients-settings.png" alt="Settings → Projects & clients section" width="515" style="border-radius:12px;margin:2rem 0;">
+
+Add projects one by one, or paste a whole list at once (`Project; Client` per line) if you're migrating from somewhere else.
+
+Assign a project to any tracked task from its **Edit task** dialog — pick one from a searchable list, each row showing the project and its client if it has one.
+
+<img src="docs/images/project-picker-modal.png" alt="Project picker inside Edit task" width="515" style="border-radius:12px;margin:2rem 0;">
+
+Once you're tracking by project, filter the History panel down to a single one at a time with the **Filter** button in its header. The filter resets every time you reopen Obsidian, so it's never a setting you forget you left on.
+
+<img src="docs/images/filter-in-panel.png" alt="Filter button + popover in the History panel header" width="515" style="border-radius:12px;margin:2rem 0;">
 
 ## Commands
 
@@ -107,6 +125,8 @@ Two export formats are available whenever you need them:
 
 - **Generic CSV** — opens cleanly in any spreadsheet tool.
 - **Toggl-formatted CSV** — matches the exact columns expected by Toggl's official importer.
+
+Generic CSV exports also include the project and client assigned to each task, if any — ready to use for per-client reporting. (The Toggl-formatted CSV doesn't include these columns.)
 
 *More export formats (Clockify, Harvest, and others) are planned.*
 

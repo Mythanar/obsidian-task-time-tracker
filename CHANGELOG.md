@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.27] - 2026-08-18
+
 ### Added
 
 - Settings: a new "Projects & clients" section lets you maintain a list of projects (with an optional client) — add them one by one or paste a whole list at once (`Project; Client` per line). This is the foundation for future export adapters (e.g. Clockify) that expect `Project`/`Client` columns, which aren't wired up yet.
