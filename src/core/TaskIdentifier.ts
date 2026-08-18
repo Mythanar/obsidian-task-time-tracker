@@ -110,10 +110,17 @@ export class TaskIdentifier {
 			// paneles ya tenga el tt-id en memoria (p.ej. el que acaba de
 			// iniciar tracking) para resolverlo, sin depender de cual se
 			// itere ultimo.
+			// Si ninguno matchea, se cae a cachedRead() igualmente (no se
+			// da por buena la ausencia solo porque el archivo este abierto):
+			// en el arranque en frio, un MarkdownView puede existir con su
+			// `file` ya asignado pero el editor todavia sin cargar el
+			// contenido real (buffer vacio un instante), y ese candidato en
+			// vivo no debe tratarse como prueba de que el tt-id no esta ahi
+			// (bug de QA, agosto 2026 — "Task not found" con sesiones de
+			// hoy en frio, misma familia que el bug de paneles duplicados).
 			const candidates = liveContents.get(file.path) ?? [];
 			const found = this.findInContents(taskId, file.path, candidates);
 			if (found) return found;
-			if (candidates.length > 0) continue;
 
 			const cached = await this.app.vault.cachedRead(file);
 			const foundInCache = this.findInContents(taskId, file.path, [cached]);
