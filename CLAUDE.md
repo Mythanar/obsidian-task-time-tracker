@@ -37,6 +37,12 @@ manual y por lotes a plataformas externas (Toggl y otras a futuro).
    aplicado: el `[tt-id:: <id>]` se renderiza (via Dataview) en estilo
    Reducido por defecto, con Normal y Oculto como opciones explicitas en
    Settings > Task identifier format.
+7. Los releases los decide y los dispara el usuario, nunca Claude Code por
+   iniciativa propia. No subas la version en manifest.json/package.json, no
+   crees tags de git, ni prepares o publiques un release salvo que el
+   usuario lo pida explicitamente y diga cuando. Dejar una funcionalidad
+   terminada y lista no equivale a cortar el release que la incluye —
+   son dos decisiones distintas, y la segunda se espera siempre.
 
 ## Estructura de carpetas
 /src
@@ -44,10 +50,21 @@ manual y por lotes a plataformas externas (Toggl y otras a futuro).
   /core
     TrackingEngine.ts      # start/stop, timer activo, persistencia de entries
     TaskIdentifier.ts      # genera/lee el id inline [tt-id:: <id>], resuelve conflictos
+    ProjectManager.ts       # alta/baja de proyectos y clientes, y el vinculo
+                             # tarea<->proyecto (vivo por tt-id, ver brief
+                             # "Asignar proyectos")
   /ui
     StatusBarWidget.ts      # timer activo en status bar
-    TimeLogView.ts          # panel lateral con historial
-    ExportModal.ts          # modal de seleccion de rango + formato de destino
+    TimeLogView.ts          # panel lateral con historial (tarjeta de solo
+                             # lectura: icono de nota, menu kebab, linea de
+                             # sesiones expandible — ver brief "Editar tarea
+                             # desde el Historial")
+    EditTaskModal.ts         # unica via de gestion de una tarea: reasignar
+                              # Proyecto/Cliente, editar/borrar sesiones
+    sessionEdit.ts            # funciones puras de fecha/hora y el renderer
+                               # de solo lectura de una sesion, compartidos
+                               # entre TimeLogView.ts y EditTaskModal.ts
+    ExportModal.ts           # modal de seleccion de rango y formato de destino
   /export
     ExportManager.ts        # orquesta exportacion, elige el adapter de formato
     /adapters
@@ -55,14 +72,18 @@ manual y por lotes a plataformas externas (Toggl y otras a futuro).
       TogglCsvAdapter.ts      # genera CSV con las columnas que espera el
                                # importador oficial de Toggl (Fase 4). No llama
                                # a la API de Toggl en ningun momento.
-      (futuros: ClockifyAdapter.ts, HarvestAdapter.ts, EverhourAdapter.ts,
-       TimelyAdapter.ts, etc. — mismo patron: generar el archivo que el
-       importador de cada plataforma espera, sin tocar su API)
+      (futuros: ClockifyAdapter.ts — investigado pero pausado, ver nota abajo —,
+       HarvestAdapter.ts, EverhourAdapter.ts, TimelyAdapter.ts, etc. — mismo
+       patron: generar el archivo que el importador de cada plataforma espera,
+       sin tocar su API)
   /settings
     SettingsTab.ts           # configuracion del plugin (formato de export,
-                              # carpeta de destino, formato del tt-id). No
-                              # gestiona tokens/API keys de ninguna plataforma
-                              # externa.
+                              # carpeta de destino, formato del tt-id, seccion
+                              # por plataforma como Toggl). No gestiona tokens/
+                              # API keys de ninguna plataforma externa.
+    ProjectsSection.ts        # seccion "Projects & clients": alta, edicion
+                               # y borrado de la lista de proyectos (uno por
+                               # uno o pegando una lista)
   /i18n
     en.ts, es.ts             # diccionarios de traduccion (Fase 6). Ingles por
                               # defecto, espanol si Obsidian esta en ese idioma.
@@ -72,21 +93,46 @@ manual y por lotes a plataformas externas (Toggl y otras a futuro).
   types.ts
 
 ## Estado actual
-Fases 0 a 6 completadas y probadas en Obsidian (tracking local, vinculacion
-robusta de tareas, exportacion CSV generica y CSV para Toggl, mejoras de UX,
-i18n en/es). En curso la Fase 7 (checklist de pre-release, sin funcionalidad
-de producto nueva): licencia, verificacion en mobile, bug del doble panel
-con la misma nota abierta en varios paneles (corregido — ver
-docs/DECISIONES.md), README con contenido completo e ilustrado. Ver
-docs/DECISIONES.md para el detalle fase a fase.
+Fases 0 a 7 completadas. Plugin publicado en el listado de Community Plugins
+de Obsidian, release `0.0.26` (primer y unico release hasta la fecha).
+README con contenido e ilustraciones completos, licencia MIT, verificado en
+movil, bug del doble panel corregido. Ver docs/DECISIONES.md para el detalle
+fase a fase.
+
+**Trabajo en curso — "Proyectos" (funcionalidad de producto nueva, no
+pre-release):** introduce el concepto de proyecto/cliente que faltaba desde
+Fase 3, dividido en tres piezas independientes:
+- **Configurar proyectos** — alta, edicion y borrado de la lista de
+  proyectos en Settings. Construida y verificada por el usuario en
+  Obsidian (agosto 2026).
+- **Asignar proyectos** — vincular una tarea a un proyecto desde el
+  Historial. Construida: la UI vive en el nuevo modal "Editar tarea"
+  (ver brief "Editar tarea desde el Historial", que absorbio tambien el
+  rediseno de la tarjeta del Historial y la edicion de sesiones — ver
+  EditTaskModal.ts). Vinculo vivo por tt-id (`PluginState.taskProjects`),
+  no snapshot: reasignar actualiza el historico completo al instante.
+- **Filtro por proyecto en el Historial** — necesaria antes de un futuro
+  release, aparcada por ahora.
+
+**Investigacion de plataformas — Clockify pausado.** Confirmado con una
+prueba real (agosto 2026): el plan Free de Clockify importa proyectos,
+clientes, tareas y tags via CSV sin problema, pero **no importa entradas de
+tiempo** — esa funcion requiere plan Basic o superior. El adapter de Clockify
+queda pausado hasta decidir como tratar ese muro de pago. Harvest, Everhour
+y Timely siguen sin investigar.
 
 ## Como trabajar
-- Construye por fases segun el roadmap (Fase 0 -> 7), no todo de una vez.
+- Construye por fases segun el roadmap, no todo de una vez.
 - Antes de construir el adapter de exportacion de cada plataforma (Toggl,
   Clockify, etc.), confirma con el usuario el formato exacto que espera su
   importador (columnas, estructura, requisitos de cuenta/permisos) —
   mismo principio de "investigar antes de codear" que regia para la API,
   aplicado ahora a formato de archivo en vez de a endpoints.
+- Antes de dar por viable el adapter de una plataforma con plan gratuito y
+  de pago, confirma que la funcion concreta que necesitas (importar
+  entradas de tiempo, no solo estructura) esta disponible en el plan
+  gratuito — que una plataforma "tenga importador CSV" no significa que el
+  plan Free lo soporte para todo. Leccion de Clockify, agosto 2026.
 - Usa la API publica de Obsidian (Plugin, Notice, ItemView, addCommand,
   addStatusBarItem, loadData/saveData); evita hacks sobre el DOM interno
   de Obsidian salvo que sea estrictamente necesario.

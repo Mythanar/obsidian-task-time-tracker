@@ -9,6 +9,7 @@ import { AbstractInputSuggest, App, PluginSettingTab, Setting, TFolder } from "o
 import type TaskTimeTrackerPlugin from "../main";
 import { t } from "../i18n";
 import { DEFAULT_SETTINGS, isValidEmail, LogViewLocation, TaskIdFormat, TogglDateFormat, TogglTimeFormat } from "../types";
+import { ProjectsSection } from "./ProjectsSection";
 
 function logViewLocationOptions(): Record<string, string> {
 	return {
@@ -153,6 +154,12 @@ export class SettingsTab extends PluginSettingTab {
 			.addButton((button) =>
 				button.setButtonText(t("settings.exportAll.button")).onClick(() => void this.plugin.exportAllEntriesToCsv()),
 			);
+
+		// Fase 8 — proyectos/clientes: base para futuros adapters de
+		// exportacion (Clockify y otros esperan columnas Project/Client en
+		// su importador). Componente autocontenido, ver ProjectsSection.ts.
+		new Setting(containerEl).setName(t("settings.projects.heading")).setHeading();
+		new ProjectsSection(containerEl.createDiv(), this.plugin.projectManager, () => this.plugin.refreshLogViews()).render();
 
 		new Setting(containerEl).setName(t("settings.toggl.heading")).setHeading();
 

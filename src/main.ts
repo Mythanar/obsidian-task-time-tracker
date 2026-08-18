@@ -1,5 +1,6 @@
 import { Editor, MarkdownFileInfo, MarkdownView, Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
 import { TrackingEngine } from "./core/TrackingEngine";
+import { ProjectManager } from "./core/ProjectManager";
 import {
 	extractCheckboxState,
 	extractTaskId,
@@ -50,6 +51,7 @@ const TASKID_FORMAT_BODY_CLASSES = ["task-time-tracker-taskid-reduced", "task-ti
 
 export default class TaskTimeTrackerPlugin extends Plugin {
 	trackingEngine!: TrackingEngine;
+	projectManager!: ProjectManager;
 	statusBarWidget!: StatusBarWidget;
 	taskIdentifier!: TaskIdentifier;
 	exportManager!: ExportManager;
@@ -67,10 +69,13 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 				exportsFolder: savedState?.settings?.exportsFolder ?? DEFAULT_SETTINGS.exportsFolder,
 				taskIdFormat: savedState?.settings?.taskIdFormat ?? DEFAULT_SETTINGS.taskIdFormat,
 			},
+			projects: savedState?.projects ?? [],
+			taskProjects: savedState?.taskProjects ?? {},
 		};
 		this.applyTaskIdFormatClass();
 
 		this.trackingEngine = new TrackingEngine(this.pluginState, (s) => this.saveData(s));
+		this.projectManager = new ProjectManager(this.pluginState, (s) => this.saveData(s));
 		this.taskIdentifier = new TaskIdentifier(this.app);
 		this.exportManager = new ExportManager(this.app, this.taskIdentifier);
 		this.statusBarWidget = new StatusBarWidget(
@@ -88,6 +93,10 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 					deleteEntry: (entryId) => this.deleteEntry(entryId),
 					deleteTask: (taskId) => this.deleteTask(taskId),
 					stopTracking: () => this.handleInlineStop(),
+					getEntriesForTask: (taskId) => this.trackingEngine.getEntries().filter((e) => e.taskId === taskId),
+					getProjects: () => this.projectManager.getProjects(),
+					getProjectForTask: (taskId) => this.projectManager.getProjectForTask(taskId),
+					assignProject: (taskId, projectId) => this.projectManager.assignProject(taskId, projectId),
 					bus: this.inlineControlsBus,
 				}),
 		);
@@ -446,7 +455,11 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		return { ok: true };
 	}
 
-	private refreshLogViews(): void {
+	// Publico: tambien lo llama ProjectsSection.ts (via SettingsTab.ts) tras
+	// borrar un proyecto, para que las tarjetas del Historial que lo tenian
+	// asignado pierdan la fila de Proyecto/Cliente sin esperar a un refresco
+	// externo del panel.
+	refreshLogViews(): void {
 		for (const leaf of this.app.workspace.getLeavesOfType(TIME_LOG_VIEW_TYPE)) {
 			if (leaf.view instanceof TimeLogView) leaf.view.refresh();
 		}

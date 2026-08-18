@@ -3,18 +3,21 @@
 // Fase 2 — cada entrada se resuelve por su tt-id::; si la linea ya no
 // existe en ninguna nota, se muestra como "Tarea no encontrada" sin
 // descartar el historico.
-// Fase 5 UX — rediseno: las tarjetas de "Total acumulado por tarea" son
-// expandibles (muestran sus sesiones individuales dentro, ya no hay un
-// bloque cronologico aparte), el titulo abre la nota de origen, y cada
-// sesion cerrada se puede editar (fecha/hora) o borrar haciendo clic en
-// toda la fila (sin icono aparte).
+// Rediseno "Editar tarea desde el Historial" (agosto 2026) — la tarjeta
+// pasa a ser de solo lectura con tres zonas clicables independientes
+// (icono de nota, menu kebab, linea de sesiones que expande/colapsa un
+// detalle de solo lectura); toda la gestion (reasignar Proyecto/Cliente,
+// editar sesiones, borrar sesion) vive en EditTaskModal.ts. El borrado de
+// tarea completa se dispara solo desde el kebab.
 
-import { ItemView, MarkdownView, Notice, Platform, TFile, WorkspaceLeaf, setIcon } from "obsidian";
+import { ItemView, Menu, MarkdownView, Notice, Platform, TFile, WorkspaceLeaf, setIcon, setTooltip } from "obsidian";
 import { formatDuration, formatDurationCompact } from "../core/TrackingEngine";
 import { parseCheckboxLine, ResolvedTask, TaskIdentifier } from "../core/TaskIdentifier";
 import { t } from "../i18n";
-import { DeleteTaskResult, EntryUpdateResult, TimeEntry } from "../types";
+import { DeleteTaskResult, EntryUpdateResult, Project, TimeEntry } from "../types";
+import { EditTaskModal } from "./EditTaskModal";
 import { InlineTrackingBus } from "./InlineTrackingBus";
+import { renderSessionInfo } from "./sessionEdit";
 
 export const TIME_LOG_VIEW_TYPE = "task-time-tracker-log-view";
 
@@ -23,81 +26,19 @@ export interface TimeLogViewActions {
 	deleteEntry(entryId: string): Promise<void>;
 	deleteTask(taskId: string): Promise<DeleteTaskResult>;
 	stopTracking(): Promise<void>;
+	// Historico completo de una tarea (todas sus sesiones, sin acotar por
+	// dia/semana visible) — alimenta el modal de Editar, que gestiona
+	// todo el historico y no solo lo que la tarjeta muestra ahora mismo.
+	getEntriesForTask(taskId: string): TimeEntry[];
+	getProjects(): Project[];
+	getProjectForTask(taskId: string): Project | null;
+	assignProject(taskId: string, projectId: string | null): Promise<void>;
 	// Mismo bus que ya usa el badge junto al checkbox (ver
 	// InlineTaskControlExtension.ts): notifica cada segundo mientras haya
 	// una sesion activa, para que la tarjeta de esa tarea (si esta en el
 	// rango de fecha visible) actualice su contador en vivo sin necesidad
 	// de un render() completo del panel.
 	bus: InlineTrackingBus;
-}
-
-// Estado transitorio de edicion de una sesion: solo una a la vez, nunca
-// se persiste. Un clic fuera de la fila no la descarta (solo Guardar/
-// Cancelar/Eliminar lo hacen) — ver renderSessionRow()/renderEditForm().
-// Los cuatro campos (fecha inicio, hora inicio, fecha fin, hora fin) son
-// campos de texto simples ("YYYY-MM-DD"/"HH:MM:SS"), incluida la fecha
-// de fin: deja de inferirse por comparacion de horas (decision revisada
-// respecto al diseno original de Bloque 1, que la calculaba sola) y pasa
-// a ser un dato mas que el usuario controla directamente, igual que ya
-// pasaba con los segundos de hora inicio/fin. Si se cancela, la sesion
-// original queda intacta.
-// {campo}Evaluated: si ese campo ya paso por blur o alcanzo longitud
-// completa al menos una vez desde el ultimo cambio (ver
-// renderEditForm/bindDraftField) — mientras no sea asi, un formato
-// invalido no se muestra todavia (el usuario sigue escribiendo). Se
-// guardan en el draft (no solo como clase CSS en el input) porque el
-// formulario se puede reconstruir entero por un refresh externo sin que
-// el usuario haya tocado nada (ver punto B: clic fuera no descarta).
-interface EditDraft {
-	entryId: string;
-	startDate: string;
-	startDateEvaluated: boolean;
-	startTime: string;
-	startTimeEvaluated: boolean;
-	endDate: string;
-	endDateEvaluated: boolean;
-	endTime: string;
-	endTimeEvaluated: boolean;
-	error: string | null;
-	confirmingDelete: boolean;
-}
-
-interface ParsedTime {
-	hours: number;
-	minutes: number;
-	seconds: number;
-}
-
-const TIME_INPUT_REGEX = /^([01]?\d|2[0-3]):([0-5]\d):([0-5]\d)$/;
-const DATE_INPUT_REGEX = /^(\d{4})-(\d{2})-(\d{2})$/;
-
-function pad(n: number): string {
-	return String(n).padStart(2, "0");
-}
-
-function formatDateInput(ms: number): string {
-	const d = new Date(ms);
-	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-// "HH:MM:SS" en hora local (ver EditDraft).
-function formatHMS(ms: number): string {
-	const d = new Date(ms);
-	return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
-}
-
-function parseTimeInput(value: string): ParsedTime | null {
-	const match = value.trim().match(TIME_INPUT_REGEX);
-	if (!match) return null;
-	return { hours: Number(match[1]), minutes: Number(match[2]), seconds: Number(match[3]) };
-}
-
-// Devuelve la medianoche local de esa fecha, o null si el campo no tiene
-// el formato "YYYY-MM-DD" que produce <input type="date">.
-function parseDateInput(value: string): number | null {
-	const match = value.match(DATE_INPUT_REGEX);
-	if (!match) return null;
-	return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).getTime();
 }
 
 function addDays(dateAtMidnightMs: number, days: number): number {
@@ -128,86 +69,17 @@ function isSameLocalDay(ms: number, dayStartMs: number): boolean {
 
 type LogViewMode = "day" | "week";
 
-function combineDateAndTime(dateAtMidnightMs: number, time: ParsedTime): number {
-	const d = new Date(dateAtMidnightMs);
-	return new Date(d.getFullYear(), d.getMonth(), d.getDate(), time.hours, time.minutes, time.seconds, 0).getTime();
-}
-
-// Numero de dias naturales de diferencia entre la fecha (parte de
-// fecha, sin hora) de startMs y la de endMs — para el badge "+N" de la
-// fila de sesion estatica y de la confirmacion de borrado (unico sitio
-// que sigue necesitandolo: el formulario de edicion tiene fecha de fin
-// explicita y ya no infiere nada, ver resolveDraftTimestamps()). Ambas
-// fechas se normalizan con Date.UTC(y, m, d) — no con resta directa de
-// timestamps ni con dias * 86400000 en hora local — para que el
-// resultado sea siempre un entero exacto incluso si el rango cruza un
-// cambio de horario de verano/invierno entre esas dos fechas.
-function getDaySpan(startMs: number, endMs: number): number {
-	const s = new Date(startMs);
-	const e = new Date(endMs);
-	const startUtc = Date.UTC(s.getFullYear(), s.getMonth(), s.getDate());
-	const endUtc = Date.UTC(e.getFullYear(), e.getMonth(), e.getDate());
-	return Math.round((endUtc - startUtc) / 86400000);
-}
-
-// Dos rangos [start, end) se solapan si cada uno empieza antes de que
-// el otro termine. Una sesion activa (sin end) se trata como si
-// terminara "ahora" a estos efectos — igual que hacia main.ts antes de
-// que este aviso pasara a calcularse en vivo aqui en vez de al guardar.
-function rangesOverlap(startA: number, endA: number, startB: number, endB: number): boolean {
-	return startA < endB && startB < endA;
-}
-
-type DraftResolution = { ok: true; start: number; end: number } | { ok: false; error: string };
-
-// Resuelve el rango final a partir de los cuatro campos del borrador,
-// tal cual los dejo el usuario (segundos incluidos, sin forzar nada).
-// Fecha de fin y fecha de inicio son independientes: quien decide si la
-// sesion cruza medianoche (o varios dias) es la propia fecha de fin
-// tecleada, no una inferencia por comparacion de horas. (El campo
-// "crossesMidnight" que llevaba este resultado — resto del mecanismo de
-// inferencia anterior a que la fecha de fin fuera explicita — no lo leia
-// nadie: el formulario de edicion ya no muestra el badge "+N", ver
-// docs/DECISIONES.md.)
-function resolveDraftTimestamps(draft: EditDraft): DraftResolution {
-	const startDateMs = parseDateInput(draft.startDate);
-	const endDateMs = parseDateInput(draft.endDate);
-	const start = parseTimeInput(draft.startTime);
-	const end = parseTimeInput(draft.endTime);
-	if (startDateMs === null || endDateMs === null || !start || !end) {
-		return { ok: false, error: t("log.errorFormat") };
-	}
-
-	return {
-		ok: true,
-		start: combineDateAndTime(startDateMs, start),
-		end: combineDateAndTime(endDateMs, end),
-	};
-}
-
-// Para la punta que no se ha tocado (su texto sigue siendo el mismo con
-// el que se abrio la edicion, tanto fecha como hora), se usa el
-// timestamp real de la sesion en vez del reconstruido por
-// resolveDraftTimestamps() — evita cualquier diferencia de precision
-// entre ambos calculos. Compartido por updateMessage() (solapamiento) y
-// updatePreview() (duracion en vivo) para no duplicar el criterio.
-function effectiveRange(draft: EditDraft, entry: TimeEntry, resolved: { start: number; end: number }) {
-	const startUnchanged = draft.startDate === formatDateInput(entry.start) && draft.startTime === formatHMS(entry.start);
-	const endUnchanged =
-		draft.endDate === formatDateInput(entry.end as number) && draft.endTime === formatHMS(entry.end as number);
-	return {
-		start: startUnchanged ? entry.start : resolved.start,
-		end: endUnchanged ? (entry.end as number) : resolved.end,
-	};
-}
-
 export class TimeLogView extends ItemView {
 	// Claves de expandedTaskIds son "<dia>|<taskId>" (no solo taskId): en
 	// vista semanal la misma tarea puede tener sesiones en varios dias, cada
 	// uno con su propia tarjeta, y deben poder expandirse de forma
 	// independiente.
 	private expandedTaskIds = new Set<string>();
-	private editDraft: EditDraft | null = null;
+	// QA — expandKey de la tarjeta que se acaba de expandir en este mismo
+	// gesto (no de una ya expandida de antes): dispara el scroll automatico
+	// hasta el final del detalle (sesion mas reciente) una sola vez, no en
+	// cada render() posterior mientras la tarjeta siga expandida.
+	private pendingScrollKey: string | null = null;
 	// Backlog Fase 5 — borrado de tarea completa (todo su historico por
 	// tt-id): confirmacion pendiente, si hay alguna. Se guarda por taskId,
 	// no por tarjeta/dia: si la misma tarea aparece en varias tarjetas
@@ -350,11 +222,15 @@ export class TimeLogView extends ItemView {
 		}
 	}
 
-	// Orden de la cabecera: 1) titulo (con link a la nota si se resuelve),
-	// 2) linea de meta (sesiones + total + tt-id), 3) detalle expandido.
+	// Tarjeta de solo lectura con tres zonas clicables independientes (ver
+	// rediseno "Editar tarea desde el Historial"): icono abrir nota, menu
+	// kebab (Editar/Eliminar), y la linea de sesiones que expande/colapsa
+	// un detalle tambien de solo lectura. Nada mas de la tarjeta reacciona
+	// al clic — ni la cabecera completa ni el area en blanco.
 	// El total (totalMs) es el de taskEntries tal cual llega: acotado al
 	// rango de fecha visible (dia o semana), a proposito distinto del total
-	// historico completo que muestra el badge junto al checkbox (Fase 5).
+	// historico completo que muestra el badge junto al checkbox (Fase 5) y
+	// del historico completo que gestiona el modal de Editar.
 	private renderTaskCard(
 		list: Element,
 		taskId: string,
@@ -385,42 +261,29 @@ export class TimeLogView extends ItemView {
 		// tiene ninguna sesion en el rango visible, activeEntry es null aqui
 		// y la tarjeta se comporta exactamente igual que cualquier otra.
 		const activeEntry = taskEntries.find((entry) => entry.end === null) ?? null;
+		const project = this.actions.getProjectForTask(taskId);
 
 		const card = list.createDiv({ cls: "task-time-tracker-log-row" });
 		card.toggleClass("is-tracking-active", activeEntry !== null);
-		// El trash de tarea se revela mientras la tarjeta esta expandida
-		// (igual en desktop y mobile, ver styles.css) en vez de con
-		// :hover/:focus-within: mostrar un icono destructivo como reaccion
-		// pasiva al cursor invitaba a "aqui se borra" sin que el usuario
-		// hubiera pedido nada.
-		card.toggleClass("is-expanded", expanded);
 
-		// Rediseno de interaccion: toda la cabecera (titulo + meta) abre/
-		// cierra las sesiones; el icono de nota y el trash de tarea son las
-		// unicas excepciones (stopPropagation en su click, mas abajo). El
-		// titulo deja de ser un link — abrir la nota pasa a un icono propio
-		// delante del texto.
 		const header = card.createDiv({ cls: "task-time-tracker-log-card-header" });
-		header.addEventListener("click", () => {
-			if (expanded) this.expandedTaskIds.delete(expandKey);
-			else this.expandedTaskIds.add(expandKey);
-			void this.render();
-		});
 
 		// Columna de icono de ancho fijo (task-time-tracker-log-card-icon-col,
-		// ver styles.css), repetida en las dos lineas de la cabecera —
-		// nota en la linea 1, chevron en la linea 2 — para que el titulo y
-		// "N sessions..." arranquen siempre en el mismo margen izquierdo,
-		// tenga o no icono de nota esta tarea (isMissing). Se reserva
-		// aunque no haya boton que renderizar dentro.
+		// ver styles.css), repetida en las filas de la cabecera — nota en la
+		// fila 1, chevron en la fila de sesiones — para que el titulo y "N
+		// sessions..." arranquen siempre en el mismo margen izquierdo, tenga
+		// o no icono de nota esta tarea (isMissing).
 		const titleRow = header.createDiv({ cls: "task-time-tracker-log-card-title-row" });
 		const noteCol = titleRow.createDiv({ cls: "task-time-tracker-log-card-icon-col" });
 		if (!isMissing) {
+			// Zona 1 — unico punto de navegacion hacia la nota; hit-area e
+			// hijos propios, no interfiere con el titulo ni con el kebab.
 			const noteBtn = noteCol.createEl("button", {
 				cls: "task-time-tracker-log-card-note task-time-tracker-icon-btn clickable-icon",
 			});
-			setIcon(noteBtn, "file-text");
+			setIcon(noteBtn, "file-search");
 			noteBtn.setAttribute("aria-label", t("log.openNoteAriaLabel"));
+			setTooltip(noteBtn, t("log.openNoteAriaLabel"));
 			noteBtn.addEventListener("click", (evt) => {
 				evt.stopPropagation();
 				void this.openTaskNote(taskId, taskEntries);
@@ -428,9 +291,8 @@ export class TimeLogView extends ItemView {
 		} else {
 			// Tarea "no encontrada": mismo hueco (noteCol) y mismas clases
 			// que el icono de nota normal, para no romper la alineacion del
-			// titulo entre tarjetas — solo cambia el icono ("file-x", mismo
-			// trazo/familia que "file-text") y la accion al clic, que ya no
-			// puede abrir una nota que no existe.
+			// titulo entre tarjetas — solo cambia el icono y la accion al
+			// clic, que ya no puede abrir una nota que no existe.
 			const missingBtn = noteCol.createEl("button", {
 				cls: "task-time-tracker-log-card-note task-time-tracker-icon-btn clickable-icon",
 			});
@@ -441,31 +303,70 @@ export class TimeLogView extends ItemView {
 				new Notice(t("notice.noteNotFound"));
 			});
 		}
+
+		// Titulo: sin hover ni accion de clic propia (la navegacion vive
+		// solo en el icono de arriba) — solo tooltip con el texto completo
+		// en desktop si esta truncado.
 		const title = titleRow.createDiv({ text: label, cls: "task-time-tracker-log-task" });
 		if (isMissing) {
 			title.addClass("task-time-tracker-log-task-missing");
 		}
+
+		// Zona 2 — menu kebab, siempre visible, no depende de expandir la
+		// tarjeta ni de hover de fila.
+		const menuBtn = titleRow.createEl("button", {
+			cls: "task-time-tracker-log-card-menu task-time-tracker-icon-btn clickable-icon",
+		});
+		setIcon(menuBtn, "more-vertical");
+		menuBtn.setAttribute("aria-label", t("log.taskMenuAriaLabel"));
+		setTooltip(menuBtn, t("log.taskMenuAriaLabel"));
+		menuBtn.addEventListener("click", (evt) => {
+			evt.stopPropagation();
+			this.openTaskMenu(menuBtn, taskId, label);
+		});
+
+		// Medir DESPUES de que title y menuBtn (hermanos en el mismo flex
+		// row) esten ambos insertados — ver comentario detallado sobre este
+		// mismo bug en renderProjectRow() mas abajo, donde se detecto:
+		// medir un span antes de que su hermano en la fila exista da un
+		// clientWidth mas generoso de lo que sera una vez el hermano ocupe
+		// su espacio, y el helper decide (con datos aun no definitivos) que
+		// no hace falta tooltip.
+		this.applyTruncationTooltip(title, label);
 
 		if (isMissing) {
 			const mostRecent = taskEntries.reduce((latest, entry) => (entry.start > latest.start ? entry : latest));
 			header.createDiv({ text: mostRecent.taskText, cls: "task-time-tracker-log-task-snapshot" });
 		}
 
-		// Linea 2: chevron (decorativo, aria-hidden — el trigger real es
-		// toda la cabecera, ver arriba) + nº sesiones + total + tt-id +
-		// boton (trash o stop+contador). Un unico grupo flex-wrap (sin el
-		// contenedor "summary" que antes separaba estos elementos del
-		// boton): en mobile, con el panel mas estrecho que la pantalla,
-		// cualquiera de estos elementos puede necesitar bajar de linea
-		// entero (nunca partirse por dentro, ver white-space: nowrap en
-		// styles.css) — incluido el badge de tracking activo, que antes
-		// se desbordaba por no formar parte de este mismo flex-wrap.
+		// Fila 2 — Proyecto/Cliente: solo si hay proyecto asignado (vinculo
+		// vivo por tt-id, ver ProjectManager#getProjectForTask). Sin hover
+		// ni accion de clic; reasignar vive dentro del modal de Editar.
+		if (project) {
+			this.renderProjectRow(header, project);
+		}
+
+		// Zona 3 — linea de sesiones: chevron + nº sesiones + total + tt-id,
+		// envueltos en su propia pildora clicable que expande/colapsa el
+		// detalle de solo lectura. El boton de stop de tracking activo (si
+		// lo hay) vive fuera de esa pildora, en la misma fila.
 		const meta = header.createDiv({ cls: "task-time-tracker-log-meta" });
-		const toggleCol = meta.createDiv({ cls: "task-time-tracker-log-card-icon-col" });
+		const sessionsToggle = meta.createDiv({ cls: "task-time-tracker-log-card-sessions-toggle" });
+		sessionsToggle.toggleClass("is-expanded", expanded);
+		sessionsToggle.addEventListener("click", () => {
+			if (expanded) {
+				this.expandedTaskIds.delete(expandKey);
+			} else {
+				this.expandedTaskIds.add(expandKey);
+				this.pendingScrollKey = expandKey;
+			}
+			void this.render();
+		});
+		const toggleCol = sessionsToggle.createDiv({ cls: "task-time-tracker-log-card-icon-col" });
 		const toggleIcon = toggleCol.createSpan({ cls: "task-time-tracker-log-card-toggle" });
 		toggleIcon.setAttribute("aria-hidden", "true");
-		setIcon(toggleIcon, expanded ? "chevron-down" : "chevron-right");
-		meta.createSpan({
+		setIcon(toggleIcon, "chevron-right");
+		sessionsToggle.createSpan({
 			text: `${taskEntries.length} ${taskEntries.length === 1 ? t("log.session.singular") : t("log.session.plural")}`,
 			cls: "task-time-tracker-log-session-count",
 		});
@@ -473,24 +374,22 @@ export class TimeLogView extends ItemView {
 		// HH:MM:SS — ver formatDurationCompact(). Icono de cronometro +
 		// valor agrupados (task-time-tracker-totals-duration-group) para
 		// que el numero compita visualmente con el titulo en vez de
-		// perderse entre el resto de metadatos de la cabecera (tt-id,
-		// nº de sesiones) — mismo patron que el bloque "Calculated
-		// duration" del formulario de edicion.
-		const totalGroup = meta.createSpan({ cls: "task-time-tracker-totals-duration-group" });
+		// perderse entre el resto de metadatos de la cabecera.
+		const totalGroup = sessionsToggle.createSpan({ cls: "task-time-tracker-totals-duration-group" });
 		setIcon(totalGroup.createSpan({ cls: "task-time-tracker-totals-duration-icon" }), "timer");
 		const totalDuration = totalGroup.createSpan({
 			text: formatDurationCompact(totalMs),
 			cls: "task-time-tracker-totals-duration",
 		});
-		meta.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
+		sessionsToggle.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
 
 		if (activeEntry) {
-			// Reemplaza la papelera (deshabilitada mientras la tarea esta
-			// activa): boton de stop con contador en vivo, mismo patron de
-			// pill que el badge junto al checkbox (icono relleno + numero en
+			// Boton de stop con contador en vivo, mismo patron de pill que el
+			// badge junto al checkbox (icono relleno + numero en
 			// monoespaciada). completedMs es la suma de las sesiones YA
 			// cerradas de esta tarjeta; el tick de cada segundo (via el bus)
-			// le suma el tiempo transcurrido desde activeEntry.start.
+			// le suma el tiempo transcurrido desde activeEntry.start. Fuera de
+			// alcance de este rediseno — sin cambios de comportamiento.
 			const stopBtn = meta.createEl("button", { cls: "task-time-tracker-log-card-stop" });
 			stopBtn.setAttribute("aria-label", t("log.stopTrackingAriaLabel"));
 			const stopIcon = stopBtn.createSpan({ cls: "task-time-tracker-log-card-stop-icon" });
@@ -522,56 +421,187 @@ export class TimeLogView extends ItemView {
 				evt.stopPropagation();
 				void this.actions.stopTracking();
 			});
-		} else {
-			// Backlog Fase 5 — borrar la tarea completa (todo su historico, no
-			// solo lo visible en el rango de fecha actual): con stopPropagation
-			// para no disparar tambien el expandir/colapsar de la fila que lo
-			// contiene. El chequeo de sesion activa usa this.getEntries() sin
-			// acotar por dia/semana — la tarea puede tener su sesion activa hoy
-			// aunque esta tarjeta en concreto muestre otro dia (vista semanal).
-			const deleteBtn = meta.createEl("button", {
-				cls: "task-time-tracker-log-card-delete task-time-tracker-icon-btn clickable-icon",
-			});
-			setIcon(deleteBtn, "trash-2");
-			deleteBtn.setAttribute("aria-label", t("log.deleteTaskAriaLabel"));
-			deleteBtn.addEventListener("click", (evt) => {
-				evt.stopPropagation();
-				const hasActive = this.getEntries().some((entry) => entry.taskId === taskId && entry.end === null);
-				if (hasActive) {
-					new Notice(t("log.deleteBlockedActive"));
-					return;
-				}
-				this.taskDeleteConfirmId = taskId;
-				void this.render();
-			});
 		}
 
 		if (expanded) {
 			const detail = card.createDiv({ cls: "task-time-tracker-log-card-detail" });
+			// Orden cronologico ascendente (mas antigua arriba, mas reciente
+			// abajo) — taskEntries ya viene en ese orden (ver groupByTaskId).
 			for (const entry of taskEntries) {
-				this.renderSessionRow(detail, entry);
+				const row = detail.createDiv({ cls: "task-time-tracker-log-session-row" });
+				renderSessionInfo(row, entry, (el, completedMs, start) =>
+					this.activeCardTicks.push({ kind: "duration", el, completedMs, start }),
+				);
+			}
+			// QA — al expandir (no al re-renderizar una tarjeta ya expandida
+			// por otro motivo), deja visible la sesion mas reciente sin scroll
+			// manual. setTimeout(0): espera a que el navegador termine el
+			// layout de este render antes de medir/hacer scroll.
+			if (this.pendingScrollKey === expandKey) {
+				this.pendingScrollKey = null;
+				window.setTimeout(() => detail.scrollIntoView({ block: "end" }), 0);
 			}
 		}
 	}
 
+	// Icono maletin (proyecto) + icono persona (cliente, si tiene). Mismo
+	// hueco de columna que el icono de nota (task-time-tracker-log-card-icon-col)
+	// para alinear con el titulo — pero SOLO en la tarjeta normal, cuyo
+	// titulo tiene ese mismo hueco delante (icono de nota). alignWithNoteIcon
+	// desactiva ese hueco para la confirmacion de borrado (ver abajo), cuyo
+	// titulo no lleva icono delante: con el hueco puesto ahi, la fila
+	// quedaba indentada sin motivo respecto al titulo (bug de QA, ronda 2).
+	// Sin hover, sin accion de clic — reasignar vive dentro del modal de
+	// Editar (Zona 2, kebab -> Editar).
+	// project null: solo ocurre cuando llama renderTaskDeleteConfirm() (ver
+	// abajo) — a diferencia de la tarjeta normal, que omite la fila entera
+	// si no hay proyecto asignado, la confirmacion de borrado lo muestra
+	// explicito ("No project") por ser el paso previo a una accion
+	// irreversible, donde preferimos explicito sobre implicito.
+	private renderProjectRow(header: HTMLElement, project: Project | null, alignWithNoteIcon = true): void {
+		const row = header.createDiv({ cls: "task-time-tracker-log-card-project-row" });
+		if (alignWithNoteIcon) {
+			row.createDiv({ cls: "task-time-tracker-log-card-icon-col" });
+		}
+
+		if (!project) {
+			const emptySpan = row.createSpan({ cls: "task-time-tracker-log-card-project-item" });
+			setIcon(emptySpan.createSpan({ cls: "task-time-tracker-log-card-project-icon" }), "briefcase");
+			emptySpan.createSpan({ text: t("log.editModalNoProject") });
+			return;
+		}
+
+		const projectSpan = row.createSpan({ cls: "task-time-tracker-log-card-project-item" });
+		setIcon(projectSpan.createSpan({ cls: "task-time-tracker-log-card-project-icon" }), "briefcase");
+		const projectText = projectSpan.createSpan({ text: project.name, cls: "task-time-tracker-log-card-project-name" });
+
+		const client = project.client;
+		let clientTooltip: { el: HTMLElement; text: string } | null = null;
+		if (client) {
+			const clientSpan = row.createSpan({ cls: "task-time-tracker-log-card-project-item" });
+			setIcon(clientSpan.createSpan({ cls: "task-time-tracker-log-card-project-icon" }), "user");
+			clientTooltip = { el: clientSpan.createSpan({ text: client, cls: "task-time-tracker-log-card-project-name" }), text: client };
+		}
+
+		// Bug de QA — Cliente si mostraba tooltip, Proyecto no, con el
+		// mismo helper: Proyecto se media (aqui abajo) antes de que el
+		// span de Cliente (su hermano en la misma fila flex, ver
+		// .task-time-tracker-log-card-project-row) llegara a existir. En
+		// ese instante el layout de la fila solo tiene un item compitiendo
+		// por el espacio, asi que projectText.clientWidth sale mas ancho
+		// de lo que sera una vez Cliente tambien este presente — el
+		// helper decidia (con un ancho todavia no definitivo) que no
+		// hacia falta tooltip. Cliente, al medirse siempre en ultimo
+		// lugar (ya con Proyecto presente), nunca sufria esto. Fix: medir
+		// los dos solo despues de insertar ambos spans, no el helper en
+		// si (ver applyTruncationTooltip).
+		this.applyTruncationTooltip(projectText, project.name);
+		if (clientTooltip) this.applyTruncationTooltip(clientTooltip.el, clientTooltip.text);
+	}
+
+	// Tooltip nativo con el texto completo solo si el contenido esta
+	// realmente truncado por CSS (scrollWidth > clientWidth) y solo en
+	// desktop — en mobile no hay hover, asi que no hay donde mostrarlo (ver
+	// rediseno "Editar tarea desde el Historial"). Se llama de forma
+	// sincrona justo tras insertar `el` en un DOM ya adjunto (la tarjeta
+	// vive dentro del panel visible desde antes de este punto), asi que el
+	// layout ya esta resuelto al leer estas propiedades — no hace falta
+	// esperar (leer clientWidth/scrollWidth fuerza un reflow sincrono si
+	// hiciera falta). El requisito real es que `el` mismo tenga una caja
+	// con overflow:hidden/text-overflow:ellipsis (ver
+	// .task-time-tracker-log-card-project-name en styles.css): un <span>
+	// sin esas reglas propias (display:inline puro) siempre da clientWidth
+	// 0, asi que la comparacion nunca detecta truncamiento — bug de QA
+	// corregido aplicando esas reglas al span de texto mismo, no a un
+	// contenedor distinto.
+	private applyTruncationTooltip(el: HTMLElement, fullText: string): void {
+		if (Platform.isMobile) return;
+		if (el.scrollWidth > el.clientWidth) setTooltip(el, fullText);
+	}
+
+	// Zona 2 — menu kebab: Editar (abre EditTaskModal con el historico
+	// completo de la tarea) y Eliminar (misma guarda de sesion activa y
+	// misma confirmacion de borrado de tarea completa de siempre, Fase 5).
+	private openTaskMenu(anchor: HTMLElement, taskId: string, label: string): void {
+		const menu = new Menu();
+		menu.addItem((item) =>
+			item
+				.setTitle(t("log.menuEdit"))
+				.setIcon("pencil")
+				.onClick(() => this.openEditTaskModal(taskId, label)),
+		);
+		menu.addSeparator();
+		menu.addItem((item) =>
+			item
+				.setTitle(t("log.menuDelete"))
+				.setIcon("trash")
+				.setWarning(true)
+				.onClick(() => this.requestDeleteTask(taskId)),
+		);
+		const rect = anchor.getBoundingClientRect();
+		menu.showAtPosition({ x: rect.left, y: rect.bottom });
+	}
+
+	// El chequeo de sesion activa usa this.getEntries() sin acotar por
+	// dia/semana — la tarea puede tener su sesion activa hoy aunque esta
+	// tarjeta en concreto muestre otro dia (vista semanal).
+	private requestDeleteTask(taskId: string): void {
+		const hasActive = this.getEntries().some((entry) => entry.taskId === taskId && entry.end === null);
+		if (hasActive) {
+			new Notice(t("log.deleteBlockedActive"));
+			return;
+		}
+		this.taskDeleteConfirmId = taskId;
+		void this.render();
+	}
+
+	// Abre el modal de Editar con el historico completo de la tarea (no
+	// solo las entries acotadas al dia/semana visible de esta tarjeta) —
+	// ver TimeLogViewActions#getEntriesForTask.
+	private openEditTaskModal(taskId: string, label: string): void {
+		new EditTaskModal(
+			this.app,
+			taskId,
+			label,
+			this.actions.getEntriesForTask(taskId),
+			this.getEntries,
+			this.actions.getProjects(),
+			this.actions.getProjectForTask(taskId),
+			{
+				assignProject: (id, projectId) => this.actions.assignProject(id, projectId),
+				updateEntryTimes: (entryId, start, end) => this.actions.updateEntryTimes(entryId, start, end),
+				deleteEntry: (entryId) => this.actions.deleteEntry(entryId),
+			},
+			() => void this.render(),
+		).open();
+	}
+
 	// Backlog Fase 5 — confirmacion de borrado de tarea completa. Mismo
-	// patron que renderEditForm() usa para confirmar el borrado de una
-	// sesion individual (datos visibles + Si/Cancelar), reutilizando las
-	// mismas clases CSS. A diferencia de la tarjeta normal (cuyo total
-	// puede venir acotado a un dia/semana), aqui se recalculan sesiones y
-	// total SIEMPRE sobre el historico completo de la tarea
-	// (this.getEntries() sin filtrar por fecha): lo que se muestra debe
-	// coincidir exactamente con lo que se va a borrar.
+	// patron de datos visibles + Si/Cancelar que usa el formulario de
+	// edicion de sesion dentro del modal de Editar (EditTaskModal.ts),
+	// reutilizando las mismas clases CSS. A diferencia de la tarjeta
+	// normal (cuyo total puede venir acotado a un dia/semana), aqui se
+	// recalculan sesiones y total SIEMPRE sobre el historico completo de
+	// la tarea (this.getEntries() sin filtrar por fecha): lo que se
+	// muestra debe coincidir exactamente con lo que se va a borrar.
 	// Orden de arriba a abajo: titulo, resumen, aviso, botones (todo junto,
 	// sin scroll, para decidir y confirmar) y, tras una linea divisoria, el
-	// detalle completo de todas las sesiones — mismo renderSessionRow() que
-	// ya se usa al expandir la tarjeta en el uso normal del Historial.
+	// detalle completo de todas las sesiones (renderSessionInfo, solo
+	// lectura, ver sessionEdit.ts).
 	private renderTaskDeleteConfirm(card: Element, taskId: string, label: string): void {
 		const fullTaskEntries = this.getEntries().filter((entry) => entry.taskId === taskId);
 		const totalMs = fullTaskEntries.reduce((sum, entry) => sum + ((entry.end ?? Date.now()) - entry.start), 0);
 
 		const confirm = card.createDiv({ cls: "task-time-tracker-log-edit-form" });
 		confirm.createDiv({ text: label, cls: "task-time-tracker-log-task" });
+
+		// QA — a diferencia de la tarjeta normal (que omite la fila si no
+		// hay proyecto), aqui se muestra siempre, explicito, por ser el paso
+		// previo a una accion irreversible (ver renderProjectRow()).
+		// alignWithNoteIcon=false: este titulo no tiene icono de nota
+		// delante (a diferencia del de la tarjeta), asi que la fila debe
+		// alinearse a ras, sin el hueco de columna reservado para ese icono.
+		this.renderProjectRow(confirm, this.actions.getProjectForTask(taskId), false);
 
 		const meta = confirm.createDiv({ cls: "task-time-tracker-log-meta" });
 		meta.createSpan({
@@ -601,405 +631,32 @@ export class TimeLogView extends ItemView {
 				void this.render();
 			});
 		});
-		actions.createEl("button", { text: t("log.cancel") }).addEventListener("click", () => {
+		const cancelBtn = actions.createEl("button", { text: t("log.cancel") });
+		cancelBtn.addEventListener("click", () => {
 			this.taskDeleteConfirmId = null;
 			void this.render();
 		});
+		// Foco por defecto en "Cancelar", nunca en el boton destructivo —
+		// evita un borrado accidental con Enter (Fase 5). Diferido con
+		// setTimeout: el trigger es ahora el item "Delete" de un Menu (ver
+		// openTaskMenu()), y ese Menu puede devolver el foco a su propio
+		// boton disparador (el kebab) como parte de su propio cierre
+		// DESPUES de que este render() termine — sin el defer, esa
+		// devolucion de foco llegaba despues y pisaba el foco puesto aqui
+		// (regresion detectada en la ronda 2 de QA).
+		window.setTimeout(() => cancelBtn.focus(), 0);
 
-		// Solo lectura a proposito: renderSessionRow() (uso normal del
-		// Historial) deja la fila clicable para editar y añade su propio
-		// boton "Eliminar" por sesion — dos acciones de escritura que no
-		// deben convivir con la confirmacion de borrar la tarea entera. Aqui
-		// se llama renderSessionInfo() directamente (mismos datos: fecha,
-		// hora inicio, hora fin, duracion), sin listener de clic ni botones.
+		// Solo lectura a proposito: en la confirmacion de borrar la tarea
+		// entera no hay ninguna via de edicion — se llama renderSessionInfo()
+		// directamente (mismos datos: fecha, hora inicio, hora fin,
+		// duracion), sin listener de clic ni botones.
 		const detail = confirm.createDiv({ cls: "task-time-tracker-log-card-detail" });
 		for (const entry of [...fullTaskEntries].sort((a, b) => b.start - a.start)) {
 			const row = detail.createDiv({ cls: "task-time-tracker-log-session-row" });
-			this.renderSessionInfo(row, entry);
-		}
-	}
-
-	// Fecha + hora inicio + hora fin (con indicador "+N" si abarca mas de
-	// un dia natural) + duracion. Comun a la fila normal de una sesion y
-	// al aviso de confirmacion de borrado (para que los datos de la
-	// sesion sigan visibles mientras se confirma) — unico sitio que
-	// calcula el badge, ver getDaySpan().
-	private renderSessionInfo(container: Element, entry: TimeEntry): void {
-		const info = container.createDiv({ cls: "task-time-tracker-log-session-info" });
-
-		// Columna izquierda (fecha + rango horario): agrupada aparte de la
-		// duracion para que esta ultima quede siempre alineada a la
-		// derecha, con un min-width fijo en la fecha (ver styles.css) para
-		// que actue como columna consistente entre filas.
-		const left = info.createDiv({ cls: "task-time-tracker-log-session-left" });
-		const startDate = new Date(entry.start);
-		left.createSpan({ text: startDate.toLocaleDateString(), cls: "task-time-tracker-log-session-date" });
-
-		const rangeSpan = left.createSpan({ cls: "task-time-tracker-log-session-range" });
-		rangeSpan.createSpan({ text: startDate.toLocaleTimeString() });
-		rangeSpan.createSpan({ text: " → ", cls: "task-time-tracker-log-session-arrow" });
-		if (entry.end !== null) {
-			rangeSpan.createSpan({ text: new Date(entry.end).toLocaleTimeString() });
-			const daySpan = getDaySpan(entry.start, entry.end);
-			if (daySpan > 0) {
-				rangeSpan.createSpan({ text: ` +${daySpan}`, cls: "task-time-tracker-log-nextday-badge" });
-				// Fecha de fin de apoyo, solo junto al badge: en sesiones
-				// largas (+N grande) evita que el usuario tenga que calcular
-				// a mano la fecha final a partir de la de inicio. Tono
-				// secundario (no el color del badge): el badge es la alerta,
-				// esto es el detalle. Mismo formato que el resto de la fila
-				// (toLocaleDateString(), sin formato propio). No se renderiza
-				// en mobile (Platform.isMobile): el ancho de pantalla ahi es
-				// mas critico y la fecha completa ya es visible al abrir el
-				// formulario de edicion de esa sesion.
-				if (!Platform.isMobile) {
-					rangeSpan.createSpan({
-						text: ` (${new Date(entry.end).toLocaleDateString()})`,
-						cls: "task-time-tracker-log-nextday-date",
-					});
-				}
-			}
-		} else {
-			rangeSpan.createSpan({ text: t("log.ongoing"), cls: "task-time-tracker-log-ongoing" });
-		}
-
-		if (entry.end !== null) {
-			info.createSpan({
-				text: formatDuration(entry.end - entry.start),
-				cls: "task-time-tracker-log-session-duration",
-			});
-			return;
-		}
-
-		// Sesion en curso: mismo punto pulsante + contador en vivo que ya
-		// usan el badge junto al checkbox y el boton de stop de la tarjeta
-		// activa (misma clase, mismo bus), en vez de un guion suelto — asi
-		// un cambio futuro de diseno del indicador de "activo" se propaga
-		// a los tres sitios a la vez.
-		const live = info.createDiv({
-			cls: "task-time-tracker-log-session-duration task-time-tracker-log-session-live",
-		});
-		live.createSpan({ cls: "task-time-tracker-inline-dot" });
-		const counter = live.createSpan({ cls: "task-time-tracker-log-session-live-value" });
-		counter.setText(formatDuration(Date.now() - entry.start));
-		this.activeCardTicks.push({ kind: "duration", el: counter, completedMs: 0, start: entry.start });
-	}
-
-	// Abre el formulario de edicion de una sesion (clic en la fila). El
-	// borrado de la sesion ya no tiene un punto de entrada directo desde
-	// la fila (icono suelto en hover): la unica via es el boton "Eliminar"
-	// dentro de este mismo formulario, que pone confirmingDelete a true
-	// sobre el draft ya abierto (ver renderEditForm()).
-	private openEditDraft(entry: TimeEntry): void {
-		this.editDraft = {
-			entryId: entry.id,
-			startDate: formatDateInput(entry.start),
-			startDateEvaluated: false,
-			startTime: formatHMS(entry.start),
-			startTimeEvaluated: false,
-			endDate: formatDateInput(entry.end as number),
-			endDateEvaluated: false,
-			endTime: formatHMS(entry.end as number),
-			endTimeEvaluated: false,
-			error: null,
-			confirmingDelete: false,
-		};
-		void this.render();
-	}
-
-	private renderSessionRow(container: Element, entry: TimeEntry): void {
-		if (this.editDraft?.entryId === entry.id) {
-			this.renderEditForm(container, entry);
-			return;
-		}
-
-		const row = container.createDiv({ cls: "task-time-tracker-log-session-row" });
-		this.renderSessionInfo(row, entry);
-
-		// Solo sesiones cerradas son editables: la activa (si la tarea
-		// tuviera una en curso) nunca se edita desde aqui. Punto D2 del
-		// rediseno: toda la fila es clicable (fondo en hover via CSS), ya
-		// no hay un icono de editar aparte. El borrado individual ya no
-		// tiene un icono propio en la fila — vive solo dentro del
-		// formulario de edicion que abre este mismo click.
-		if (entry.end !== null) {
-			row.addClass("task-time-tracker-log-session-row-editable");
-			row.addEventListener("click", () => this.openEditDraft(entry));
-		}
-	}
-
-	// Campo de texto con icono + etiqueta encima (fecha u hora), parte de
-	// una de las dos parejas (inicio/fin) del formulario de edicion. Sin
-	// selector nativo del sistema: type="text" siempre, igual que ya
-	// pasaba con las horas.
-	private createEditField(container: Element, icon: string, label: string): HTMLInputElement {
-		const field = container.createDiv({ cls: "task-time-tracker-log-edit-field" });
-		const labelRow = field.createDiv({ cls: "task-time-tracker-log-edit-field-label" });
-		setIcon(labelRow.createSpan(), icon);
-		labelRow.createSpan({ text: label });
-		const input = field.createEl("input", { cls: "task-time-tracker-log-edit-input" });
-		input.type = "text";
-		return input;
-	}
-
-	private renderEditForm(container: Element, entry: TimeEntry): void {
-		const draft = this.editDraft;
-		if (!draft) return;
-
-		const form = container.createDiv({ cls: "task-time-tracker-log-edit-form" });
-
-		if (draft.confirmingDelete) {
-			// Los datos de la sesion (originales, no lo que se haya
-			// tecleado sin guardar) siguen visibles mientras se confirma.
-			this.renderSessionInfo(form, entry);
-			form.createEl("p", {
-				text: t("log.deleteSessionConfirm"),
-				cls: "task-time-tracker-log-edit-error",
-			});
-			const actions = form.createDiv({ cls: "task-time-tracker-log-edit-actions" });
-			actions.createEl("button", { text: t("log.deleteSessionYes"), cls: "mod-warning" }).addEventListener("click", () => {
-				void this.actions.deleteEntry(entry.id).then(() => {
-					this.editDraft = null;
-					void this.render();
-				});
-			});
-			actions.createEl("button", { text: t("log.cancel") }).addEventListener("click", () => {
-				draft.confirmingDelete = false;
-				void this.render();
-			});
-			return;
-		}
-
-		// Bloque 3 UX — parejas etiquetadas con icono (fecha inicio/hora
-		// inicio, fecha fin/hora fin), todas como campos de texto libres,
-		// sin selector nativo del sistema ni siquiera para las fechas. El
-		// grid se apila verticalmente en pantallas estrechas y pasa a una
-		// sola fila si hay ancho suficiente (ver .task-time-tracker-log-edit-grid).
-		const grid = form.createDiv({ cls: "task-time-tracker-log-edit-grid" });
-
-		const startGroup = grid.createDiv({ cls: "task-time-tracker-log-edit-group" });
-		const startDateInput = this.createEditField(startGroup, "calendar", t("log.editStartDateLabel"));
-		const startInput = this.createEditField(startGroup, "clock", t("log.editStartTimeLabel"));
-		startInput.placeholder = "HH:MM:SS";
-
-		const endGroup = grid.createDiv({ cls: "task-time-tracker-log-edit-group" });
-		const endDateInput = this.createEditField(endGroup, "calendar", t("log.editEndDateLabel"));
-		const endInput = this.createEditField(endGroup, "clock", t("log.editEndTimeLabel"));
-		endInput.placeholder = "HH:MM:SS";
-
-		startDateInput.value = draft.startDate;
-		startInput.value = draft.startTime;
-		endDateInput.value = draft.endDate;
-		endInput.value = draft.endTime;
-
-		// El estado "invalido" se guarda en el draft ({campo}Evaluated),
-		// no solo como clase CSS: un refresh externo reconstruye este
-		// formulario entero (ver comentario en EditDraft), y sin esto la
-		// marca visual se perderia aunque el campo siguiera siendo
-		// invalido.
-		startDateInput.toggleClass("is-invalid", draft.startDateEvaluated && parseDateInput(draft.startDate) === null);
-		startInput.toggleClass("is-invalid", draft.startTimeEvaluated && parseTimeInput(draft.startTime) === null);
-		endDateInput.toggleClass("is-invalid", draft.endDateEvaluated && parseDateInput(draft.endDate) === null);
-		endInput.toggleClass("is-invalid", draft.endTimeEvaluated && parseTimeInput(draft.endTime) === null);
-
-		// Bloque resaltado de solo lectura: duracion calculada en vivo a
-		// partir de los cuatro campos. Icono + label a la izquierda, valor
-		// a la derecha con mayor peso tipografico — a proposito sin la
-		// affordance de input de los 4 campos de arriba (ver
-		// .task-time-tracker-log-edit-input en styles.css): la ausencia de
-		// borde/fondo tipo-input es lo que comunica "esto no se edita
-		// directamente".
-		const durationBlock = form.createDiv({ cls: "task-time-tracker-log-edit-duration" });
-		const durationLabelGroup = durationBlock.createDiv({ cls: "task-time-tracker-log-edit-duration-label-group" });
-		setIcon(durationLabelGroup.createSpan(), "timer");
-		durationLabelGroup.createSpan({
-			text: t("log.editDurationLabel"),
-			cls: "task-time-tracker-log-edit-duration-label",
-		});
-		const durationPreview = durationBlock.createSpan({ cls: "task-time-tracker-log-edit-duration-value" });
-
-		// Bloque de aviso unico y fijo, justo debajo del bloque de
-		// duracion: siempre en la misma posicion, con altura reservada
-		// aunque no haya nada que mostrar, para que el formulario no
-		// salte de alto. Nunca muestra dos mensajes a la vez — ver
-		// updateMessage() para la prioridad entre ellos.
-		const messageEl = form.createEl("p", { cls: "task-time-tracker-log-edit-message" });
-
-		const actions = form.createDiv({ cls: "task-time-tracker-log-edit-actions" });
-		actions.createEl("button", { text: t("log.save"), cls: "mod-cta" }).addEventListener("click", () => {
-			void this.saveEditDraft(entry);
-		});
-		actions.createEl("button", { text: t("log.cancel") }).addEventListener("click", () => {
-			this.editDraft = null;
-			void this.render();
-		});
-
-		// "Eliminar sesion": icono de papelera en vez de boton de texto,
-		// mismo estilo que el de borrar la tarea completa
-		// (task-time-tracker-log-card-delete), en la misma fila que
-		// Guardar/Cancelar, empujado al extremo derecho.
-		const deleteBtn = actions.createEl("button", { cls: "task-time-tracker-log-edit-delete clickable-icon" });
-		setIcon(deleteBtn, "trash-2");
-		deleteBtn.setAttribute("aria-label", t("log.delete"));
-		deleteBtn.addEventListener("click", () => {
-			draft.confirmingDelete = true;
-			void this.render();
-		});
-
-		const setMessage = (text: string, kind: "error" | "warning" | "none") => {
-			messageEl.setText(text);
-			messageEl.toggleClass("task-time-tracker-log-edit-message-error", kind === "error");
-			messageEl.toggleClass("task-time-tracker-log-edit-message-warning", kind === "warning");
-		};
-
-		// Prioridad, nunca dos a la vez: 1) error de guardado del backend
-		// (sesion borrada mientras se editaba) 2) error de formato — solo
-		// si algun campo ya fue evaluado (blur o longitud completa, ver
-		// bindDraftField; nunca mientras se sigue escribiendo) 3) fin <=
-		// inicio (una vez el formato es valido) 4) aviso de solapamiento
-		// (solo con formato valido y fin > inicio) 5) nada.
-		const updateMessage = () => {
-			if (draft.error) {
-				setMessage(draft.error, "error");
-				return;
-			}
-			const startDateInvalid = draft.startDateEvaluated && parseDateInput(draft.startDate) === null;
-			const endDateInvalid = draft.endDateEvaluated && parseDateInput(draft.endDate) === null;
-			const startTimeInvalid = draft.startTimeEvaluated && parseTimeInput(draft.startTime) === null;
-			const endTimeInvalid = draft.endTimeEvaluated && parseTimeInput(draft.endTime) === null;
-			if (startDateInvalid || endDateInvalid || startTimeInvalid || endTimeInvalid) {
-				setMessage(t("log.errorFormat"), "error");
-				return;
-			}
-
-			const resolved = resolveDraftTimestamps(draft);
-			if (!resolved.ok) {
-				// Formato todavia incompleto pero no marcado invalido
-				// (el usuario sigue escribiendo) — sin mensaje todavia.
-				setMessage("", "none");
-				return;
-			}
-			if (resolved.end <= resolved.start) {
-				setMessage(t("log.errorRange"), "error");
-				return;
-			}
-
-			const { start, end } = effectiveRange(draft, entry, resolved);
-			const overlapping = this.getEntries().some(
-				(other) => other.id !== entry.id && rangesOverlap(start, end, other.start, other.end ?? Date.now()),
+			renderSessionInfo(row, entry, (el, completedMs, start) =>
+				this.activeCardTicks.push({ kind: "duration", el, completedMs, start }),
 			);
-			setMessage(overlapping ? t("log.warnOverlap") : "", overlapping ? "warning" : "none");
-		};
-
-		// Vista previa en vivo de la duracion calculada, sin reconstruir
-		// el formulario entero — eso perderia el foco del input a mitad
-		// de tecleo. Sin duracion valida todavia (campos incompletos o
-		// fuera de rango), se muestra "—" en vez de dejar el bloque vacio.
-		const updatePreview = () => {
-			const resolved = resolveDraftTimestamps(draft);
-			if (!resolved.ok) {
-				durationPreview.setText("—");
-				return;
-			}
-			const { start, end } = effectiveRange(draft, entry, resolved);
-			durationPreview.setText(end > start ? formatDuration(end - start) : "—");
-		};
-
-		// El formato NO se evalua en cada tecla (seria prematuro mientras
-		// el usuario sigue escribiendo): solo al perder el foco (blur) o
-		// al llegar a la longitud completa del campo (10 caracteres
-		// "YYYY-MM-DD", 8 "HH:MM:SS") — ver EditDraft sobre por que el
-		// resultado se guarda en el draft (setEvaluated) y no solo como
-		// clase CSS. Mientras tanto, se limpia para no dejar una marca
-		// vieja mientras se sigue corrigiendo. Sin selector nativo ni
-		// flechas arriba/abajo: se edita solo a mano.
-		const bindDraftField = (
-			input: HTMLInputElement,
-			isValid: (value: string) => boolean,
-			fullLength: number,
-			apply: (value: string) => void,
-			setEvaluated: (value: boolean) => void,
-		) => {
-			const evaluateFormat = () => {
-				setEvaluated(true);
-				input.toggleClass("is-invalid", !isValid(input.value));
-				updateMessage();
-			};
-			input.addEventListener("input", () => {
-				apply(input.value);
-				updatePreview();
-				if (input.value.length >= fullLength) evaluateFormat();
-				else {
-					setEvaluated(false);
-					input.removeClass("is-invalid");
-					updateMessage();
-				}
-			});
-			input.addEventListener("blur", evaluateFormat);
-		};
-
-		bindDraftField(
-			startDateInput,
-			(value) => parseDateInput(value) !== null,
-			10,
-			(value) => (draft.startDate = value),
-			(value) => (draft.startDateEvaluated = value),
-		);
-		bindDraftField(
-			startInput,
-			(value) => parseTimeInput(value) !== null,
-			8,
-			(value) => (draft.startTime = value),
-			(value) => (draft.startTimeEvaluated = value),
-		);
-		bindDraftField(
-			endDateInput,
-			(value) => parseDateInput(value) !== null,
-			10,
-			(value) => (draft.endDate = value),
-			(value) => (draft.endDateEvaluated = value),
-		);
-		bindDraftField(
-			endInput,
-			(value) => parseTimeInput(value) !== null,
-			8,
-			(value) => (draft.endTime = value),
-			(value) => (draft.endTimeEvaluated = value),
-		);
-
-		updatePreview();
-		updateMessage();
-	}
-
-	// Fin debe ser posterior a inicio, aplicada la logica de cruce de
-	// medianoche (ver resolveDraftTimestamps). El solapamiento con otra
-	// sesion ya se avisa en vivo mientras se edita (ver updateMessage());
-	// aqui no se vuelve a comprobar, nunca bloquea el guardado.
-	private async saveEditDraft(entry: TimeEntry): Promise<void> {
-		const draft = this.editDraft;
-		if (!draft) return;
-
-		const resolved = resolveDraftTimestamps(draft);
-		if (!resolved.ok) {
-			draft.error = resolved.error;
-			void this.render();
-			return;
 		}
-		if (resolved.end <= resolved.start) {
-			draft.error = t("log.errorRange");
-			void this.render();
-			return;
-		}
-
-		const result = await this.actions.updateEntryTimes(entry.id, resolved.start, resolved.end);
-		if (!result.ok) {
-			draft.error = result.error === "invalid-range" ? t("log.errorRange") : t("log.errorGone");
-			void this.render();
-			return;
-		}
-
-		this.editDraft = null;
-		void this.render();
 	}
 
 	// Fase 5 UX — abre la nota de origen de una tarea desde el titulo de

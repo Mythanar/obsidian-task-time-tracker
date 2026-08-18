@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Settings: a new "Projects & clients" section lets you maintain a list of projects (with an optional client) — add them one by one or paste a whole list at once (`Project; Client` per line). This is the foundation for future export adapters (e.g. Clockify) that expect `Project`/`Client` columns, which aren't wired up yet.
+- History panel: each task's card is now read-only with three independent, clickable zones — an icon to open the source note, a "⋮" menu (Edit / Delete), and the sessions line, which expands or collapses a read-only detail. Clicking anywhere else on the card no longer does anything.
+- A new "Edit task" dialog (opened from the "⋮" menu) is now the only place to reassign a task's project/client (applied live, no Save button), edit a session's date/time, or delete a session — it lists the task's entire session history, not just what's currently visible in the panel. Deleting the whole task also moved here, into the "⋮" menu.
+
 ### Fixed
 
 - History panel: the "N sessions · total" summary on an actively-tracked task's card now updates live instead of only on the next external refresh (opening/closing the panel, editing a session, stopping tracking, etc.). Below one minute it ticks every second (e.g. "3s", "9s"), same pace as the card's stop-button counter; from one minute onward it switches to the compact "Xh Ym" format, redrawing only when the displayed minute changes.

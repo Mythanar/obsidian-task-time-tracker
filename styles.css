@@ -93,26 +93,15 @@
 	color: var(--text-error);
 }
 
-/* Rediseno de interaccion — toda la cabecera (titulo + meta) expande o
-   colapsa las sesiones; unica excepcion, el icono de nota y el trash de
-   tarea (stopPropagation en su click, ver TimeLogView.ts). Bleed hacia
-   arriba/izquierda/derecha (margen negativo cancelando el padding, mismo
-   patron que .task-time-tracker-log-edit-form) para que el fondo de
-   hover llegue hasta el borde real de la tarjeta; no hacia abajo, para
-   no comerse el espacio antes del detalle expandido. */
+/* Rediseno "Editar tarea desde el Historial" (agosto 2026) — la tarjeta
+   es de solo lectura: sin hover ni clic a nivel de cabecera completa. La
+   cabecera es solo un contenedor de agrupacion (titulo, proyecto/cliente,
+   linea de sesiones), cada uno con su propia zona clicable e independiente
+   (ver TimeLogView.ts#renderTaskCard). */
 .task-time-tracker-log-card-header {
 	display: flex;
 	flex-direction: column;
 	gap: 0.25em;
-	cursor: pointer;
-	margin: -0.5em -0.5em 0;
-	padding: 0.5em 0.5em 0;
-	border-radius: 4px 4px 0 0;
-}
-
-.task-time-tracker-log-card-header:hover,
-.task-time-tracker-log-card-header:focus-within {
-	background-color: var(--background-modifier-hover);
 }
 
 .task-time-tracker-log-card-title-row {
@@ -121,9 +110,9 @@
 	gap: 13px;
 }
 
-/* Columna de icono de ancho fijo, repetida en las dos lineas de la
-   cabecera (nota junto al titulo, chevron junto a "N sessions..."): el
-   mismo ancho en ambas hace que el texto de despues arranque siempre en
+/* Columna de icono de ancho fijo, repetida en las filas de la cabecera
+   (nota/proyecto junto al titulo, chevron junto a "N sessions..."): el
+   mismo ancho en todas hace que el texto de despues arranque siempre en
    el mismo margen izquierdo, exista o no el icono de nota en esta
    tarjeta (tarea no encontrada, ver TimeLogView.ts#renderTaskCard).
    Centrado por flex, no por line-height ni margenes sueltos. */
@@ -144,19 +133,118 @@
 .task-time-tracker-log-card-toggle svg {
 	width: 12px;
 	height: 12px;
+	transition: transform 0.15s ease;
 }
 
+/* El chevron rota 90° al expandir en vez de alternar entre dos iconos
+   distintos (ver TimeLogView.ts — siempre "chevron-right" en el DOM). */
+.task-time-tracker-log-card-sessions-toggle.is-expanded .task-time-tracker-log-card-toggle svg {
+	transform: rotate(90deg);
+}
+
+/* Titulo: trunca con elipsis en vez de envolver — hace falta min-width: 0
+   porque es un item flex dentro de title-row (sin esto, un flex item no
+   se encoge por debajo de su contenido intrinseco y el ellipsis nunca
+   llega a aplicarse). Sin cursor/hover propios (ver rediseno: el titulo
+   ya no es un area clicable, ver TimeLogView.ts#applyTruncationTooltip
+   para el tooltip nativo cuando el texto no cabe). */
 .task-time-tracker-log-card-title-row .task-time-tracker-log-task {
 	flex: 1 1 auto;
+	min-width: 0;
 	margin-bottom: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Menu kebab: siempre visible, alineado al extremo derecho de la fila del
+   titulo, mismo hit-area 44x44 que el resto de botones-icono (ver
+   .task-time-tracker-icon-btn). */
+.task-time-tracker-log-card-menu {
+	flex-shrink: 0;
+	margin-left: auto;
+	color: var(--text-muted);
+}
+
+.task-time-tracker-log-card-menu:hover {
+	color: var(--text-normal);
+	background-color: var(--background-modifier-hover);
+	border-radius: 50%;
+}
+
+/* Fila 2 — Proyecto/Cliente (ver renderProjectRow() en TimeLogView.ts):
+   sin hover ni clic propios, mismo tono/tamaño que el resto de metadatos
+   secundarios de la tarjeta. */
+.task-time-tracker-log-card-project-row {
+	display: flex;
+	align-items: center;
+	gap: 1em;
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+.task-time-tracker-log-card-project-item {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.35em;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.task-time-tracker-log-card-project-icon {
+	flex-shrink: 0;
+}
+
+.task-time-tracker-log-card-project-icon svg {
+	width: 0.85em;
+	height: 0.85em;
+	flex-shrink: 0;
+}
+
+/* Bug de QA — el truncamiento (y por tanto el tooltip, ver
+   applyTruncationTooltip en TimeLogView.ts) tiene que vivir en el propio
+   span de texto, no en .task-time-tracker-log-card-project-item (el
+   contenedor icono+texto): un span sin sus propias reglas de overflow es
+   puramente inline y su clientWidth es siempre 0, asi que la comparacion
+   scrollWidth > clientWidth nunca detectaba truncamiento real — el
+   tooltip no llegaba a dispararse aunque el texto se viera cortado.
+   flex: 1 1 auto + min-width: 0 lo convierte en el unico elemento
+   encogible de .task-time-tracker-log-card-project-item (el icono de al
+   lado no se encoge, ver flex-shrink: 0 arriba). */
+.task-time-tracker-log-card-project-name {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Zona 3 — linea de sesiones (chevron + "N sessions" + total + tt-id),
+   envuelta en su propia pildora clicable: expande/colapsa el detalle de
+   solo lectura de la tarjeta (ver TimeLogView.ts). Bleed lateral sutil
+   (margen negativo cancelando el padding), no borde a borde. */
+.task-time-tracker-log-card-sessions-toggle {
+	display: inline-flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.35em 1em;
+	cursor: pointer;
+	margin: 0 -0.5em;
+	padding: 0.2em 0.5em;
+	border-radius: 100px;
+}
+
+.task-time-tracker-log-card-sessions-toggle:hover,
+.task-time-tracker-log-card-sessions-toggle:focus-visible {
+	background-color: var(--background-modifier-hover);
 }
 
 /* Area de toque minima 44x44px (punto 7 del rediseno de interaccion) en
    los botones-icono solo-icono de la cabecera de tarjeta y de la fila de
-   sesion (nota, trash de tarea, trash de sesion), sin inflar el icono
-   visual ni la altura real de la fila que los contiene: el hit-area
-   extra es un pseudo-elemento invisible posicionado fuera del propio
-   boton (::after con inset negativo), no padding/tamaño real. */
+   sesion (nota, kebab, trash de sesion dentro del modal de Editar), sin
+   inflar el icono visual ni la altura real de la fila que los contiene:
+   el hit-area extra es un pseudo-elemento invisible posicionado fuera
+   del propio boton (::after con inset negativo), no padding/tamaño real. */
 .task-time-tracker-icon-btn {
 	position: relative;
 }
@@ -170,8 +258,8 @@
 /* Icono de nota delante del titulo: mismo color atenuado que el resto de
    metadatos de la cabecera, no el color de acento que llevaba el titulo
    cuando era un link (ver DECISIONES.md — el titulo deja de ser
-   clicable). stopPropagation en su click (TimeLogView.ts) evita que
-   tambien dispare el toggle de la cabecera. */
+   clicable). Zona 1 del rediseno: unico punto de navegacion a la nota,
+   hit-area e hijos propios (ver TimeLogView.ts). */
 .task-time-tracker-log-card-note {
 	color: var(--text-muted);
 	flex-shrink: 0;
@@ -180,35 +268,6 @@
 
 .task-time-tracker-log-card-note:hover {
 	color: var(--text-accent);
-}
-
-/* Backlog Fase 5 — boton de borrar la tarea completa, al final de la
-   linea de meta. Empujado al extremo derecho de la fila con
-   margin-left: auto, sin importar el ancho de sesiones/total/tt-id que
-   lo precede. Oculto mientras la tarjeta esta colapsada, visible al
-   expandirla (igual en desktop y mobile) — vinculado a una accion
-   deliberada del usuario (expandir) en vez de a una reaccion pasiva del
-   cursor (:hover), que se sentia como "aqui se borra" sin haberlo
-   pedido. */
-.task-time-tracker-log-card-delete {
-	margin-left: auto;
-	color: var(--text-muted);
-	opacity: 0;
-	/* opacity: 0 no desactiva el clic — sin esto, su propia hit-area
-	   ampliada (.task-time-tracker-icon-btn::after) sigue interceptando
-	   clics en la zona donde el boton se veria, aunque sea invisible. */
-	pointer-events: none;
-	cursor: pointer;
-	flex-shrink: 0;
-}
-
-.task-time-tracker-log-row.is-expanded .task-time-tracker-log-card-delete {
-	opacity: 1;
-	pointer-events: auto;
-}
-
-.task-time-tracker-log-card-delete:hover {
-	color: var(--text-error);
 }
 
 /* Tarjeta cuya tarea tiene el tracking activo en este momento: borde de
@@ -328,11 +387,17 @@
 	}
 }
 
+/* min-width: 0 — sin esto, este flex item (hijo de .task-time-tracker-log-card-detail,
+   que es flex-direction: column) no puede encogerse por debajo del ancho
+   minimo de su contenido: en la tarjeta del panel (mas ancha) no se nota,
+   pero en el modal de Editar (mas estrecho, ver .task-time-tracker-edit-modal-sessions)
+   provocaba scroll horizontal — bug reportado en QA. */
 .task-time-tracker-log-session-row {
 	display: flex;
 	align-items: center;
 	justify-content: space-between;
 	gap: 0.5em;
+	min-width: 0;
 	padding: 0.2em 0.35em;
 	margin: 0 -0.35em;
 	border-radius: 4px;
@@ -637,8 +702,7 @@
 }
 
 /* Icono de "Eliminar sesion", en la misma fila que Guardar/Cancelar,
-   empujado al extremo derecho — mismo patron que el de borrar la tarea
-   completa (.task-time-tracker-log-card-delete). */
+   empujado al extremo derecho (ver EditTaskModal.ts). */
 .task-time-tracker-log-edit-delete {
 	margin-left: auto;
 	color: var(--text-muted);
@@ -1098,4 +1162,344 @@ body.task-time-tracker-taskid-hidden .dataview .inline-field-key[data-dv-key="tt
 
 body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	display: none;
+}
+
+/* Fase 8 — Settings > "Projects & clients" (ver settings/ProjectsSection.ts).
+   Alta/baja de proyectos y clientes, base para futuros adapters de
+   exportacion (Clockify y otros esperan columnas Project/Client en su
+   importador).
+   container-type aqui, no @media: este bloque vive dentro del panel de
+   Settings de Obsidian (sidebar o tab central, elegible por el usuario —
+   ver CLAUDE.md), cuyo ancho no tiene por que coincidir con el del
+   viewport de la ventana. Un unico container context para todo el bloque
+   (formulario "One by one" y filas de "N projects saved" comparten el
+   mismo punto de corte, ver @container mas abajo). */
+.task-time-tracker-projects {
+	container-type: inline-size;
+	margin-bottom: 1em;
+}
+
+/* Banner informativo, siempre visible (nunca tooltip): por que importan
+   los nombres exactos de proyecto/cliente. Mismo patron de bloque
+   destacado con borde de acento a la izquierda que ya usa el resto del
+   plugin (ver .task-time-tracker-log-edit-duration). */
+.task-time-tracker-projects-banner {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.6em;
+	padding: 0.75em 1em;
+	margin-bottom: 1em;
+	border-left: 3px solid var(--interactive-accent);
+	border-radius: 0 var(--radius-s) var(--radius-s) 0;
+	background-color: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
+}
+
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+	.task-time-tracker-projects-banner {
+		background-color: var(--background-secondary);
+	}
+}
+
+.task-time-tracker-projects-banner-icon {
+	flex-shrink: 0;
+	color: var(--interactive-accent);
+	margin-top: 0.15em;
+}
+
+.task-time-tracker-projects-banner-icon svg {
+	width: 1.1em;
+	height: 1.1em;
+}
+
+.task-time-tracker-projects-banner-text {
+	font-size: 0.9em;
+	color: var(--text-muted);
+}
+
+/* Pestañas "One by one" / "Paste list": mismo control segmentado que el
+   toggle Dia/Semana del Historial (.task-time-tracker-log-datenav-mode). */
+.task-time-tracker-projects-tabs {
+	width: fit-content;
+	margin-bottom: 1em;
+}
+
+.task-time-tracker-projects-tabs button {
+	padding: 0.4em 1em;
+	cursor: pointer;
+}
+
+.task-time-tracker-projects-form {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+	margin-bottom: 1.25em;
+}
+
+/* Project name / Client / Add: apilados en tres filas completas por
+   defecto (ancho reducido). A partir del punto de corte de mas abajo,
+   comparten una sola fila. */
+.task-time-tracker-projects-form-fields {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+}
+
+.task-time-tracker-projects-form-fields > * {
+	width: 100%;
+}
+
+@container (min-width: 480px) {
+	.task-time-tracker-projects-form-fields {
+		flex-direction: row;
+		align-items: center;
+	}
+
+	.task-time-tracker-projects-form-fields input {
+		flex: 1 1 0;
+		width: auto;
+		min-width: 0;
+	}
+
+	.task-time-tracker-projects-form-fields button {
+		flex-shrink: 0;
+		width: auto;
+	}
+}
+
+/* Mismo estilo de campo que .task-time-tracker-log-edit-input (ver
+   Historial), adaptado a textarea multilinea para la pestaña "Paste list". */
+.task-time-tracker-projects-textarea {
+	width: 100%;
+	min-height: 6em;
+	font-size: 0.85em;
+	font-family: var(--font-monospace);
+	padding: 7px 10px;
+	background-color: var(--background-modifier-form-field);
+	border: 1px solid var(--background-modifier-border-hover);
+	border-radius: var(--radius-s);
+	resize: vertical;
+}
+
+.task-time-tracker-projects-textarea:focus {
+	outline: none;
+	border-color: var(--interactive-accent);
+}
+
+.task-time-tracker-projects-help {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin: 0;
+}
+
+.task-time-tracker-projects-import-btn {
+	width: 100%;
+}
+
+.task-time-tracker-projects-count {
+	font-size: 0.75em;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+	color: var(--text-muted);
+	margin-bottom: 0.5em;
+}
+
+.task-time-tracker-projects-list {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5em;
+}
+
+/* Ancho reducido (por defecto): nombre arriba, cliente+papelera
+   agrupados debajo — de ahi que .task-time-tracker-projects-row-meta
+   agrupe ambos en un unico wrapper (ver @container mas abajo y
+   ProjectsSection.ts#renderProjectRow), en vez de que la papelera cuelgue
+   suelta del row entero. */
+.task-time-tracker-projects-row {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35em;
+	padding: 0.6em 0.75em;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: 4px;
+}
+
+.task-time-tracker-projects-row-name {
+	font-weight: 600;
+}
+
+.task-time-tracker-projects-row-meta {
+	display: flex;
+	align-items: center;
+	gap: 0.75em;
+}
+
+.task-time-tracker-projects-row-client {
+	flex: 1 1 auto;
+	min-width: 0;
+	font-size: 0.85em;
+	color: var(--text-muted);
+}
+
+/* Ancho suficiente: nombre, cliente y papelera en una sola linea (nombre
+   a la izquierda, cliente+papelera agrupados a la derecha). */
+@container (min-width: 480px) {
+	.task-time-tracker-projects-row {
+		flex-direction: row;
+		align-items: center;
+		justify-content: space-between;
+		gap: 0.75em;
+	}
+
+	.task-time-tracker-projects-row-name {
+		min-width: 0;
+	}
+
+	.task-time-tracker-projects-row-meta {
+		flex-shrink: 0;
+	}
+}
+
+.task-time-tracker-projects-row-delete {
+	flex-shrink: 0;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.task-time-tracker-projects-row-delete:hover {
+	color: var(--text-error);
+}
+
+/* Bug QA ronda 4 (mobile) — el titleEl nativo de Obsidian (this.setTitle(),
+   ver EditTaskModal.ts#onOpen) trae por defecto un truncado con ellipsis
+   pensado para titulos cortos de un modal generico, no para el nombre de
+   una nota que puede ser largo. Aqui ese nombre es puramente informativo
+   y este modal es la unica via para leerlo completo en mobile (no hay
+   tooltip ahi), asi que truncarlo deja al nombre sin ningun sitio donde
+   consultarse. Se anula solo dentro de este modal (selector con la clase
+   propia como ancestro), sin tocar el titulo de otros modales del plugin
+   (RecoveryModal, ExportModal) que no tienen este problema. */
+.task-time-tracker-edit-modal .modal-title {
+	overflow: visible;
+	white-space: normal;
+	overflow-wrap: break-word;
+	text-overflow: clip;
+	text-align: left;
+	/* Causa raiz real (confirmada via DevTools remoto, app.css:9071):
+	   .modal-title nativo trae margin-left/right: auto, que centra la
+	   caja del titulo dentro de modal-header independientemente de
+	   text-align — de ahi el centrado original y el "margen izquierdo
+	   extra" visto despues en mobile (rondas 3-4 nunca tocaban margin).
+	   Sin esto, text-align: left de arriba solo alineaba el texto DENTRO
+	   de una caja que seguia centrada. */
+	margin: 0;
+	/* Bug QA ronda 5 — al envolver a varias lineas (fix de arriba), el
+	   texto crecia hacia la derecha sin limite e invadia la X de cerrar,
+	   que esta posicionada aparte (no es un hermano flex del titulo, ver
+	   modal-close-button). box-sizing: border-box asegura que este
+	   padding-right reste del ancho real en vez de sumarse a el; el valor
+	   es un margen de seguridad generoso (ancho tipico del boton +
+	   holgura), no una medida exacta — vale para cualquier numero de
+	   lineas, a diferencia de una solucion basada en truncar o en no
+	   envolver. */
+	box-sizing: border-box;
+	padding-right: 2.5em;
+}
+
+/* Modal "Editar tarea" (ver EditTaskModal.ts) — lista de sesiones con
+   scroll propio, separada del resto del modal (nombre de la tarea,
+   selector de Proyecto/Cliente, footer). Reutiliza las clases ya
+   existentes de fila/detalle/formulario de edicion del Historial, solo
+   contenidas aqui dentro con una altura maxima. */
+.task-time-tracker-edit-modal-sessions {
+	max-height: 50vh;
+	overflow-y: auto;
+	margin-top: 0.25em;
+}
+
+/* QA ronda 3, bug de scroll horizontal (segundo intento) — confirmado:
+   .task-time-tracker-log-session-row usa un margen negativo horizontal a
+   proposito (mismo patron "bleed" que .task-time-tracker-log-edit-form),
+   para que su fondo de hover llegue hasta el borde real de la tarjeta del
+   panel — ahi es seguro porque .task-time-tracker-log-row (la tarjeta)
+   tiene padding: 0.5em de sobra para absorberlo. .task-time-tracker-edit-modal-sessions
+   no tiene ese padding de sobra, asi que ese mismo sangrado sobresalia
+   del contenedor con scroll y disparaba una barra horizontal — no es un
+   problema de min-width (ya corregido en la ronda 2), es el sangrado en
+   si. Se anula solo aqui dentro, sin tocar la clase base (que sigue
+   siendo correcta para la tarjeta del panel). */
+.task-time-tracker-edit-modal-sessions .task-time-tracker-log-session-row {
+	margin: 0;
+}
+
+/* QA ronda 3 — encabezado "Sessions" y resumen (nº sesiones + total) en
+   la misma fila: titulo a la izquierda, resumen a la derecha. */
+.task-time-tracker-edit-modal-sessions-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: baseline;
+	margin-top: 1em;
+	margin-bottom: 0.25em;
+}
+
+.task-time-tracker-edit-modal-sessions-header h4 {
+	margin: 0;
+}
+
+/* Selector de Proyecto/Cliente del modal de Editar: a diferencia de un
+   Setting normal (info a la izquierda, control empujado al extremo
+   derecho via justify-content: space-between), aqui la etiqueta y el
+   dropdown van juntos, alineados a la izquierda — pedido explicito de QA.
+   Sin cambio de comportamiento, solo layout. !important: el estilo base
+   de Obsidian para .setting-item puede ganar por especificidad de
+   selector (p.ej. ".modal .setting-item") a un selector de una sola clase
+   como este — sin !important, la alineacion no se aplicaba de forma
+   fiable (regresion detectada en la ronda 2 de QA). El dropdown tambien
+   se fuerza a su ancho de contenido: sin esto seguia estirandose a todo
+   el ancho disponible aunque el layout ya empezara desde la izquierda. */
+.task-time-tracker-edit-modal-project-setting {
+	justify-content: flex-start !important;
+	align-items: center;
+	gap: 0.75em;
+}
+
+.task-time-tracker-edit-modal-project-setting .setting-item-info {
+	flex: 0 0 auto;
+}
+
+.task-time-tracker-edit-modal-project-setting .setting-item-control {
+	margin-left: 0 !important;
+	flex: 0 0 auto;
+}
+
+.task-time-tracker-edit-modal-project-setting .setting-item-control select {
+	width: auto !important;
+}
+
+/* Espacio reservado para el feedback inline tras reasignar proyecto (QA
+   ronda 2 — no Notice global, no footer): altura de una linea fija desde
+   el primer render, vacio por defecto, para que el aviso al aparecer/
+   desvanecerse nunca desplace el resto del modal. El texto se escribe y
+   se limpia dentro de este mismo contenedor (ver EditTaskModal.ts). */
+.task-time-tracker-edit-modal-project-feedback {
+	min-height: 1.2em;
+	margin: 0.15em 0 0.5em;
+	font-size: 0.85em;
+	color: var(--text-success, var(--text-accent));
+	opacity: 0;
+	transition: opacity 0.3s ease;
+}
+
+.task-time-tracker-edit-modal-project-feedback.is-visible {
+	opacity: 1;
+}
+
+/* Resumen (nº sesiones + total) del historico completo de la tarea, ahora
+   en la misma fila que el encabezado "Sessions" (ver
+   .task-time-tracker-edit-modal-sessions-header arriba) — mismas clases
+   que ya usa la tarjeta del panel para su propio resumen (ver
+   TimeLogView.ts#renderTaskCard), asi que hereda el mismo formato visual
+   sin duplicar CSS. */
+.task-time-tracker-edit-modal-summary {
+	flex-shrink: 0;
 }

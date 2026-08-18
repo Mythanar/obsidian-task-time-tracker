@@ -15,6 +15,18 @@ export interface TimeEntry {
 	end: number | null;
 }
 
+// Fase 8 — proyectos/clientes para los futuros adapters de exportacion
+// (Clockify y otros esperan columnas Project/Client en su importador). La
+// identidad unica de un proyecto es la pareja (name, client) completa, no
+// el nombre en solitario: dos clientes distintos pueden llamar igual a su
+// proyecto (ver core/ProjectManager.ts). client ausente cuenta como su
+// propio valor a efectos de esa unicidad (no equivale a client: "").
+export interface Project {
+	id: string;
+	name: string;
+	client?: string;
+}
+
 // Fase 4 — ajustes de Toggl, campos manuales (nunca se consultan via API).
 export type TogglDateFormat = "ISO" | "DD-MM-YYYY" | "MM-DD-YYYY";
 export type TogglTimeFormat = "24h" | "12h";
@@ -83,7 +95,15 @@ export function isValidEmail(email: string): boolean {
 	return EMAIL_REGEX.test(email.trim());
 }
 
+// Fase 8 — vinculo tarea<->proyecto, vivo por tt-id (no snapshot): si se
+// reasigna, todo el historico de esa tarea adopta el nuevo proyecto al
+// instante (ver core/ProjectManager.ts#assignProject). Ausencia de clave
+// significa "sin proyecto asignado", no un valor vacio.
+export type TaskProjectAssignments = Record<string, string>;
+
 export interface PluginState {
 	entries: TimeEntry[];
 	settings: PluginSettings;
+	projects: Project[];
+	taskProjects: TaskProjectAssignments;
 }
