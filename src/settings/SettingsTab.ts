@@ -173,5 +173,20 @@ export class SettingsTab extends PluginSettingTab {
 		);
 
 		renderEmailStatus();
+
+		// Fase 8 — opt-in para incluir columnas Project/Client en el CSV de
+		// Toggl (la generacion de esas columnas es una tarea posterior,
+		// bloqueada por este ajuste). Misma fuente de verdad que la casilla
+		// del modal de exportacion (ver ExportModal.ts): cambiarla aqui se
+		// refleja alli y viceversa.
+		new Setting(containerEl)
+			.setName(t("settings.toggl.includeProjectClient.name"))
+			.setDesc(t("settings.toggl.includeProjectClient.desc"))
+			.addToggle((toggle) =>
+				toggle.setValue(toggl.includeProjectClient).onChange(async (value) => {
+					toggl.includeProjectClient = value;
+					await this.plugin.saveSettings();
+				}),
+			);
 	}
 }

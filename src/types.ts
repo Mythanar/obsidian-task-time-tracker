@@ -34,8 +34,16 @@ export interface Project {
 // TogglCsvAdapter.ts, no configurable. Si un data.json anterior trae esas
 // claves, quedan como propiedades huerfanas sin uso: no se leen, no
 // rompen la carga, no se migran.
+//
+// Fase 8 — opt-in para incluir columnas Project/Client en el CSV de Toggl
+// (la generacion de esas columnas es una tarea posterior, bloqueada por
+// este ajuste). Desmarcado por defecto: Toggl crea Proyecto/Cliente nuevos
+// automaticamente si el nombre no coincide exactamente con uno ya
+// existente en la cuenta del usuario, asi que activarlo es una eleccion
+// explicita, no el punto de partida.
 export interface TogglSettings {
 	email: string;
+	includeProjectClient: boolean;
 }
 
 // Fase 5 — dónde se abre el panel de Historial (TimeLogView). Cambiar
@@ -65,6 +73,7 @@ export interface PluginSettings {
 export const DEFAULT_SETTINGS: PluginSettings = {
 	toggl: {
 		email: "",
+		includeProjectClient: false,
 	},
 	logViewLocation: "sidebar",
 	exportsFolder: "task-tracker-exports",

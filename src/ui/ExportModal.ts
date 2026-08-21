@@ -33,11 +33,17 @@ export class ExportModal extends Modal {
 	private emailSetting: Setting | null = null;
 	private emailMessageEl: HTMLElement | null = null;
 	private exportButton: ButtonComponent | null = null;
+	// Casilla "Incluir Proyecto y Cliente" (Fase 8): a diferencia del email,
+	// no tiene un estado intermedio invalido que proteger, asi que se
+	// persiste de inmediato al cambiarla (via saveIncludeProjectClient), no
+	// se difiere hasta pulsar "Exportar".
+	private includeProjectClientSetting: Setting | null = null;
 
 	constructor(
 		app: App,
 		private toggl: TogglSettings,
 		private saveTogglEmail: (email: string) => Promise<void>,
+		private saveIncludeProjectClient: (value: boolean) => Promise<void>,
 		private onSubmit: (fromValue: string, toValue: string, format: ExportFormat) => void,
 	) {
 		super(app);
@@ -92,6 +98,22 @@ export class ExportModal extends Modal {
 		this.emailSetting.settingEl.addClass("task-time-tracker-export-email-setting");
 		this.emailMessageEl = contentEl.createEl("p", { cls: "task-time-tracker-log-edit-message" });
 
+		// Fase 8 — opt-in para incluir columnas Project/Client en el CSV de
+		// Toggl (la generacion de esas columnas es una tarea posterior). El
+		// texto de ayuda va en setDesc(), igual que en SettingsTab.ts — asi el
+		// propio layout del Setting (fila info+control de Obsidian) lo coloca
+		// debajo de la fila a ancho completo, sin solaparse con el switch.
+		this.includeProjectClientSetting = new Setting(contentEl)
+			.setName(t("export.includeProjectClientLabel"))
+			.setDesc(t("export.includeProjectClientHelp"))
+			.addToggle((toggle) =>
+				toggle.setValue(this.toggl.includeProjectClient).onChange((value) => {
+					this.toggl.includeProjectClient = value;
+					void this.saveIncludeProjectClient(value);
+				}),
+			);
+		this.includeProjectClientSetting.settingEl.addClass("task-time-tracker-export-include-project-client-setting");
+
 		new Setting(contentEl).addButton((button) => {
 			this.exportButton = button
 				.setButtonText(t("export.exportButton"))
@@ -116,6 +138,7 @@ export class ExportModal extends Modal {
 		const showField = this.format === "toggl";
 		const needsEmail = this.needsTogglEmail();
 		this.emailSetting?.settingEl.toggleClass("is-hidden", !showField);
+		this.includeProjectClientSetting?.settingEl.toggleClass("is-hidden", !showField);
 
 		if (this.emailMessageEl) {
 			this.emailMessageEl.toggleClass("is-hidden", !needsEmail);

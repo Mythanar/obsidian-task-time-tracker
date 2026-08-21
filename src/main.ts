@@ -177,6 +177,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 					this.app,
 					this.pluginState.settings.toggl,
 					(email) => this.saveTogglEmail(email),
+					(value) => this.saveTogglIncludeProjectClient(value),
 					(fromValue, toValue, format) => {
 						void this.runExport(fromValue, toValue, format);
 					},
@@ -390,6 +391,16 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	// como un valor exclusivo de esa exportacion.
 	private async saveTogglEmail(email: string): Promise<void> {
 		this.pluginState.settings.toggl.email = email;
+		await this.saveSettings();
+	}
+
+	// Fase 8 — casilla "Incluir Proyecto y Cliente" del modal de exportacion:
+	// misma fuente de verdad que Settings > Toggl (ver SettingsTab.ts), se
+	// persiste al instante al marcarla/desmarcarla, no al confirmar la
+	// exportacion (a diferencia del email, no tiene un estado intermedio
+	// invalido que proteger).
+	private async saveTogglIncludeProjectClient(value: boolean): Promise<void> {
+		this.pluginState.settings.toggl.includeProjectClient = value;
 		await this.saveSettings();
 	}
 

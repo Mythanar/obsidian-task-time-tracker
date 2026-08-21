@@ -748,6 +748,13 @@
 	display: none;
 }
 
+/* Fase 8 — casilla "Incluir Proyecto y Cliente": mismo condicionamiento
+   que el campo de email de arriba, visible solo con formato Toggl (ver
+   ExportModal.ts#updateTogglEmailField()). */
+.task-time-tracker-export-include-project-client-setting.is-hidden {
+	display: none;
+}
+
 /* Punto 1: alineados a la izquierda, junto a los campos — si no entran
    en la misma linea, caen debajo de los campos por el flex-wrap del
    contenedor padre en vez de irse a la derecha del todo. */

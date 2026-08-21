@@ -36,6 +36,9 @@ export const es: Record<TranslationKey, string> = {
 	"export.rangeInvalid": "Selecciona un rango de fechas válido.",
 	"export.fromAfterTo": 'El campo "Desde" no puede ser posterior a "Hasta".',
 	"export.emailInvalidNotice": "Agrega el email de tu cuenta de Toggl antes de exportar",
+	"export.includeProjectClientLabel": "Incluir Proyecto y Cliente",
+	"export.includeProjectClientHelp":
+		"Toggl crea el Proyecto y el Cliente automáticamente si el nombre no coincide exactamente (distingue mayúsculas) con uno ya existente en tu cuenta — revisa que coincidan antes de importar para evitar duplicados.",
 	"export.exportButton": "Exportar",
 
 	// 5b. Cabeceras del CSV generico (src/export/adapters/CsvAdapter.ts)
@@ -88,6 +91,9 @@ export const es: Record<TranslationKey, string> = {
 	"settings.toggl.email.name": "Email de Toggl",
 	"settings.toggl.email.placeholder": "tu@email.com",
 	"settings.toggl.email.descValid": "Necesario para exportar sesiones en formato CSV para Toggl.",
+	"settings.toggl.includeProjectClient.name": "Incluir Proyecto y Cliente",
+	"settings.toggl.includeProjectClient.desc":
+		"Toggl crea el Proyecto y el Cliente automáticamente si el nombre no coincide exactamente (distingue mayúsculas) con uno ya existente en tu cuenta — revisa que coincidan antes de importar para evitar duplicados.",
 
 	// 7. Historial (src/ui/TimeLogView.ts)
 	"log.title": "Time Tracker",
