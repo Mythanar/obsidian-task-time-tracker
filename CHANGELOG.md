@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.0.28] - 2026-08-21
+
+### Added
+
+- Toggl CSV export: an optional "Include Project & Client" toggle (off by default) — available in Settings > Toggl and in the export modal (shown only when "Toggl CSV" is selected), same setting either way. When on, the export adds two columns, Project and Client, using the project assigned to each task (Settings > Projects & clients). Empty for tasks without a project, or for projects without a client.
+
+### Fixed
+
+- Toggl CSV export now always uses the date and time format required by Toggl's importer (`YYYY-MM-DD`, 24-hour time), regardless of previous settings. The "Date format" and "Time format" selectors under Settings > Toggl are removed — Toggl's importer doesn't allow any other format, so they were never actually optional.
+
 ## [0.0.27] - 2026-08-18
 
 ### Added
