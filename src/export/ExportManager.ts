@@ -104,17 +104,29 @@ export class ExportManager {
 
 		const rows: TogglExportRow[] = [];
 		for (const entry of inRange) {
+			// Mismo origen que exportToCsv (ver ProjectManager#getProjectForTask):
+			// vinculo vivo por tt-id, cadena vacia si no hay proyecto asignado o
+			// si el proyecto no tiene cliente. Se resuelve siempre, aunque el
+			// ajuste "Incluir Proyecto y Cliente" este desactivado — es
+			// buildTogglCsv() quien decide si esas columnas se escriben.
+			const project = this.projectManager.getProjectForTask(entry.taskId);
 			rows.push({
 				email: togglSettings.email,
 				description: await this.resolveTaskName(entry),
 				startDate: formatTogglDate(entry.start),
 				startTime: formatTogglTime(entry.start),
 				duration: formatDuration(entry.end - entry.start),
+				projectName: project?.name ?? "",
+				clientName: project?.client ?? "",
 			});
 		}
 		rows.sort((a, b) => (a.startDate + a.startTime).localeCompare(b.startDate + b.startTime));
 
-		return this.writeCsvFile(buildTogglCsv(rows), "toggl-export", exportsFolder);
+		return this.writeCsvFile(
+			buildTogglCsv(rows, togglSettings.includeProjectClient),
+			"toggl-export",
+			exportsFolder,
+		);
 	}
 
 	private getEntriesInRange(entries: TimeEntry[], fromMs: number, toMs: number): ClosedTimeEntry[] {

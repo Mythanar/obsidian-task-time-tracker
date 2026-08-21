@@ -16,9 +16,18 @@ export interface TogglExportRow {
 	startDate: string;
 	startTime: string;
 	duration: string;
+	// Fase 8 — Proyecto/Cliente asignado a la tarea (mismo origen que
+	// CsvAdapter.ts#ExportRow), cadena vacia si no tiene ninguno asignado.
+	// Siempre presentes en la fila; buildTogglCsv() decide si se escriben
+	// segun el ajuste "Incluir Proyecto y Cliente".
+	projectName: string;
+	clientName: string;
 }
 
-const HEADERS = ["Email", "Description", "Start date", "Start time", "Duration"];
+const BASE_HEADERS = ["Email", "Description", "Start date", "Start time", "Duration"];
+// Nombres exactos que espera el importador de Toggl (case-sensitive), ver
+// https://support.toggl.com/en-us/article/toggl-track-csv-import-guide-yx49tl/#ITE
+const PROJECT_CLIENT_HEADERS = ["Project", "Client"];
 
 function pad(n: number): string {
 	return String(n).padStart(2, "0");
@@ -45,10 +54,21 @@ function toCsvLine(fields: string[]): string {
 	return fields.map(escapeCsvField).join(",");
 }
 
-export function buildTogglCsv(rows: TogglExportRow[]): string {
+// includeProjectClient conmuta ambas columnas a la vez, nunca una sola —
+// mismo ajuste que Settings > Toggl > "Incluir Proyecto y Cliente" (ver
+// ExportManager.ts). Desactivado: comportamiento identico al anterior, 5
+// columnas.
+export function buildTogglCsv(rows: TogglExportRow[], includeProjectClient: boolean): string {
+	const headers = includeProjectClient ? [...BASE_HEADERS, ...PROJECT_CLIENT_HEADERS] : BASE_HEADERS;
 	const lines = [
-		toCsvLine(HEADERS),
-		...rows.map((row) => toCsvLine([row.email, row.description, row.startDate, row.startTime, row.duration])),
+		toCsvLine(headers),
+		...rows.map((row) => {
+			const fields = [row.email, row.description, row.startDate, row.startTime, row.duration];
+			if (includeProjectClient) {
+				fields.push(row.projectName, row.clientName);
+			}
+			return toCsvLine(fields);
+		}),
 	];
 	return lines.join("\r\n") + "\r\n";
 }
