@@ -18,6 +18,19 @@ type ProjectsTab = "one" | "paste";
 type OneByOneError = "empty" | "duplicate" | null;
 type EditableField = "name" | "client";
 
+// Extraida de la clase (sin estado propio) para que la vista declarativa de
+// Settings (ver SettingsTab.ts#getSettingDefinitions) pueda pintar el
+// banner en su propia fila de ancho completo, separada de la fila con el
+// resto del contenido — evita que ambos compartan la columna de control
+// estandar de un Setting (layout roto, ver comentario en render() mas
+// abajo).
+export function renderProjectsBanner(el: HTMLElement): void {
+	const banner = el.createDiv({ cls: "task-time-tracker-projects-banner" });
+	const icon = banner.createDiv({ cls: "task-time-tracker-projects-banner-icon" });
+	setIcon(icon, "info");
+	banner.createDiv({ text: t("settings.projects.banner"), cls: "task-time-tracker-projects-banner-text" });
+}
+
 export class ProjectsSection {
 	private activeTab: ProjectsTab = "one";
 
@@ -53,6 +66,14 @@ export class ProjectsSection {
 		// refresca esas vistas para que no se queden desactualizadas hasta
 		// el proximo refresco externo.
 		private onProjectsChanged: () => void,
+		// La vista declarativa de Settings (Obsidian >=1.13) pinta el banner
+		// en su propia fila separada (ver renderProjectsBanner arriba) para
+		// que no comparta columna con este bloque; display() (vista clasica,
+		// <1.13) sigue usando el valor por defecto y ambos van juntos como
+		// siempre. El resto de la logica (guardado, tabs, edicion) es
+		// identica en los dos casos — esto solo decide si esta instancia
+		// tambien dibuja el banner o no.
+		private includeBanner = true,
 	) {}
 
 	render(): void {
@@ -60,7 +81,7 @@ export class ProjectsSection {
 		el.empty();
 		el.addClass("task-time-tracker-projects");
 
-		this.renderBanner(el);
+		if (this.includeBanner) renderProjectsBanner(el);
 		this.renderTabs(el);
 
 		if (this.activeTab === "one") {
@@ -70,13 +91,6 @@ export class ProjectsSection {
 		}
 
 		this.renderSavedList(el);
-	}
-
-	private renderBanner(el: HTMLElement): void {
-		const banner = el.createDiv({ cls: "task-time-tracker-projects-banner" });
-		const icon = banner.createDiv({ cls: "task-time-tracker-projects-banner-icon" });
-		setIcon(icon, "info");
-		banner.createDiv({ text: t("settings.projects.banner"), cls: "task-time-tracker-projects-banner-text" });
 	}
 
 	private renderTabs(el: HTMLElement): void {

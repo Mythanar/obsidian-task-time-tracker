@@ -93,6 +93,16 @@
 	color: var(--text-error);
 }
 
+/* Vista declarativa de Settings (Obsidian >=1.13, ver
+   SettingsTab.ts#getSettingDefinitions): una fila `render` sigue siendo un
+   Setting con layout de dos columnas (nombre/descripcion + control) por
+   defecto. El banner y el bloque de "Projects & clients" necesitan todo el
+   ancho de la fila — esta clase anula ese layout de dos columnas para que
+   el contenido inyectado no se comprima en la columna de control. */
+.task-time-tracker-settings-fullwidth-row {
+	display: block !important;
+}
+
 /* Rediseno "Editar tarea desde el Historial" (agosto 2026) — la tarjeta
    es de solo lectura: sin hover ni clic a nivel de cabecera completa. La
    cabecera es solo un contenedor de agrupacion (titulo, proyecto/cliente,
