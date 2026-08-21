@@ -92,13 +92,6 @@ export const en = {
 	"settings.toggl.email.name": "Toggl email",
 	"settings.toggl.email.placeholder": "you@email.com",
 	"settings.toggl.email.descValid": "Required to export sessions in Toggl CSV format.",
-	"settings.toggl.dateFormat.name": "Date format",
-	"settings.toggl.dateFormat.iso": "ISO (YYYY-MM-DD)",
-	"settings.toggl.dateFormat.dmy": "DD-MM-YYYY",
-	"settings.toggl.dateFormat.mdy": "MM-DD-YYYY",
-	"settings.toggl.timeFormat.name": "Time format",
-	"settings.toggl.timeFormat.24h": "24-hour",
-	"settings.toggl.timeFormat.12h": "12-hour (AM/PM)",
 
 	// 7. Historial (src/ui/TimeLogView.ts)
 	"log.title": "Time Tracker",

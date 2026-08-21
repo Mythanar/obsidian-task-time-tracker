@@ -1,11 +1,14 @@
 // export/adapters/TogglCsvAdapter.ts
 // Fase 4 — Exportacion CSV para el importador nativo de Toggl.
 // Responsabilidad: convertir filas de exportacion ya resueltas a texto
-// CSV con las columnas exactas que espera el importador de Toggl, y
-// formatear fecha/hora segun los ajustes de Toggl. No llama a la API de
-// Toggl en ningun momento.
-
-import { TogglDateFormat, TogglTimeFormat } from "../../types";
+// CSV con las columnas exactas que espera el importador de Toggl. No
+// llama a la API de Toggl en ningun momento.
+// Fix urgente (pre-release) — Start date y Start time salen SIEMPRE en el
+// formato fijo que exige el importador de Toggl (YYYY-MM-DD y HH:MM:SS en
+// 24h), sin leer ningun ajuste de Settings: el importador real no admite
+// otro formato, asi que dejo de ser "configurable" y paso a ser un
+// requisito fijo del adapter. Ver
+// https://support.toggl.com/en-us/article/toggl-track-csv-import-guide-yx49tl/#ITE
 
 export interface TogglExportRow {
 	email: string;
@@ -21,32 +24,14 @@ function pad(n: number): string {
 	return String(n).padStart(2, "0");
 }
 
-export function formatTogglDate(ms: number, format: TogglDateFormat): string {
+export function formatTogglDate(ms: number): string {
 	const d = new Date(ms);
-	const year = d.getFullYear();
-	const month = pad(d.getMonth() + 1);
-	const day = pad(d.getDate());
-	switch (format) {
-		case "DD-MM-YYYY":
-			return `${day}-${month}-${year}`;
-		case "MM-DD-YYYY":
-			return `${month}-${day}-${year}`;
-		case "ISO":
-			return `${year}-${month}-${day}`;
-	}
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-export function formatTogglTime(ms: number, format: TogglTimeFormat): string {
+export function formatTogglTime(ms: number): string {
 	const d = new Date(ms);
-	const minutes = pad(d.getMinutes());
-	const seconds = pad(d.getSeconds());
-	if (format === "12h") {
-		const hours24 = d.getHours();
-		const period = hours24 < 12 ? "AM" : "PM";
-		const hours12 = hours24 % 12 || 12;
-		return `${pad(hours12)}:${minutes}:${seconds} ${period}`;
-	}
-	return `${pad(d.getHours())}:${minutes}:${seconds}`;
+	return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 function escapeCsvField(value: string): string {

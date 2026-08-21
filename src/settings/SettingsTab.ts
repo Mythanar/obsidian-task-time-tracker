@@ -1,14 +1,17 @@
 // settings/SettingsTab.ts
-// Fase 4 — ajustes de Toggl (email, formato de fecha/hora) que necesita
-// TogglCsvAdapter.ts. Sin campos de token/credenciales: este adapter no
-// llama a ninguna API, solo genera un archivo.
+// Fase 4 — ajustes de Toggl (email) que necesita TogglCsvAdapter.ts. Sin
+// campos de token/credenciales: este adapter no llama a ninguna API, solo
+// genera un archivo.
 // Fase 5 — sección "General" para ajustes globales del plugin; por ahora
 // es un placeholder sin contenido funcional.
+// Fix urgente pre-release — se eliminaron los selectores de formato de
+// fecha/hora de Toggl: el importador real exige un formato fijo, no
+// admite el que el usuario eligiera aqui (ver TogglCsvAdapter.ts).
 
 import { AbstractInputSuggest, App, PluginSettingTab, Setting, TFolder } from "obsidian";
 import type TaskTimeTrackerPlugin from "../main";
 import { t } from "../i18n";
-import { DEFAULT_SETTINGS, isValidEmail, LogViewLocation, TaskIdFormat, TogglDateFormat, TogglTimeFormat } from "../types";
+import { DEFAULT_SETTINGS, isValidEmail, LogViewLocation, TaskIdFormat } from "../types";
 import { ProjectsSection } from "./ProjectsSection";
 
 function logViewLocationOptions(): Record<string, string> {
@@ -23,21 +26,6 @@ function taskIdFormatOptions(): Record<string, string> {
 		normal: t("settings.taskIdFormat.normal"),
 		reduced: t("settings.taskIdFormat.reduced"),
 		hidden: t("settings.taskIdFormat.hidden"),
-	};
-}
-
-function dateFormatOptions(): Record<string, string> {
-	return {
-		ISO: t("settings.toggl.dateFormat.iso"),
-		"DD-MM-YYYY": t("settings.toggl.dateFormat.dmy"),
-		"MM-DD-YYYY": t("settings.toggl.dateFormat.mdy"),
-	};
-}
-
-function timeFormatOptions(): Record<string, string> {
-	return {
-		"24h": t("settings.toggl.timeFormat.24h"),
-		"12h": t("settings.toggl.timeFormat.12h"),
 	};
 }
 
@@ -185,23 +173,5 @@ export class SettingsTab extends PluginSettingTab {
 		);
 
 		renderEmailStatus();
-
-		new Setting(containerEl).setName(t("settings.toggl.dateFormat.name")).addDropdown((dropdown) => {
-			dropdown.addOptions(dateFormatOptions());
-			dropdown.setValue(toggl.dateFormat);
-			dropdown.onChange(async (value) => {
-				toggl.dateFormat = value as TogglDateFormat;
-				await this.plugin.saveSettings();
-			});
-		});
-
-		new Setting(containerEl).setName(t("settings.toggl.timeFormat.name")).addDropdown((dropdown) => {
-			dropdown.addOptions(timeFormatOptions());
-			dropdown.setValue(toggl.timeFormat);
-			dropdown.onChange(async (value) => {
-				toggl.timeFormat = value as TogglTimeFormat;
-				await this.plugin.saveSettings();
-			});
-		});
 	}
 }

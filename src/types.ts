@@ -28,13 +28,14 @@ export interface Project {
 }
 
 // Fase 4 — ajustes de Toggl, campos manuales (nunca se consultan via API).
-export type TogglDateFormat = "ISO" | "DD-MM-YYYY" | "MM-DD-YYYY";
-export type TogglTimeFormat = "24h" | "12h";
-
+// Fix urgente pre-release — dateFormat/timeFormat se eliminaron: el
+// importador real de Toggl exige un formato fijo (YYYY-MM-DD, HH:MM:SS
+// 24h), no admite el que el usuario eligiera aqui. Formato ahora fijo en
+// TogglCsvAdapter.ts, no configurable. Si un data.json anterior trae esas
+// claves, quedan como propiedades huerfanas sin uso: no se leen, no
+// rompen la carga, no se migran.
 export interface TogglSettings {
 	email: string;
-	dateFormat: TogglDateFormat;
-	timeFormat: TogglTimeFormat;
 }
 
 // Fase 5 — dónde se abre el panel de Historial (TimeLogView). Cambiar
@@ -64,8 +65,6 @@ export interface PluginSettings {
 export const DEFAULT_SETTINGS: PluginSettings = {
 	toggl: {
 		email: "",
-		dateFormat: "ISO",
-		timeFormat: "24h",
 	},
 	logViewLocation: "sidebar",
 	exportsFolder: "task-tracker-exports",

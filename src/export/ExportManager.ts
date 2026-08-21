@@ -88,9 +88,11 @@ export class ExportManager {
 	// Exporta a un CSV nuevo, con las columnas que espera el importador de
 	// Toggl (Email, Description, Start date, Start time, Duration), las
 	// sesiones cerradas cuya fecha de inicio cae entre fromMs y toMs
-	// (inclusive). Fecha y hora se formatean segun los ajustes de Toggl.
-	// Mismo exportsFolder configurable que exportToCsv — un unico ajuste
-	// para ambos formatos, no hace falta uno distinto por plataforma.
+	// (inclusive). Fecha y hora salen siempre en el formato fijo que exige
+	// el importador de Toggl (YYYY-MM-DD, HH:MM:SS 24h) — no configurable,
+	// ver TogglCsvAdapter.ts. Mismo exportsFolder configurable que
+	// exportToCsv — un unico ajuste para ambos formatos, no hace falta uno
+	// distinto por plataforma.
 	async exportToTogglCsv(
 		entries: TimeEntry[],
 		fromMs: number,
@@ -105,8 +107,8 @@ export class ExportManager {
 			rows.push({
 				email: togglSettings.email,
 				description: await this.resolveTaskName(entry),
-				startDate: formatTogglDate(entry.start, togglSettings.dateFormat),
-				startTime: formatTogglTime(entry.start, togglSettings.timeFormat),
+				startDate: formatTogglDate(entry.start),
+				startTime: formatTogglTime(entry.start),
 				duration: formatDuration(entry.end - entry.start),
 			});
 		}
