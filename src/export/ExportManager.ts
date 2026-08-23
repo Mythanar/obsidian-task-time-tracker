@@ -17,9 +17,16 @@ import { App } from "obsidian";
 import { formatDuration } from "../core/TrackingEngine";
 import { ProjectManager } from "../core/ProjectManager";
 import { parseCheckboxLine, TaskIdentifier } from "../core/TaskIdentifier";
-import { TimeEntry, TogglSettings } from "../types";
+import { ClockifySettings, TimeEntry, TogglSettings } from "../types";
 import { buildCsv, ExportRow } from "./adapters/CsvAdapter";
 import { buildTogglCsv, formatTogglDate, formatTogglTime, TogglExportRow } from "./adapters/TogglCsvAdapter";
+import {
+	buildClockifyCsv,
+	ClockifyExportRow,
+	formatClockifyDate,
+	formatClockifyDuration,
+	formatClockifyTime,
+} from "./adapters/ClockifyCsvAdapter";
 
 // Respaldo si el ajuste de settings llegara vacio (no deberia ocurrir:
 // DEFAULT_SETTINGS.exportsFolder ya cubre ese caso desde main.ts#onload).
@@ -125,6 +132,53 @@ export class ExportManager {
 		return this.writeCsvFile(
 			buildTogglCsv(rows, togglSettings.includeProjectClient),
 			"toggl-export",
+			exportsFolder,
+		);
+	}
+
+	// Exporta a un CSV nuevo, con las columnas que espera el importador de
+	// Timesheets de Clockify (Email, Description, Start date, Start time,
+	// Duration siempre; Project y Client cada una si su ajuste lo activa),
+	// las sesiones cerradas cuya fecha de inicio cae entre fromMs y toMs
+	// (inclusive). Fecha, hora (24h) y duracion (HH:mm) salen siempre en
+	// formato fijo — no configurable, ver ClockifyCsvAdapter.ts. Ninguna
+	// columna es obligatoria para el importador de Clockify (rectificado
+	// 22 de agosto de 2026, ver docs/Vault/Tareas/Clockify.md), asi que una
+	// sesion sin proyecto asignado nunca bloquea la exportacion. Mismo
+	// exportsFolder configurable que los otros dos formatos.
+	async exportToClockifyCsv(
+		entries: TimeEntry[],
+		fromMs: number,
+		toMs: number,
+		clockifySettings: ClockifySettings,
+		exportsFolder: string,
+	): Promise<string> {
+		const inRange = this.getEntriesInRange(entries, fromMs, toMs);
+
+		const rows: ClockifyExportRow[] = [];
+		for (const entry of inRange) {
+			// Mismo origen que exportToCsv/exportToTogglCsv (ver
+			// ProjectManager#getProjectForTask): vinculo vivo por tt-id, cadena
+			// vacia si no hay proyecto asignado o si el proyecto no tiene
+			// cliente. Se resuelve siempre, aunque el ajuste "Include Client"
+			// este desactivado — es buildClockifyCsv() quien decide si esa
+			// columna se escribe.
+			const project = this.projectManager.getProjectForTask(entry.taskId);
+			rows.push({
+				email: clockifySettings.email,
+				description: await this.resolveTaskName(entry),
+				startDate: formatClockifyDate(entry.start),
+				startTime: formatClockifyTime(entry.start),
+				duration: formatClockifyDuration(entry.end - entry.start),
+				projectName: project?.name ?? "",
+				clientName: project?.client ?? "",
+			});
+		}
+		rows.sort((a, b) => (a.startDate + a.startTime).localeCompare(b.startDate + b.startTime));
+
+		return this.writeCsvFile(
+			buildClockifyCsv(rows, clockifySettings.includeProject, clockifySettings.includeClient),
+			"clockify-export",
 			exportsFolder,
 		);
 	}

@@ -46,6 +46,20 @@ export interface TogglSettings {
 	includeProjectClient: boolean;
 }
 
+// Fase 9 — ajustes de Clockify, mismo espiritu que TogglSettings: campos
+// manuales, nunca se consultan via API. Rectificado el 22 de agosto de
+// 2026 (ver docs/Vault/Tareas/Clockify.md): el hallazgo original que decia
+// que Project era obligatorio para el importador de CSV era incorrecto
+// (venia del formulario manual "Add time" de Clockify, no del importador),
+// asi que includeProject existe igual que includeClient — ambos opt-in,
+// independientes entre si, desmarcados por defecto, mismo criterio "vault
+// limpia por defecto" que Toggl.
+export interface ClockifySettings {
+	email: string;
+	includeProject: boolean;
+	includeClient: boolean;
+}
+
 // Fase 5 — dónde se abre el panel de Historial (TimeLogView). Cambiar
 // este ajuste no mueve un panel ya abierto; solo aplica la próxima vez
 // que se abra (ver activateLogView() en main.ts).
@@ -61,6 +75,7 @@ export type TaskIdFormat = "normal" | "reduced" | "hidden";
 
 export interface PluginSettings {
 	toggl: TogglSettings;
+	clockify: ClockifySettings;
 	logViewLocation: LogViewLocation;
 	// Fase 5 — carpeta dentro de la vault donde ExportManager escribe los
 	// CSV generados (ambos formatos, generico y Toggl). Cambiar este ajuste
@@ -74,6 +89,11 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	toggl: {
 		email: "",
 		includeProjectClient: false,
+	},
+	clockify: {
+		email: "",
+		includeProject: false,
+		includeClient: false,
 	},
 	logViewLocation: "sidebar",
 	exportsFolder: "task-tracker-exports",

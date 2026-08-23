@@ -18,12 +18,13 @@ import {
 	AbstractInputSuggest,
 	App,
 	PluginSettingTab,
+	setIcon,
 	Setting,
 	SettingDefinitionItem,
 	TFolder,
 } from "obsidian";
 import type TaskTimeTrackerPlugin from "../main";
-import { t } from "../i18n";
+import { t, TranslationKey } from "../i18n";
 import { DEFAULT_SETTINGS, isValidEmail, LogViewLocation, TaskIdFormat } from "../types";
 import { ProjectsSection, renderProjectsBanner } from "./ProjectsSection";
 
@@ -198,29 +199,45 @@ export class SettingsTab extends PluginSettingTab {
 		).render();
 	}
 
-	private configureTogglEmail(setting: Setting): void {
-		const { toggl } = this.plugin.pluginState.settings;
-
-		setting.setName(t("settings.toggl.email.name"));
-
+	// Fase 9 — validacion de email compartida entre Toggl y Clockify (misma
+	// logica de isValidEmail, ver types.ts): cada plataforma solo aporta su
+	// propio objeto de settings y sus claves de traduccion (placeholder,
+	// texto valido), el estado de error/valido se calcula una unica vez
+	// aqui para las dos.
+	private configureEmailField(
+		setting: Setting,
+		target: { email: string },
+		placeholderKey: TranslationKey,
+		validDescKey: TranslationKey,
+	): void {
 		const renderEmailStatus = () => {
-			const invalid = toggl.email.length > 0 && !isValidEmail(toggl.email);
-			setting.setDesc(invalid ? t("export.emailInvalid") : t("settings.toggl.email.descValid"));
+			const invalid = target.email.length > 0 && !isValidEmail(target.email);
+			setting.setDesc(invalid ? t("export.emailInvalid") : t(validDescKey));
 			setting.descEl.toggleClass("task-time-tracker-settings-error", invalid);
 		};
 
 		setting.addText((text) =>
 			text
-				.setPlaceholder(t("settings.toggl.email.placeholder"))
-				.setValue(toggl.email)
+				.setPlaceholder(t(placeholderKey))
+				.setValue(target.email)
 				.onChange(async (value) => {
-					toggl.email = value.trim();
+					target.email = value.trim();
 					renderEmailStatus();
 					await this.plugin.saveSettings();
 				}),
 		);
 
 		renderEmailStatus();
+	}
+
+	private configureTogglEmail(setting: Setting): void {
+		setting.setName(t("settings.toggl.email.name"));
+		this.configureEmailField(
+			setting,
+			this.plugin.pluginState.settings.toggl,
+			"settings.toggl.email.placeholder",
+			"settings.toggl.email.descValid",
+		);
 	}
 
 	// Fase 8 — opt-in para incluir columnas Project/Client en el CSV de
@@ -237,6 +254,73 @@ export class SettingsTab extends PluginSettingTab {
 			.addToggle((toggle) =>
 				toggle.setValue(toggl.includeProjectClient).onChange(async (value) => {
 					toggl.includeProjectClient = value;
+					await this.plugin.saveSettings();
+				}),
+			);
+	}
+
+	// Correccion QA — el aviso de muro de pago (importar entradas de tiempo
+	// exige plan de pago o trial; el CSV se genera igual en plan gratuito,
+	// ver docs/Vault/Tareas/Clockify.md) NO es un estado de error (nada
+	// falla ni bloquea), asi que no debe reusar
+	// task-time-tracker-settings-error (rojo, reservado para el email
+	// invalido de configureEmailField — ese si es un error real). Banner
+	// icono+texto en color warning del tema (var(--text-warning), nunca un
+	// hex fijo) con icono "info" (no uno de error/alerta), mismo patron
+	// visual que renderProjectsBanner() en ProjectsSection.ts pero con
+	// tokens de warning en vez de accent. Full-width via makeFullWidthRow():
+	// funciona igual en display() y en la vista declarativa, ambas le pasan
+	// ya un Setting real.
+	private configureClockifyPaymentWallInfo(setting: Setting): void {
+		const container = this.makeFullWidthRow(setting);
+		const banner = container.createDiv({ cls: "task-time-tracker-settings-warning-banner" });
+		const icon = banner.createDiv({ cls: "task-time-tracker-settings-warning-banner-icon" });
+		setIcon(icon, "info");
+		banner.createDiv({ text: t("settings.clockify.paymentWall.desc"), cls: "task-time-tracker-settings-warning-banner-text" });
+	}
+
+	private configureClockifyEmail(setting: Setting): void {
+		setting.setName(t("settings.clockify.email.name"));
+		this.configureEmailField(
+			setting,
+			this.plugin.pluginState.settings.clockify,
+			"settings.clockify.email.placeholder",
+			"settings.clockify.email.descValid",
+		);
+	}
+
+	// Fase 9 — checkbox "Include Project": rectificado el 22 de agosto de
+	// 2026 (ver docs/Vault/Tareas/Clockify.md) — el hallazgo original que
+	// decia que Project era obligatorio para el importador de CSV era
+	// incorrecto (venia del formulario manual "Add time" de Clockify, no
+	// del importador), asi que se comporta igual que Include Client:
+	// opt-in, independiente, desmarcado por defecto.
+	private configureClockifyIncludeProject(setting: Setting): void {
+		const { clockify } = this.plugin.pluginState.settings;
+
+		setting
+			.setName(t("settings.clockify.includeProject.name"))
+			.setDesc(t("settings.clockify.includeProject.desc"))
+			.addToggle((toggle) =>
+				toggle.setValue(clockify.includeProject).onChange(async (value) => {
+					clockify.includeProject = value;
+					await this.plugin.saveSettings();
+				}),
+			);
+	}
+
+	// Fase 9 — checkbox "Include Client": independiente de Include Project
+	// (ver arriba), desmarcado por defecto, mismo criterio "vault limpia
+	// por defecto" que Toggl.
+	private configureClockifyIncludeClient(setting: Setting): void {
+		const { clockify } = this.plugin.pluginState.settings;
+
+		setting
+			.setName(t("settings.clockify.includeClient.name"))
+			.setDesc(t("settings.clockify.includeClient.desc"))
+			.addToggle((toggle) =>
+				toggle.setValue(clockify.includeClient).onChange(async (value) => {
+					clockify.includeClient = value;
 					await this.plugin.saveSettings();
 				}),
 			);
@@ -259,6 +343,12 @@ export class SettingsTab extends PluginSettingTab {
 		new Setting(containerEl).setName(t("settings.toggl.heading")).setHeading();
 		this.configureTogglEmail(new Setting(containerEl));
 		this.configureTogglIncludeProjectClient(new Setting(containerEl));
+
+		new Setting(containerEl).setName(t("settings.clockify.heading")).setHeading();
+		this.configureClockifyPaymentWallInfo(new Setting(containerEl));
+		this.configureClockifyEmail(new Setting(containerEl));
+		this.configureClockifyIncludeProject(new Setting(containerEl));
+		this.configureClockifyIncludeClient(new Setting(containerEl));
 	}
 
 	// Vista declarativa (Obsidian >=1.13): mismos ajustes que display(),
@@ -326,6 +416,31 @@ export class SettingsTab extends PluginSettingTab {
 						name: t("settings.toggl.includeProjectClient.name"),
 						desc: t("settings.toggl.includeProjectClient.desc"),
 						render: (setting) => this.configureTogglIncludeProjectClient(setting),
+					},
+				],
+			},
+			{
+				type: "group",
+				heading: t("settings.clockify.heading"),
+				items: [
+					{
+						name: t("settings.clockify.paymentWall.name"),
+						searchable: false,
+						render: (setting) => this.configureClockifyPaymentWallInfo(setting),
+					},
+					{
+						name: t("settings.clockify.email.name"),
+						render: (setting) => this.configureClockifyEmail(setting),
+					},
+					{
+						name: t("settings.clockify.includeProject.name"),
+						desc: t("settings.clockify.includeProject.desc"),
+						render: (setting) => this.configureClockifyIncludeProject(setting),
+					},
+					{
+						name: t("settings.clockify.includeClient.name"),
+						desc: t("settings.clockify.includeClient.desc"),
+						render: (setting) => this.configureClockifyIncludeClient(setting),
 					},
 				],
 			},

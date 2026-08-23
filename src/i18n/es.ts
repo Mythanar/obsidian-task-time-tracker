@@ -29,6 +29,7 @@ export const es: Record<TranslationKey, string> = {
 	"export.formatLabel": "Formato",
 	"export.formatGeneric": "CSV genérico",
 	"export.formatToggl": "CSV para Toggl",
+	"export.formatClockify": "CSV para Clockify",
 	"export.togglEmailLabel": "Email de Toggl",
 	"export.emailPlaceholder": "tu@email.com",
 	"export.emailRequired": "El email de Toggl es obligatorio para exportar en este formato.",
@@ -39,6 +40,21 @@ export const es: Record<TranslationKey, string> = {
 	"export.includeProjectClientLabel": "Incluir Proyecto y Cliente",
 	"export.includeProjectClientHelp":
 		"Toggl crea el Proyecto y el Cliente automáticamente si el nombre no coincide exactamente (distingue mayúsculas) con uno ya existente en tu cuenta — revisa que coincidan antes de importar para evitar duplicados.",
+	"export.clockifyEmailLabel": "Email de Clockify",
+	"export.clockifyEmailRequired": "El email de Clockify es obligatorio para exportar en este formato.",
+	"export.clockifyEmailInvalidNotice": "Agrega el email de tu cuenta de Clockify antes de exportar",
+	"export.includeProjectLabel": "Incluir Proyecto",
+	"export.clockifyIncludeProjectHelp":
+		"Columna opcional en el CSV de Clockify. Déjala desmarcada para mantener el archivo mínimo — Clockify lo importa igual sin ella.",
+	"export.includeClientLabel": "Incluir Cliente",
+	"export.clockifyIncludeClientHelp":
+		"Columna opcional en el CSV de Clockify. Déjala desmarcada para mantener el archivo mínimo — Clockify lo importa igual sin ella.",
+	"export.clockifyDateFormatHeading": "Formato de fecha",
+	"export.clockifyDateFormatNote":
+		'Las fechas de este archivo van en formato YYYY-MM-DD — cuando el importador de Clockify pregunte "Which date format is used in your file?", selecciona esa opción.',
+	"export.clockifyReimportHeading": "Evitar duplicados en Clockify",
+	"export.clockifyReimportNote":
+		"Importar sesiones que ya están en Clockify crea entradas duplicadas — no las fusiona ni te avisa.",
 	"export.exportButton": "Exportar",
 
 	// 5b. Cabeceras del CSV generico (src/export/adapters/CsvAdapter.ts)
@@ -94,6 +110,20 @@ export const es: Record<TranslationKey, string> = {
 	"settings.toggl.includeProjectClient.name": "Incluir Proyecto y Cliente",
 	"settings.toggl.includeProjectClient.desc":
 		"Toggl crea el Proyecto y el Cliente automáticamente si el nombre no coincide exactamente (distingue mayúsculas) con uno ya existente en tu cuenta — revisa que coincidan antes de importar para evitar duplicados.",
+	"settings.clockify.heading": "Clockify",
+	"settings.clockify.email.name": "Email de Clockify",
+	"settings.clockify.email.placeholder": "tu@email.com",
+	"settings.clockify.email.descValid":
+		"Necesario para exportar sesiones en formato CSV para Clockify — debe coincidir con un usuario activo de tu workspace de Clockify.",
+	"settings.clockify.includeProject.name": "Incluir Proyecto",
+	"settings.clockify.includeProject.desc":
+		"Columna opcional en el CSV de Clockify. Déjala desmarcada para mantener el archivo mínimo — Clockify lo importa igual sin ella.",
+	"settings.clockify.includeClient.name": "Incluir Cliente",
+	"settings.clockify.includeClient.desc":
+		"Columna opcional en el CSV de Clockify. Déjala desmarcada para mantener el archivo mínimo — Clockify lo importa igual sin ella.",
+	"settings.clockify.paymentWall.name": "Importar entradas de tiempo",
+	"settings.clockify.paymentWall.desc":
+		"Requiere un plan de pago de Clockify o un periodo de prueba. Este plugin generará el CSV de todas formas, pero Clockify no importará las entradas de tiempo hasta que tu espacio de trabajo tenga acceso a esa función.",
 
 	// 7. Historial (src/ui/TimeLogView.ts)
 	"log.title": "Time Tracker",

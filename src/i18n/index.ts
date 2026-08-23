@@ -10,6 +10,8 @@ import { moment } from "obsidian";
 import { en, TranslationKey } from "./en";
 import { es } from "./es";
 
+export type { TranslationKey };
+
 export type Locale = "en" | "es";
 
 export function detectLocale(): Locale {

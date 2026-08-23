@@ -28,6 +28,7 @@ export const en = {
 	"export.formatLabel": "Format",
 	"export.formatGeneric": "Generic CSV",
 	"export.formatToggl": "Toggl CSV",
+	"export.formatClockify": "Clockify CSV",
 	"export.togglEmailLabel": "Toggl email",
 	"export.emailPlaceholder": "you@email.com",
 	"export.emailRequired": "Toggl email is required to export in this format.",
@@ -38,6 +39,21 @@ export const en = {
 	"export.includeProjectClientLabel": "Include Project & Client",
 	"export.includeProjectClientHelp":
 		"Toggl creates the Project and Client automatically if the name doesn't match one already in your account exactly (case-sensitive) — check they match before importing to avoid duplicates.",
+	"export.clockifyEmailLabel": "Clockify email",
+	"export.clockifyEmailRequired": "Clockify email is required to export in this format.",
+	"export.clockifyEmailInvalidNotice": "Add your Clockify account email before exporting",
+	"export.includeProjectLabel": "Include Project",
+	"export.clockifyIncludeProjectHelp":
+		"Optional column in the Clockify CSV. Leave it unchecked to keep the file minimal — Clockify imports fine without it.",
+	"export.includeClientLabel": "Include Client",
+	"export.clockifyIncludeClientHelp":
+		"Optional column in the Clockify CSV. Leave it unchecked to keep the file minimal — Clockify imports fine without it.",
+	"export.clockifyDateFormatHeading": "Date format",
+	"export.clockifyDateFormatNote":
+		'This file\'s dates are in YYYY-MM-DD format — when Clockify\'s importer asks "Which date format is used in your file?", select that option.',
+	"export.clockifyReimportHeading": "Avoid duplicates in Clockify",
+	"export.clockifyReimportNote":
+		"Importing sessions that are already in Clockify creates duplicate entries — it doesn't merge or warn you.",
 	"export.exportButton": "Export",
 
 	// 5b. Cabeceras del CSV generico (src/export/adapters/CsvAdapter.ts) —
@@ -98,6 +114,20 @@ export const en = {
 	"settings.toggl.includeProjectClient.name": "Include Project & Client",
 	"settings.toggl.includeProjectClient.desc":
 		"Toggl creates the Project and Client automatically if the name doesn't match one already in your account exactly (case-sensitive) — check they match before importing to avoid duplicates.",
+	"settings.clockify.heading": "Clockify",
+	"settings.clockify.email.name": "Clockify email",
+	"settings.clockify.email.placeholder": "you@email.com",
+	"settings.clockify.email.descValid":
+		"Required to export sessions in Clockify CSV format — must match an active user in your Clockify workspace.",
+	"settings.clockify.includeProject.name": "Include Project",
+	"settings.clockify.includeProject.desc":
+		"Optional column in the Clockify CSV. Leave it unchecked to keep the file minimal — Clockify imports fine without it.",
+	"settings.clockify.includeClient.name": "Include Client",
+	"settings.clockify.includeClient.desc":
+		"Optional column in the Clockify CSV. Leave it unchecked to keep the file minimal — Clockify imports fine without it.",
+	"settings.clockify.paymentWall.name": "Importing time entries",
+	"settings.clockify.paymentWall.desc":
+		"Requires a paid Clockify plan or trial. This plugin will generate the CSV either way, but Clockify won't import the time entries until your workspace has access to that feature.",
 
 	// 7. Historial (src/ui/TimeLogView.ts)
 	"log.title": "Time Tracker",

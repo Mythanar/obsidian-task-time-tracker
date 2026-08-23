@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Settings: a new "Clockify" section — a warning-styled banner (info icon, the theme's warning color, not the error color used for a genuinely invalid email) noting that importing time entries into Clockify needs a paid plan or trial, an email field (same validation as Toggl's), and independent "Include Project"/"Include Client" toggles (both off by default).
+- `ClockifyCsvAdapter.ts`: generates a CSV with the columns Clockify's Timesheets importer expects (Email, Description, Start date, Start time, Duration always; Project and Client each only when its own toggle is on). Date, time (24h) and duration (`HH:mm`) always use fixed formats, independent of any setting. Neither Project nor Client is required by Clockify's importer, so a session missing either never blocks the export.
+- Export modal: "Clockify CSV" is now a third format option, alongside "Generic CSV" and "Toggl CSV" — blocked without a valid email like the Toggl option. This completes the Clockify export flow end to end. Its informational messages are grouped into three sections, each with its own heading, separated by a divider: the "Include Project"/"Include Client" toggles (same source of truth as Settings > Clockify), "Date format" (discreet note on which option to pick in Clockify's own import dialog, since the CSV always uses `YYYY-MM-DD`), and "Avoid duplicates in Clockify" (warning-styled, since it's the modal's one real risk — importing sessions already in Clockify creates duplicate entries, and it doesn't merge or warn you).
+
+### Fixed
+
+- Export modal: the title was rendered as its own heading inside the modal body, one line below the close (X) button instead of aligned with it. Now uses the modal's native title (same fix already applied to the "Edit task" dialog) — affects all three export formats equally, since the title doesn't depend on which one is selected.
+
 ## [0.0.28] - 2026-08-21
 
 ### Added

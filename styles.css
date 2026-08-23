@@ -103,6 +103,46 @@
 	display: block !important;
 }
 
+/* Correccion QA — banner de aviso "warning" en Settings (p. ej. el muro de
+   pago de Clockify, ver SettingsTab.ts#configureClockifyPaymentWallInfo):
+   mismo patron icono+texto que .task-time-tracker-projects-banner, pero
+   con los tokens de color "warning" del tema (var(--text-warning), nunca
+   un hex fijo) en vez de accent — para un aviso real de "algo no
+   funcionara como esperas", distinto de .task-time-tracker-settings-error
+   (rojo, reservado para estados de bloqueo genuinos como un email
+   invalido). */
+.task-time-tracker-settings-warning-banner {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.6em;
+	padding: 0.75em 1em;
+	border-left: 3px solid var(--text-warning);
+	border-radius: 0 var(--radius-s) var(--radius-s) 0;
+	background-color: color-mix(in srgb, var(--text-warning) 10%, var(--background-primary));
+}
+
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+	.task-time-tracker-settings-warning-banner {
+		background-color: var(--background-secondary);
+	}
+}
+
+.task-time-tracker-settings-warning-banner-icon {
+	flex-shrink: 0;
+	color: var(--text-warning);
+	margin-top: 0.15em;
+}
+
+.task-time-tracker-settings-warning-banner-icon svg {
+	width: 1.1em;
+	height: 1.1em;
+}
+
+.task-time-tracker-settings-warning-banner-text {
+	font-size: 0.9em;
+	color: var(--text-normal);
+}
+
 /* Rediseno "Editar tarea desde el Historial" (agosto 2026) — la tarjeta
    es de solo lectura: sin hover ni clic a nivel de cabecera completa. La
    cabecera es solo un contenedor de agrupacion (titulo, proyecto/cliente,
@@ -753,16 +793,70 @@
 
 /* Fase 5 — modal de exportacion: el campo de email de Toggl solo se
    muestra si hace falta (formato Toggl + email invalido/vacio), ver
-   ExportModal.ts#updateTogglEmailField(). */
+   ExportModal.ts#updateFormatFields(). */
 .task-time-tracker-export-email-setting.is-hidden {
 	display: none;
 }
 
 /* Fase 8 — casilla "Incluir Proyecto y Cliente": mismo condicionamiento
    que el campo de email de arriba, visible solo con formato Toggl (ver
-   ExportModal.ts#updateTogglEmailField()). */
+   ExportModal.ts#updateFormatFields()). */
 .task-time-tracker-export-include-project-client-setting.is-hidden {
 	display: none;
+}
+
+/* Fase 9 — email de Clockify: mismo condicionamiento que el resto, visible
+   solo con formato Clockify (ver ExportModal.ts#updateFormatFields()). El
+   resto de contenido de Clockify (checkboxes Include Project/Include
+   Client incluidos) vive dentro de
+   .task-time-tracker-export-clockify-sections, que se oculta en bloque mas
+   abajo. */
+.task-time-tracker-export-clockify-email-setting.is-hidden {
+	display: none;
+}
+
+/* Fase 9 rediseno — tres secciones separadas por linea divisoria (checkboxes
+   Include Project/Include Client juntos, Date format, Avoid duplicates in
+   Clockify), sustituyendo al bloque de texto corrido anterior. El
+   contenedor entero se oculta/muestra segun el formato elegido (ver
+   ExportModal.ts#updateFormatFields()); cada seccion individual controla
+   su propio contenido. */
+.task-time-tracker-export-clockify-sections {
+	margin-top: 0.5em;
+	margin-bottom: 0.75em;
+}
+
+.task-time-tracker-export-clockify-sections.is-hidden {
+	display: none;
+}
+
+/* Linea divisoria entre secciones: borde superior en todas menos la
+   primera (los checkboxes, que ya traen su propio espaciado de Setting). */
+.task-time-tracker-export-clockify-section {
+	margin-top: 0.75em;
+	padding-top: 0.75em;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.task-time-tracker-export-clockify-section:first-child {
+	margin-top: 0;
+	padding-top: 0;
+	border-top: none;
+}
+
+/* Encabezado en negrita de cada seccion (excepto la de los checkboxes, que
+   usa el nombre de cada Setting como encabezado, ver ExportModal.ts). */
+.task-time-tracker-export-clockify-heading {
+	font-weight: 600;
+	margin: 0 0 0.25em;
+}
+
+/* Nota individual (formato de fecha, reimportacion): mismo estilo discreto
+   que .task-time-tracker-projects-help (texto de ayuda, no una alerta). */
+.task-time-tracker-export-clockify-note {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	margin: 0;
 }
 
 /* Punto 1: alineados a la izquierda, junto a los campos — si no entran

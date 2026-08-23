@@ -65,6 +65,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			entries: savedState?.entries ?? [],
 			settings: {
 				toggl: { ...DEFAULT_SETTINGS.toggl, ...savedState?.settings?.toggl },
+				clockify: { ...DEFAULT_SETTINGS.clockify, ...savedState?.settings?.clockify },
 				logViewLocation: savedState?.settings?.logViewLocation ?? DEFAULT_SETTINGS.logViewLocation,
 				exportsFolder: savedState?.settings?.exportsFolder ?? DEFAULT_SETTINGS.exportsFolder,
 				taskIdFormat: savedState?.settings?.taskIdFormat ?? DEFAULT_SETTINGS.taskIdFormat,
@@ -178,6 +179,10 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 					this.pluginState.settings.toggl,
 					(email) => this.saveTogglEmail(email),
 					(value) => this.saveTogglIncludeProjectClient(value),
+					this.pluginState.settings.clockify,
+					(email) => this.saveClockifyEmail(email),
+					(value) => this.saveClockifyIncludeProject(value),
+					(value) => this.saveClockifyIncludeClient(value),
 					(fromValue, toValue, format) => {
 						void this.runExport(fromValue, toValue, format);
 					},
@@ -335,16 +340,26 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		const exportsFolder = this.pluginState.settings.exportsFolder;
 
 		try {
-			const filePath =
-				format === "toggl"
-					? await this.exportManager.exportToTogglCsv(
-							this.trackingEngine.getEntries(),
-							fromMs,
-							toMs,
-							this.pluginState.settings.toggl,
-							exportsFolder,
-						)
-					: await this.exportManager.exportToCsv(this.trackingEngine.getEntries(), fromMs, toMs, exportsFolder);
+			let filePath: string;
+			if (format === "toggl") {
+				filePath = await this.exportManager.exportToTogglCsv(
+					this.trackingEngine.getEntries(),
+					fromMs,
+					toMs,
+					this.pluginState.settings.toggl,
+					exportsFolder,
+				);
+			} else if (format === "clockify") {
+				filePath = await this.exportManager.exportToClockifyCsv(
+					this.trackingEngine.getEntries(),
+					fromMs,
+					toMs,
+					this.pluginState.settings.clockify,
+					exportsFolder,
+				);
+			} else {
+				filePath = await this.exportManager.exportToCsv(this.trackingEngine.getEntries(), fromMs, toMs, exportsFolder);
+			}
 			new Notice(t("notice.exportSuccess", { filePath }));
 		} catch (error) {
 			console.error("Task Time Tracker: error exportando a CSV", error);
@@ -401,6 +416,33 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	// invalido que proteger).
 	private async saveTogglIncludeProjectClient(value: boolean): Promise<void> {
 		this.pluginState.settings.toggl.includeProjectClient = value;
+		await this.saveSettings();
+	}
+
+	// Fase 9 — mismo patron que saveTogglEmail: el modal de exportacion
+	// persiste aqui el email de Clockify tecleado ahi mismo, como el mismo
+	// ajuste de Settings > Clockify > Email (unica fuente de verdad).
+	private async saveClockifyEmail(email: string): Promise<void> {
+		this.pluginState.settings.clockify.email = email;
+		await this.saveSettings();
+	}
+
+	// Fase 9 — mismo patron que saveTogglIncludeProjectClient: casilla
+	// "Include Project" del modal de exportacion, misma fuente de verdad
+	// que Settings > Clockify, se persiste al instante. Independiente de
+	// "Include Client" (ver saveClockifyIncludeClient) — rectificado el 22
+	// de agosto de 2026, ver docs/Vault/Tareas/Clockify.md: Project no es
+	// obligatorio para el importador de CSV de Clockify.
+	private async saveClockifyIncludeProject(value: boolean): Promise<void> {
+		this.pluginState.settings.clockify.includeProject = value;
+		await this.saveSettings();
+	}
+
+	// Fase 9 — mismo patron que saveTogglIncludeProjectClient: casilla
+	// "Include Client" del modal de exportacion, misma fuente de verdad que
+	// Settings > Clockify, se persiste al instante.
+	private async saveClockifyIncludeClient(value: boolean): Promise<void> {
+		this.pluginState.settings.clockify.includeClient = value;
 		await this.saveSettings();
 	}
 
