@@ -15,6 +15,7 @@ import { formatDuration, formatDurationCompact } from "../core/TrackingEngine";
 import { parseCheckboxLine, ResolvedTask, TaskIdentifier } from "../core/TaskIdentifier";
 import { t } from "../i18n";
 import { DeleteTaskResult, EntryUpdateResult, Project, TimeEntry } from "../types";
+import { openDatePickerPopover } from "./DatePickerPopover";
 import { EditTaskModal } from "./EditTaskModal";
 import { InlineTrackingBus } from "./InlineTrackingBus";
 import { openProjectPickerPopover } from "./ProjectPickerList";
@@ -68,7 +69,22 @@ function isSameLocalDay(ms: number, dayStartMs: number): boolean {
 	return startOfDay(ms) === dayStartMs;
 }
 
-type LogViewMode = "day" | "week";
+// Formato corto de fecha para el estado vacio de Resultados ("17 y 23
+// ago"): dia + mes abreviado, resuelto via Intl para seguir el idioma de
+// Obsidian.
+function formatShortDate(ms: number): string {
+	return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+// Vista de resultados por rango — numero maximo de dias de calendario que
+// se resuelven/renderizan por pagina (ver renderResultsSection()): un
+// rango mayor no tiene limite de seleccion, pero la lista se corta aqui y
+// un boton "Cargar mas" añade la siguiente pagina, para no intentar
+// resolver de golpe cientos/miles de dias (la inmensa mayoria vacios) de
+// un rango muy amplio (p. ej. un año).
+const RESULTS_PAGE_DAYS = 180;
+
+type LogViewMode = "day" | "week" | "results";
 
 export class TimeLogView extends ItemView {
 	// Claves de expandedTaskIds son "<dia>|<taskId>" (no solo taskId): en
@@ -97,6 +113,25 @@ export class TimeLogView extends ItemView {
 	// apertura del panel arranca sin filtro, igual que arranca siempre en
 	// "hoy"/vista diaria (ver comentario de viewMode arriba).
 	private projectFilterId: string | null = null;
+	// Filtro "No project" (ver renderProjectFilter()): estado aparte de
+	// projectFilterId porque null en projectFilterId ya significa "sin
+	// filtro" — este filtro necesita un tercer estado (proyecto concreto /
+	// sin filtro / sin proyecto) que projectFilterId solo no puede
+	// representar. Mutuamente excluyente con projectFilterId: nunca los
+	// dos activos a la vez.
+	private projectFilterNoProject = false;
+	// Vista de resultados por rango (ver renderResultsSection()): solo
+	// tienen sentido cuando viewMode === "results" — un rango de dos dias
+	// distintos aplicado en el date-picker (ver renderDateNav()) los
+	// establece; "Volver"/"Limpiar" no los borra, solo cambia viewMode a
+	// "day" (se sobrescriben en el proximo rango aplicado, no hace falta
+	// limpiarlos antes).
+	private resultsRangeStart: number | null = null;
+	private resultsRangeEnd: number | null = null;
+	// Cuantas paginas de RESULTS_PAGE_DAYS dias ya se han "cargado" (boton
+	// "Cargar mas") para el rango actual — se reinicia a 1 cada vez que se
+	// aplica un rango nuevo desde el date-picker.
+	private resultsLoadedPages = 1;
 	// Elementos con contador en vivo de la tarea activa (si esta en el
 	// rango de fecha visible tras el ultimo render()): se recalculan cada
 	// segundo via el bus, sin reconstruir el panel entero. Puede haber mas
@@ -273,18 +308,45 @@ export class TimeLogView extends ItemView {
 		card.toggleClass("is-tracking-active", activeEntry !== null);
 
 		const header = card.createDiv({ cls: "task-time-tracker-log-card-header" });
+		// Cambio de comportamiento (3a pasada de QA visual del rediseno
+		// visual del Historial, revert parcial deliberado de la decision de
+		// Fase 5 "ningun control depende solo del hover"): toda la cabecera
+		// (icono/titulo/meta + fila de proyecto) expande o colapsa al clic;
+		// el hover en escritorio la resalta como añadido puramente visual
+		// sobre ese mismo gesto. El icono de nota y el kebab siguen siendo
+		// sus propias zonas independientes (evt.stopPropagation ya existente
+		// en ambos). `detail` (el desplegable) vive fuera de `header`, en
+		// `card` — clicar dentro de una sesion ya expandida no vuelve a
+		// colapsar la tarjeta.
+		header.addEventListener("click", () => {
+			if (expanded) {
+				this.expandedTaskIds.delete(expandKey);
+			} else {
+				this.expandedTaskIds.add(expandKey);
+				this.pendingScrollKey = expandKey;
+			}
+			void this.render();
+		});
 
-		// Columna de icono de ancho fijo (task-time-tracker-log-card-icon-col,
-		// ver styles.css), repetida en las filas de la cabecera — nota en la
-		// fila 1, chevron en la fila de sesiones — para que el titulo y "N
-		// sessions..." arranquen siempre en el mismo margen izquierdo, tenga
-		// o no icono de nota esta tarea (isMissing).
-		const titleRow = header.createDiv({ cls: "task-time-tracker-log-card-title-row" });
-		const noteCol = titleRow.createDiv({ cls: "task-time-tracker-log-card-icon-col" });
+		// Reestructuracion (6a pasada de QA visual — diff explicito contra el
+		// HTML exportado de Claude Design): la fila exterior tiene 3 hijos
+		// directos, no 5. icono+titulo+proyecto/cliente viven juntos dentro
+		// de `infoBlock` (flex:1 1 auto, columna) — SOLO ASI la columna
+		// derecha y el kebab, hermanos de `infoBlock` (no de `titleLine`),
+		// se pueden alinear contra el bloque completo (titulo + meta), no
+		// solo contra la primera fila. Sin chevron (5a pasada): la fila
+		// entera ya expande/colapsa al clic (ver header.addEventListener
+		// arriba).
+		const outerRow = header.createDiv({ cls: "task-time-tracker-log-card-title-row" });
+		const infoBlock = outerRow.createDiv({ cls: "task-time-tracker-log-card-info" });
+
+		// Fila de titulo: icono + nombre, anidada dentro de infoBlock (antes
+		// vivian sueltos como hijos directos de la fila exterior).
+		const titleLine = infoBlock.createDiv({ cls: "task-time-tracker-log-card-title-line" });
 		if (!isMissing) {
 			// Zona 1 — unico punto de navegacion hacia la nota; hit-area e
 			// hijos propios, no interfiere con el titulo ni con el kebab.
-			const noteBtn = noteCol.createEl("button", {
+			const noteBtn = titleLine.createEl("button", {
 				cls: "task-time-tracker-log-card-note task-time-tracker-icon-btn clickable-icon",
 			});
 			setIcon(noteBtn, "file-search");
@@ -295,11 +357,10 @@ export class TimeLogView extends ItemView {
 				void this.openTaskNote(taskId, taskEntries);
 			});
 		} else {
-			// Tarea "no encontrada": mismo hueco (noteCol) y mismas clases
-			// que el icono de nota normal, para no romper la alineacion del
-			// titulo entre tarjetas — solo cambia el icono y la accion al
+			// Tarea "no encontrada": misma clase que el icono de nota normal
+			// (mismo tamaño e hit-area) — solo cambia el icono y la accion al
 			// clic, que ya no puede abrir una nota que no existe.
-			const missingBtn = noteCol.createEl("button", {
+			const missingBtn = titleLine.createEl("button", {
 				cls: "task-time-tracker-log-card-note task-time-tracker-icon-btn clickable-icon",
 			});
 			setIcon(missingBtn, "file-x");
@@ -313,14 +374,60 @@ export class TimeLogView extends ItemView {
 		// Titulo: sin hover ni accion de clic propia (la navegacion vive
 		// solo en el icono de arriba) — solo tooltip con el texto completo
 		// en desktop si esta truncado.
-		const title = titleRow.createDiv({ text: label, cls: "task-time-tracker-log-task" });
+		const title = titleLine.createDiv({ text: label, cls: "task-time-tracker-log-task" });
 		if (isMissing) {
 			title.addClass("task-time-tracker-log-task-missing");
 		}
 
-		// Zona 2 — menu kebab, siempre visible, no depende de expandir la
-		// tarjeta ni de hover de fila.
-		const menuBtn = titleRow.createEl("button", {
+		if (isMissing) {
+			const mostRecent = taskEntries.reduce((latest, entry) => (entry.start > latest.start ? entry : latest));
+			infoBlock.createDiv({ text: mostRecent.taskText, cls: "task-time-tracker-log-task-snapshot" });
+		}
+
+		// Fila 2 — Proyecto/Cliente: solo si hay proyecto asignado (vinculo
+		// vivo por tt-id, ver ProjectManager#getProjectForTask). Dentro de
+		// infoBlock (ya no hermana suelta de la fila de titulo), indentada
+		// con padding-left bajo el TEXTO del titulo, no bajo el icono (ver
+		// renderProjectRow()). Sin hover ni accion de clic propia; reasignar
+		// sigue viviendo dentro del modal de Editar.
+		if (project) {
+			this.renderProjectRow(infoBlock, project);
+		}
+
+		// Columna derecha (3a pasada de QA visual; "N sessions" bajado
+		// debajo del total en la 4a; ahora hermana de infoBlock, no de
+		// titleLine, en la 6a — ver Time Tracker Tab.dc.html actualizado en
+		// docs/Prototype, lineas 124-127): duracion agregada arriba, nº de
+		// sesiones debajo, apiladas en su propia columna — kebab a
+		// continuacion, siempre en esa misma fila exterior. tt-id se retira
+		// de esta vista (decision QA): no aporta al usuario final y no tenia
+		// hueco en el diseno de columna derecha; sigue existiendo como
+		// concepto interno (ProjectManager, ver TaskIdentifier), solo deja
+		// de pintarse aqui.
+		const rightCol = outerRow.createDiv({ cls: "task-time-tracker-log-card-right-col" });
+		// Total agregado (varias sesiones sumadas): formato compacto, no
+		// HH:MM:SS — ver formatDurationCompact(). Icono de cronometro solo
+		// si hay tracking activo (ver mismo criterio en renderViewTotal() y
+		// renderDayHeading()).
+		const totalGroup = rightCol.createSpan({ cls: "task-time-tracker-totals-duration-group" });
+		if (activeEntry) {
+			setIcon(totalGroup.createSpan({ cls: "task-time-tracker-totals-duration-icon" }), "timer");
+		}
+		const totalDuration = totalGroup.createSpan({
+			text: formatDurationCompact(totalMs),
+			cls: "task-time-tracker-totals-duration",
+		});
+		rightCol.createSpan({
+			text: `${taskEntries.length} ${taskEntries.length === 1 ? t("log.session.singular") : t("log.session.plural")}`,
+			cls: "task-time-tracker-log-session-count",
+		});
+
+		// Zona 2 — menu kebab: siempre visible (decision QA — se mantiene
+		// como zona independiente del boton de stop de abajo, en vez de
+		// fundirse en una unica posicion contextual), no depende de expandir
+		// la tarjeta ni de hover de fila. Hermano de infoBlock/rightCol en la
+		// fila exterior.
+		const menuBtn = outerRow.createEl("button", {
 			cls: "task-time-tracker-log-card-menu task-time-tracker-icon-btn clickable-icon",
 		});
 		setIcon(menuBtn, "more-vertical");
@@ -331,72 +438,15 @@ export class TimeLogView extends ItemView {
 			this.openTaskMenu(menuBtn, taskId, label);
 		});
 
-		// Medir DESPUES de que title y menuBtn (hermanos en el mismo flex
-		// row) esten ambos insertados — ver comentario detallado sobre este
-		// mismo bug en renderProjectRow() mas abajo, donde se detecto:
-		// medir un span antes de que su hermano en la fila exista da un
-		// clientWidth mas generoso de lo que sera una vez el hermano ocupe
-		// su espacio, y el helper decide (con datos aun no definitivos) que
-		// no hace falta tooltip.
-		this.applyTruncationTooltip(title, label);
-
-		if (isMissing) {
-			const mostRecent = taskEntries.reduce((latest, entry) => (entry.start > latest.start ? entry : latest));
-			header.createDiv({ text: mostRecent.taskText, cls: "task-time-tracker-log-task-snapshot" });
-		}
-
-		// Fila 2 — Proyecto/Cliente: solo si hay proyecto asignado (vinculo
-		// vivo por tt-id, ver ProjectManager#getProjectForTask). Sin hover
-		// ni accion de clic; reasignar vive dentro del modal de Editar.
-		if (project) {
-			this.renderProjectRow(header, project);
-		}
-
-		// Zona 3 — linea de sesiones: chevron + nº sesiones + total + tt-id,
-		// envueltos en su propia pildora clicable que expande/colapsa el
-		// detalle de solo lectura. El boton de stop de tracking activo (si
-		// lo hay) vive fuera de esa pildora, en la misma fila.
-		const meta = header.createDiv({ cls: "task-time-tracker-log-meta" });
-		const sessionsToggle = meta.createDiv({ cls: "task-time-tracker-log-card-sessions-toggle" });
-		sessionsToggle.toggleClass("is-expanded", expanded);
-		sessionsToggle.addEventListener("click", () => {
-			if (expanded) {
-				this.expandedTaskIds.delete(expandKey);
-			} else {
-				this.expandedTaskIds.add(expandKey);
-				this.pendingScrollKey = expandKey;
-			}
-			void this.render();
-		});
-		const toggleCol = sessionsToggle.createDiv({ cls: "task-time-tracker-log-card-icon-col" });
-		const toggleIcon = toggleCol.createSpan({ cls: "task-time-tracker-log-card-toggle" });
-		toggleIcon.setAttribute("aria-hidden", "true");
-		setIcon(toggleIcon, "chevron-right");
-		sessionsToggle.createSpan({
-			text: `${taskEntries.length} ${taskEntries.length === 1 ? t("log.session.singular") : t("log.session.plural")}`,
-			cls: "task-time-tracker-log-session-count",
-		});
-		// Total agregado (varias sesiones sumadas): formato compacto, no
-		// HH:MM:SS — ver formatDurationCompact(). Icono de cronometro +
-		// valor agrupados (task-time-tracker-totals-duration-group) para
-		// que el numero compita visualmente con el titulo en vez de
-		// perderse entre el resto de metadatos de la cabecera.
-		const totalGroup = sessionsToggle.createSpan({ cls: "task-time-tracker-totals-duration-group" });
-		setIcon(totalGroup.createSpan({ cls: "task-time-tracker-totals-duration-icon" }), "timer");
-		const totalDuration = totalGroup.createSpan({
-			text: formatDurationCompact(totalMs),
-			cls: "task-time-tracker-totals-duration",
-		});
-		sessionsToggle.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
-
 		if (activeEntry) {
 			// Boton de stop con contador en vivo, mismo patron de pill que el
 			// badge junto al checkbox (icono relleno + numero en
 			// monoespaciada). completedMs es la suma de las sesiones YA
 			// cerradas de esta tarjeta; el tick de cada segundo (via el bus)
-			// le suma el tiempo transcurrido desde activeEntry.start. Fuera de
-			// alcance de este rediseno — sin cambios de comportamiento.
-			const stopBtn = meta.createEl("button", { cls: "task-time-tracker-log-card-stop" });
+			// le suma el tiempo transcurrido desde activeEntry.start. Vive en
+			// la misma fila exterior que el kebab (decision QA — elemento
+			// adicional, no lo sustituye), tras el, como ultimo elemento.
+			const stopBtn = outerRow.createEl("button", { cls: "task-time-tracker-log-card-stop" });
 			stopBtn.setAttribute("aria-label", t("log.stopTrackingAriaLabel"));
 			const stopIcon = stopBtn.createSpan({ cls: "task-time-tracker-log-card-stop-icon" });
 			setIcon(stopIcon, "square");
@@ -429,6 +479,15 @@ export class TimeLogView extends ItemView {
 			});
 		}
 
+		// Medir DESPUES de que titleLine y el resto de hermanos de la fila
+		// exterior (proyecto/cliente, columna derecha, kebab, stop si lo
+		// hay) esten todos insertados — ver comentario detallado sobre este
+		// mismo bug en renderProjectRow() mas abajo, donde se detecto: medir
+		// un span antes de que sus hermanos existan da un clientWidth mas
+		// generoso de lo que sera una vez ocupen su espacio, y el helper
+		// decide (con datos aun no definitivos) que no hace falta tooltip.
+		this.applyTruncationTooltip(title, label);
+
 		if (expanded) {
 			const detail = card.createDiv({ cls: "task-time-tracker-log-card-detail" });
 			// Orden cronologico ascendente (mas antigua arriba, mas reciente
@@ -450,25 +509,25 @@ export class TimeLogView extends ItemView {
 		}
 	}
 
-	// Icono maletin (proyecto) + icono persona (cliente, si tiene). Mismo
-	// hueco de columna que el icono de nota (task-time-tracker-log-card-icon-col)
-	// para alinear con el titulo — pero SOLO en la tarjeta normal, cuyo
-	// titulo tiene ese mismo hueco delante (icono de nota). alignWithNoteIcon
-	// desactiva ese hueco para la confirmacion de borrado (ver abajo), cuyo
-	// titulo no lleva icono delante: con el hueco puesto ahi, la fila
-	// quedaba indentada sin motivo respecto al titulo (bug de QA, ronda 2).
-	// Sin hover, sin accion de clic — reasignar vive dentro del modal de
-	// Editar (Zona 2, kebab -> Editar).
+	// Icono maletin (proyecto) + icono persona (cliente, si tiene).
+	// Indentado con padding-left bajo el TEXTO del titulo (6a pasada de QA
+	// visual — antes un div-spacer .task-time-tracker-log-card-icon-col
+	// vacio, misma idea pero indentando bajo el ICONO, no bajo el texto;
+	// ver styles.css) — pero SOLO en la tarjeta normal, cuyo titulo tiene
+	// icono de nota delante. indented=false desactiva ese padding para la
+	// confirmacion de borrado (ver abajo), cuyo titulo no lleva icono
+	// delante: con el padding puesto ahi, la fila quedaba indentada sin
+	// motivo respecto al titulo (bug de QA, ronda 2). Sin hover, sin accion
+	// de clic — reasignar vive dentro del modal de Editar (Zona 2, kebab ->
+	// Editar).
 	// project null: solo ocurre cuando llama renderTaskDeleteConfirm() (ver
 	// abajo) — a diferencia de la tarjeta normal, que omite la fila entera
 	// si no hay proyecto asignado, la confirmacion de borrado lo muestra
 	// explicito ("No project") por ser el paso previo a una accion
 	// irreversible, donde preferimos explicito sobre implicito.
-	private renderProjectRow(header: HTMLElement, project: Project | null, alignWithNoteIcon = true): void {
-		const row = header.createDiv({ cls: "task-time-tracker-log-card-project-row" });
-		if (alignWithNoteIcon) {
-			row.createDiv({ cls: "task-time-tracker-log-card-icon-col" });
-		}
+	private renderProjectRow(container: HTMLElement, project: Project | null, indented = true): void {
+		const row = container.createDiv({ cls: "task-time-tracker-log-card-project-row" });
+		row.toggleClass("is-indented", indented);
 
 		if (!project) {
 			const emptySpan = row.createSpan({ cls: "task-time-tracker-log-card-project-item" });
@@ -506,23 +565,27 @@ export class TimeLogView extends ItemView {
 	}
 
 	// Tooltip nativo con el texto completo solo si el contenido esta
-	// realmente truncado por CSS (scrollWidth > clientWidth) y solo en
-	// desktop — en mobile no hay hover, asi que no hay donde mostrarlo (ver
-	// rediseno "Editar tarea desde el Historial"). Se llama de forma
-	// sincrona justo tras insertar `el` en un DOM ya adjunto (la tarjeta
-	// vive dentro del panel visible desde antes de este punto), asi que el
-	// layout ya esta resuelto al leer estas propiedades — no hace falta
-	// esperar (leer clientWidth/scrollWidth fuerza un reflow sincrono si
-	// hiciera falta). El requisito real es que `el` mismo tenga una caja
-	// con overflow:hidden/text-overflow:ellipsis (ver
-	// .task-time-tracker-log-card-project-name en styles.css): un <span>
-	// sin esas reglas propias (display:inline puro) siempre da clientWidth
-	// 0, asi que la comparacion nunca detecta truncamiento — bug de QA
+	// realmente truncado por CSS y solo en desktop — en mobile no hay
+	// hover, asi que no hay donde mostrarlo (ver rediseno "Editar tarea
+	// desde el Historial"). Se llama de forma sincrona justo tras insertar
+	// `el` en un DOM ya adjunto (la tarjeta vive dentro del panel visible
+	// desde antes de este punto), asi que el layout ya esta resuelto al
+	// leer estas propiedades — no hace falta esperar (leer clientWidth/
+	// scrollWidth fuerza un reflow sincrono si hiciera falta). El requisito
+	// real es que `el` mismo tenga una caja con overflow:hidden (mas
+	// text-overflow:ellipsis para una linea, o -webkit-line-clamp para
+	// varias — ver .task-time-tracker-log-card-project-name y el titulo de
+	// la tarjeta respectivamente en styles.css): un <span> sin esas reglas
+	// propias (display:inline puro) siempre da clientWidth/clientHeight 0,
+	// asi que la comparacion nunca detecta truncamiento — bug de QA
 	// corregido aplicando esas reglas al span de texto mismo, no a un
-	// contenedor distinto.
+	// contenedor distinto. scrollHeight > clientHeight (ademas del ancho,
+	// ya comprobado antes) detecta el caso del titulo de 2 lineas — el
+	// recorte de -webkit-line-clamp trunca por alto, no por ancho, asi que
+	// scrollWidth > clientWidth solo no basta ahi.
 	private applyTruncationTooltip(el: HTMLElement, fullText: string): void {
 		if (Platform.isMobile) return;
-		if (el.scrollWidth > el.clientWidth) setTooltip(el, fullText);
+		if (el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight) setTooltip(el, fullText);
 	}
 
 	// Zona 2 — menu kebab: Editar (abre EditTaskModal con el historico
@@ -615,10 +678,12 @@ export class TimeLogView extends ItemView {
 			cls: "task-time-tracker-log-session-count",
 		});
 		// Mismo total agregado que la cabecera de la tarjeta (misma clase
-		// CSS, mismo icono de cronometro), formato compacto — ver
-		// formatDurationCompact().
+		// CSS), formato compacto — ver formatDurationCompact(). Sin icono:
+		// a diferencia de la tarjeta normal, esta confirmacion nunca puede
+		// tener la sesion activa (requestDeleteTask() bloquea el borrado si
+		// la hay), asi que el icono de "sumando en vivo" nunca aplicaria
+		// aqui.
 		const totalGroup = meta.createSpan({ cls: "task-time-tracker-totals-duration-group" });
-		setIcon(totalGroup.createSpan({ cls: "task-time-tracker-totals-duration-icon" }), "timer");
 		totalGroup.createSpan({ text: formatDurationCompact(totalMs), cls: "task-time-tracker-totals-duration" });
 		meta.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
 
@@ -710,110 +775,195 @@ export class TimeLogView extends ItemView {
 		return null;
 	}
 
-	// Bloque 2 / rediseno de cabecera — barra de navegacion de fecha: tres
-	// bloques atomicos, siempre en el mismo orden en el DOM (toggle Dia/
-	// Semana, rango de fecha, boton Hoy). En ventanas anchas caben los
-	// tres en una sola linea con el rango en medio (unico con flex-grow,
-	// ver .task-time-tracker-log-datenav-range en styles.css: crece para
-	// ocupar el espacio libre entre toggle y Hoy, y centra su contenido
-	// dentro de ese espacio). En ventanas estrechas (panel lateral,
-	// mobile), el toggle y Hoy se agrupan en su propia linea (mismo
-	// truco, pero via CSS order dentro de una @container query — no hay
-	// combinacion de flex-wrap puro que agrupe "primero y tercero" sin
-	// tocar el segundo) y el rango de fecha baja solo a la suya.
+	// Rediseno de cabecera (Selector de fecha, agosto 2026 — version
+	// definitiva aportada por el usuario via Time Tracker.dc.html; version
+	// de fila UNICA corregida en la 3a pasada de QA visual del rediseno
+	// visual del Historial — la primera implementacion la partio en dos
+	// filas por error, el prototipo real usa una sola, ver Time Tracker
+	// Tab.dc.html lineas 59-76) — toggle Dia/Semana + Hoy + flechas+fecha,
+	// todo en la misma linea, con calendario y Filter al final de esa
+	// misma fila (margin-left: auto). En modo Resultados (ver [[Vista de
+	// resultados por rango]]) el toggle y "Hoy" se ocultan (no tiene
+	// sentido "avanzar" un rango arbitrario) y "Volver" ocupa el lugar de
+	// las flechas+fecha; calendario y Filter mantienen su posicion.
 	private renderDateNav(container: Element): void {
 		const nav = container.createDiv({ cls: "task-time-tracker-log-datenav" });
 
-		const modeToggle = nav.createDiv({ cls: "task-time-tracker-log-datenav-mode" });
-		const dayBtn = modeToggle.createEl("button", {
-			text: t("log.viewDay"),
-			cls: "task-time-tracker-log-datenav-mode-btn",
+		const row = nav.createDiv({ cls: "task-time-tracker-log-datenav-row" });
+
+		if (this.viewMode !== "results") {
+			const modeToggle = row.createDiv({ cls: "task-time-tracker-log-datenav-mode" });
+			const dayBtn = modeToggle.createEl("button", {
+				text: t("log.viewDay"),
+				cls: "task-time-tracker-log-datenav-mode-btn",
+			});
+			const weekBtn = modeToggle.createEl("button", {
+				text: t("log.viewWeek"),
+				cls: "task-time-tracker-log-datenav-mode-btn",
+			});
+			dayBtn.toggleClass("is-active", this.viewMode === "day");
+			weekBtn.toggleClass("is-active", this.viewMode === "week");
+			dayBtn.addEventListener("click", () => {
+				if (this.viewMode === "day") return;
+				this.viewMode = "day";
+				void this.render();
+			});
+			weekBtn.addEventListener("click", () => {
+				if (this.viewMode === "week") return;
+				this.viewMode = "week";
+				void this.render();
+			});
+
+			const todayBtn = row.createEl("button", {
+				text: t("log.today"),
+				cls: "task-time-tracker-log-datenav-today",
+			});
+			todayBtn.addEventListener("click", () => {
+				// "Hoy" siempre lleva a la vista diaria de hoy, incluso si se
+				// pulsa desde vista semanal — no solo mueve la fecha dentro del
+				// modo activo.
+				this.viewMode = "day";
+				this.anchorDate = startOfDay(Date.now());
+				void this.render();
+			});
+		}
+
+		if (this.viewMode === "results") {
+			// Sustituye a las flechas+fecha en su misma posicion de la fila —
+			// "Volver" lleva siempre a vista Dia con la fecha de hoy (no
+			// recuerda si se venia de Dia o Semana; mismo destino que
+			// "Limpiar" del date-picker en este modo, ver
+			// DatePickerPopover.ts#goToToday).
+			const backBtn = row.createEl("button", { cls: "task-time-tracker-log-results-back" });
+			setIcon(backBtn.createSpan(), "arrow-left");
+			backBtn.createSpan({ text: t("log.resultsBack") });
+			backBtn.addEventListener("click", () => {
+				this.viewMode = "day";
+				this.anchorDate = startOfDay(Date.now());
+				void this.render();
+			});
+		} else {
+			const range = row.createDiv({ cls: "task-time-tracker-log-datenav-range" });
+			const prevBtn = range.createEl("button", { cls: "clickable-icon" });
+			setIcon(prevBtn, "chevron-left");
+			prevBtn.setAttribute("aria-label", this.viewMode === "day" ? t("log.navPrevDay") : t("log.navPrevWeek"));
+			prevBtn.addEventListener("click", () => {
+				this.anchorDate = addDays(this.anchorDate, this.viewMode === "day" ? -1 : -7);
+				void this.render();
+			});
+
+			range.createSpan({ text: this.formatRangeLabel(), cls: "task-time-tracker-log-datenav-label" });
+
+			const nextBtn = range.createEl("button", { cls: "clickable-icon" });
+			setIcon(nextBtn, "chevron-right");
+			nextBtn.setAttribute("aria-label", this.viewMode === "day" ? t("log.navNextDay") : t("log.navNextWeek"));
+			nextBtn.addEventListener("click", () => {
+				this.anchorDate = addDays(this.anchorDate, this.viewMode === "day" ? 1 : 7);
+				void this.render();
+			});
+		}
+
+		// margin-left: auto (ver CSS) empuja este boton y todo lo que va
+		// despues (el filtro) juntos al extremo derecho de la fila, sin
+		// separarlos entre si — calendario y Filter van pegados.
+		const calendarBtn = row.createEl("button", {
+			cls: "task-time-tracker-log-datenav-calendar task-time-tracker-log-header-icon-btn task-time-tracker-icon-btn",
 		});
-		const weekBtn = modeToggle.createEl("button", {
-			text: t("log.viewWeek"),
-			cls: "task-time-tracker-log-datenav-mode-btn",
-		});
-		dayBtn.toggleClass("is-active", this.viewMode === "day");
-		weekBtn.toggleClass("is-active", this.viewMode === "week");
-		dayBtn.addEventListener("click", () => {
-			if (this.viewMode === "day") return;
-			this.viewMode = "day";
-			void this.render();
-		});
-		weekBtn.addEventListener("click", () => {
-			if (this.viewMode === "week") return;
-			this.viewMode = "week";
-			void this.render();
+		// "Filtro de fecha activo" no es un estado propio separado (a
+		// diferencia del filtro de proyecto, la navegacion por fecha
+		// siempre muestra algun dia/semana, nunca "ninguno") — se deriva de
+		// si el panel esta mostrando algo distinto de "hoy en vista Dia".
+		// Mismo tratamiento visual (is-active) que el boton de filtro
+		// cuando hay proyecto seleccionado, para que el usuario note de un
+		// vistazo que no esta viendo la fecha por defecto. Sin pill de
+		// texto (a diferencia del filtro): la fecha ya se muestra en la
+		// fila de abajo, mostrarla tambien aqui la duplicaria.
+		const isDateFilterActive = !(this.viewMode === "day" && isSameLocalDay(this.anchorDate, startOfDay(Date.now())));
+		calendarBtn.toggleClass("is-active", isDateFilterActive);
+		setIcon(calendarBtn, "calendar");
+		calendarBtn.setAttribute("aria-label", t("log.datePickerAriaLabel"));
+		setTooltip(calendarBtn, t("log.datePickerAriaLabel"));
+		calendarBtn.addEventListener("click", () => {
+			openDatePickerPopover({
+				anchorEl: calendarBtn,
+				selectedDate: this.anchorDate,
+				// El picker no distingue "click en el numero de semana" de
+				// "rango de dias que resulta ser justo una semana" — ambos
+				// llegan aqui como el mismo (start, end), y da igual: los
+				// dos deben saltar a vista Semana. Cualquier otro rango (ni
+				// un solo dia ni una semana completa) entra en modo
+				// Resultados — ver renderResultsSection().
+				onChange: (start, end) => {
+					if (start === end) {
+						this.viewMode = "day";
+						this.anchorDate = start;
+						void this.render();
+					} else if (start === startOfWeek(start) && end === addDays(start, 6)) {
+						this.viewMode = "week";
+						this.anchorDate = start;
+						void this.render();
+					} else {
+						this.viewMode = "results";
+						this.resultsRangeStart = start;
+						this.resultsRangeEnd = end;
+						this.resultsLoadedPages = 1;
+						void this.render();
+					}
+				},
+			});
 		});
 
-		this.renderProjectFilter(nav);
-
-		const range = nav.createDiv({ cls: "task-time-tracker-log-datenav-range" });
-		const prevBtn = range.createEl("button", { cls: "clickable-icon" });
-		setIcon(prevBtn, "chevron-left");
-		prevBtn.setAttribute("aria-label", this.viewMode === "day" ? t("log.navPrevDay") : t("log.navPrevWeek"));
-		prevBtn.addEventListener("click", () => {
-			this.anchorDate = addDays(this.anchorDate, this.viewMode === "day" ? -1 : -7);
-			void this.render();
-		});
-
-		range.createSpan({ text: this.formatRangeLabel(), cls: "task-time-tracker-log-datenav-label" });
-
-		const nextBtn = range.createEl("button", { cls: "clickable-icon" });
-		setIcon(nextBtn, "chevron-right");
-		nextBtn.setAttribute("aria-label", this.viewMode === "day" ? t("log.navNextDay") : t("log.navNextWeek"));
-		nextBtn.addEventListener("click", () => {
-			this.anchorDate = addDays(this.anchorDate, this.viewMode === "day" ? 1 : 7);
-			void this.render();
-		});
-
-		const todayBtn = nav.createEl("button", {
-			text: t("log.today"),
-			cls: "task-time-tracker-log-datenav-today",
-		});
-		todayBtn.addEventListener("click", () => {
-			// "Hoy" siempre lleva a la vista diaria de hoy, incluso si se
-			// pulsa desde vista semanal — no solo mueve la fecha dentro del
-			// modo activo.
-			this.viewMode = "day";
-			this.anchorDate = startOfDay(Date.now());
-			void this.render();
-		});
+		this.renderProjectFilter(row);
 	}
 
-	// Boton de filtro por proyecto, junto al toggle Dia/Semana: icono
-	// "filter" + "Filtrar" en reposo; nombre del proyecto seleccionado +
-	// fondo tintado (no el fill solido del toggle activo) en estado
-	// activo. El icono "x" para quitar el filtro es un boton independiente
-	// (hit-area propia), solo presente en estado activo — separado a
-	// proposito del boton principal, que solo abre/cierra el popover.
+	// Boton de filtro por proyecto, junto al calendario: solo icono
+	// "filter" en reposo (mismo aspecto que el boton de calendario — ver
+	// .task-time-tracker-log-header-icon-btn), nombre del proyecto
+	// seleccionado (o "No project") + fondo tintado en estado activo. El
+	// icono "x" para quitar el filtro es un boton independiente (hit-area
+	// propia), solo presente en estado activo — separado a proposito del
+	// boton principal, que solo abre/cierra el popover.
 	private renderProjectFilter(nav: HTMLElement): void {
 		const wrap = nav.createDiv({ cls: "task-time-tracker-log-filter" });
 		const activeProject = this.projectFilterId
 			? (this.actions.getProjects().find((p) => p.id === this.projectFilterId) ?? null)
 			: null;
+		const isActive = activeProject !== null || this.projectFilterNoProject;
 
-		const filterBtn = wrap.createEl("button", { cls: "task-time-tracker-log-filter-btn" });
-		filterBtn.toggleClass("is-active", activeProject !== null);
-		setIcon(filterBtn.createSpan(), "filter");
-		filterBtn.createSpan({
-			text: activeProject ? activeProject.name : t("log.filterButton"),
-			cls: "task-time-tracker-log-filter-btn-label",
+		const filterBtn = wrap.createEl("button", {
+			cls: "task-time-tracker-log-filter-btn task-time-tracker-log-header-icon-btn task-time-tracker-icon-btn",
 		});
+		filterBtn.toggleClass("is-active", isActive);
+		filterBtn.setAttribute("aria-label", t("log.filterButton"));
+		setTooltip(filterBtn, t("log.filterButton"));
+		setIcon(filterBtn.createSpan(), "filter");
+		// Sin selección: solo el icono (mismo aspecto que el boton de
+		// calendario). Con selección: nombre del proyecto o "No project",
+		// igual que ya mostraba antes — el icono solo es exclusivo del
+		// reposo, no del estado activo.
+		if (isActive) {
+			filterBtn.createSpan({
+				text: activeProject ? activeProject.name : t("log.editModalNoProject"),
+				cls: "task-time-tracker-log-filter-btn-label",
+			});
+		}
 		filterBtn.addEventListener("click", () => {
 			openProjectPickerPopover({
 				anchorEl: filterBtn,
 				projects: this.actions.getProjects(),
 				selectedId: this.projectFilterId,
 				showClearOption: false,
+				showNoProjectFilterOption: true,
+				noProjectFilterSelected: this.projectFilterNoProject,
 				onSelect: (projectId) => {
 					this.projectFilterId = projectId;
+					this.projectFilterNoProject = projectId === null;
 					void this.render();
 				},
 			});
 		});
 
-		if (activeProject) {
+		if (isActive) {
 			const clearBtn = wrap.createEl("button", {
 				cls: "task-time-tracker-log-filter-clear task-time-tracker-icon-btn clickable-icon",
 			});
@@ -823,6 +973,7 @@ export class TimeLogView extends ItemView {
 			clearBtn.addEventListener("click", (evt) => {
 				evt.stopPropagation();
 				this.projectFilterId = null;
+				this.projectFilterNoProject = false;
 				void this.render();
 			});
 		}
@@ -834,7 +985,9 @@ export class TimeLogView extends ItemView {
 	// un dia suelto vacio dentro de una semana con resultados en otros
 	// dias sigue mostrando el "No sessions this day" normal (ver render()).
 	private renderFilteredEmptyState(container: Element): void {
-		const projectName = this.actions.getProjects().find((p) => p.id === this.projectFilterId)?.name ?? "";
+		const projectName = this.projectFilterNoProject
+			? t("log.editModalNoProject")
+			: (this.actions.getProjects().find((p) => p.id === this.projectFilterId)?.name ?? "");
 		const key = this.viewMode === "day" ? "log.filterEmptyDay" : "log.filterEmptyWeek";
 
 		const wrap = container.createDiv({ cls: "task-time-tracker-log-filter-empty" });
@@ -842,6 +995,7 @@ export class TimeLogView extends ItemView {
 		const clearBtn = wrap.createEl("button", { text: t("log.filterRemoveButton") });
 		clearBtn.addEventListener("click", () => {
 			this.projectFilterId = null;
+			this.projectFilterNoProject = false;
 			void this.render();
 		});
 	}
@@ -868,33 +1022,133 @@ export class TimeLogView extends ItemView {
 		return `${new Date(weekStart).toLocaleDateString()} – ${new Date(weekEnd).toLocaleDateString()}`;
 	}
 
+	// Bug de QA (5a pasada visual) — CSS text-transform: capitalize (ya
+	// retirado, ver styles.css) capitaliza CADA palabra, no solo la
+	// primera: en es-ES da "Martes, 18 De Agosto" en vez de "Martes, 18 de
+	// agosto". Mismo criterio ya usado en formatRangeLabel(): Intl da el
+	// nombre de dia/mes en minuscula (locale es), solo la primera letra se
+	// pone en mayuscula a mano.
 	private formatDayHeading(dayStart: number): string {
-		return new Date(dayStart).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+		const label = new Date(dayStart).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+		return label.charAt(0).toUpperCase() + label.slice(1);
+	}
+
+	// Rediseno visual del Historial (agosto 2026, Time Tracker Tab.dc.html) —
+	// cabecera de cada dia dentro de Semana/Resultados: titulo + linea
+	// conectora que rellena el espacio + total del dia a la derecha, en vez
+	// del <h6> suelto de antes. dayEntries vacio (solo llega asi desde
+	// Semana — Resultados nunca llama aqui con un dia vacio, ver
+	// renderDaySection#hideIfEmpty) muestra "—" atenuado en vez de un total
+	// real. Sigue siendo un <h6> real (semantica de encabezado para lector
+	// de pantalla), con el layout de fila resuelto por CSS.
+	private renderDayHeading(container: Element, dayStart: number, dayEntries: TimeEntry[]): void {
+		const isEmpty = dayEntries.length === 0;
+		const heading = container.createEl("h6", { cls: "task-time-tracker-log-day-heading" });
+		heading.toggleClass("is-empty", isEmpty);
+		heading.createSpan({ text: this.formatDayHeading(dayStart), cls: "task-time-tracker-log-day-heading-title" });
+		heading.createDiv({ cls: "task-time-tracker-log-day-heading-line" });
+		const totalEl = heading.createSpan({ cls: "task-time-tracker-log-day-heading-total" });
+
+		if (isEmpty) {
+			totalEl.setText("—");
+			return;
+		}
+
+		const activeEntry = dayEntries.find((entry) => entry.end === null) ?? null;
+		const completedMs = dayEntries
+			.filter((entry) => entry.end !== null)
+			.reduce((sum, entry) => sum + ((entry.end as number) - entry.start), 0);
+		const totalMs = completedMs + (activeEntry ? Date.now() - activeEntry.start : 0);
+		// Icono solo si ESTE dia tiene la sesion activa (mismo criterio que
+		// renderTaskCard() y renderViewTotal()) — indicador de "en vivo", no
+		// decoracion fija.
+		if (activeEntry) {
+			setIcon(totalEl.createSpan({ cls: "task-time-tracker-log-day-heading-total-icon" }), "timer");
+		}
+		const valueEl = totalEl.createSpan({ text: formatDurationCompact(totalMs) });
+
+		if (activeEntry) {
+			this.activeCardTicks.push({
+				kind: "total",
+				el: valueEl,
+				completedMs,
+				start: activeEntry.start,
+				lastMinute: Math.floor(totalMs / 60000),
+			});
+		}
+	}
+
+	// Limites (inicio incluido, fin excluido) del rango actualmente visible,
+	// segun viewMode — mismo calculo que ya hacia renderViewTotal() por su
+	// cuenta, ahora compartido con renderSubtitle() (ver rediseno visual del
+	// Historial, agosto 2026: subtitulo "N tareas · M sesiones/dias").
+	private getViewRangeBounds(): { start: number; end: number } {
+		if (this.viewMode === "results") {
+			return { start: this.resultsRangeStart as number, end: addDays(this.resultsRangeEnd as number, 1) };
+		}
+		const start = this.viewMode === "day" ? startOfDay(this.anchorDate) : startOfWeek(this.anchorDate);
+		const end = this.viewMode === "day" ? addDays(start, 1) : addDays(start, 7);
+		return { start, end };
+	}
+
+	// Subtitulo bajo "Time Tracker" (rediseno visual del Historial, agosto
+	// 2026): "N tareas · M sesiones" en Dia, "N tareas · M dias con
+	// actividad" en Semana/Resultados — nunca "N tareas · 1 dia con
+	// actividad" en Dia, ver la nota de diseno (dato trivial en un solo
+	// dia). allEntries ya llega acotado por el filtro de proyecto (ver
+	// render()), aqui solo se acota ademas al rango de fecha visible.
+	private renderSubtitle(container: Element, allEntries: TimeEntry[]): void {
+		const { start, end } = this.getViewRangeBounds();
+		const rangeEntries = allEntries.filter((entry) => entry.start >= start && entry.start < end);
+		const taskCount = new Set(rangeEntries.map((entry) => entry.taskId)).size;
+		const taskWord = taskCount === 1 ? t("log.task.singular") : t("log.task.plural");
+
+		let text: string;
+		if (this.viewMode === "day") {
+			const sessionWord = rangeEntries.length === 1 ? t("log.session.singular") : t("log.session.plural");
+			text = `${taskCount} ${taskWord} · ${rangeEntries.length} ${sessionWord}`;
+		} else {
+			const activeDays = new Set(rangeEntries.map((entry) => startOfDay(entry.start))).size;
+			const dayWord = activeDays === 1 ? t("log.dayWithActivity.singular") : t("log.dayWithActivity.plural");
+			text = `${taskCount} ${taskWord} · ${activeDays} ${dayWord}`;
+		}
+
+		container.createDiv({ text, cls: "task-time-tracker-log-subtitle" });
 	}
 
 	// Bloque 2 — una seccion por dia: filtra allEntries a las que empezaron
 	// (entry.start) ese dia calendario local, y muestra un estado vacio
 	// razonable si no hay ninguna. withHeading solo se usa en vista semanal
-	// (7 secciones, una por dia); en vista diaria el titulo de la seccion ya
-	// lo da la barra de navegacion, asi que no hace falta repetirlo.
+	// y en Resultados (una seccion por dia); en vista diaria el titulo de
+	// la seccion ya lo da la barra de navegacion, asi que no hace falta
+	// repetirlo. hideIfEmpty (Resultados, ver renderResultsSection()): un
+	// dia sin sesiones no se muestra en absoluto, ni siquiera su
+	// cabecera — es una lista de resultados, no un calendario, a
+	// diferencia de Semana, donde SI se muestra la cabecera + "No
+	// sessions this day" para cada dia vacio.
 	private async renderDaySection(
 		container: Element,
 		dayStart: number,
 		allEntries: TimeEntry[],
 		withHeading: boolean,
 		token: number,
+		hideIfEmpty = false,
 	): Promise<void> {
 		const dayEntries = allEntries
 			.filter((entry) => isSameLocalDay(entry.start, dayStart))
 			.sort((a, b) => a.start - b.start);
 
-		if (withHeading) {
-			container.createEl("h6", { text: this.formatDayHeading(dayStart), cls: "task-time-tracker-log-day-heading" });
-		}
-
 		if (dayEntries.length === 0) {
+			if (hideIfEmpty) return;
+			if (withHeading) {
+				this.renderDayHeading(container, dayStart, dayEntries);
+			}
 			container.createEl("p", { text: t("log.emptyDay"), cls: "task-time-tracker-log-empty-day" });
 			return;
+		}
+
+		if (withHeading) {
+			this.renderDayHeading(container, dayStart, dayEntries);
 		}
 
 		const resolutions = await this.resolveTaskIds(dayEntries);
@@ -932,21 +1186,30 @@ export class TimeLogView extends ItemView {
 		// filtrar) se conserva arriba solo para decidir el estado vacio
 		// global del plugin ("No sessions recorded yet"), que no tiene
 		// relacion con el filtro.
-		const visibleEntries = this.projectFilterId
-			? allEntries.filter((entry) => this.actions.getProjectForTask(entry.taskId)?.id === this.projectFilterId)
-			: allEntries;
+		const visibleEntries = this.projectFilterNoProject
+			? allEntries.filter((entry) => this.actions.getProjectForTask(entry.taskId) === null)
+			: this.projectFilterId
+				? allEntries.filter((entry) => this.actions.getProjectForTask(entry.taskId)?.id === this.projectFilterId)
+				: allEntries;
 
 		const titleRow = container.createDiv({ cls: "task-time-tracker-log-title-row" });
-		titleRow.createEl("h4", { text: t("log.title") });
+		const titleCol = titleRow.createDiv({ cls: "task-time-tracker-log-title-col" });
+		titleCol.createEl("h4", { text: t("log.title") });
+		this.renderSubtitle(titleCol, visibleEntries);
 		this.renderViewTotal(titleRow, visibleEntries);
 
 		this.renderDateNav(container);
+
+		if (this.viewMode === "results") {
+			await this.renderResultsSection(container, visibleEntries, token);
+			return;
+		}
 
 		const rangeStart = this.viewMode === "day" ? startOfDay(this.anchorDate) : startOfWeek(this.anchorDate);
 		const rangeEnd = this.viewMode === "day" ? addDays(rangeStart, 1) : addDays(rangeStart, 7);
 		const rangeHasEntries = visibleEntries.some((entry) => entry.start >= rangeStart && entry.start < rangeEnd);
 
-		if (this.projectFilterId && !rangeHasEntries) {
+		if ((this.projectFilterId || this.projectFilterNoProject) && !rangeHasEntries) {
 			this.renderFilteredEmptyState(container);
 		} else if (this.viewMode === "day") {
 			await this.renderDaySection(container, rangeStart, visibleEntries, false, token);
@@ -958,15 +1221,82 @@ export class TimeLogView extends ItemView {
 		}
 	}
 
-	// Total de tiempo trackeado en la vista actual (dia o semana),
-	// junto al titulo. A diferencia del total compacto de cada tarjeta
-	// (formatDurationCompact), aqui se usa formatDuration (HH:MM:SS): es
-	// un unico numero destacado, no una lista de totales por tarea donde
-	// el formato compacto evita que compita visualmente con el titulo de
-	// cada tarjeta.
+	// Vista de resultados por rango: agrupado por dia (cabecera + tarjetas,
+	// ver renderDaySection con hideIfEmpty), sin dias vacios intercalados.
+	// Paginado en bloques de RESULTS_PAGE_DAYS dias — un rango puede ser
+	// arbitrariamente amplio (sin limite en el date-picker), pero resolver
+	// de golpe cientos/miles de dias (la inmensa mayoria vacios) no tiene
+	// sentido; "Cargar mas" solo aparece si el rango completo excede lo ya
+	// cargado. El total de la fila de titulo (ver renderViewTotal) SIEMPRE
+	// cubre el rango completo, no solo lo cargado — se calcula aparte, no
+	// depende de este bucle.
+	private async renderResultsSection(container: Element, visibleEntries: TimeEntry[], token: number): Promise<void> {
+		const rangeStart = this.resultsRangeStart as number;
+		const rangeEnd = this.resultsRangeEnd as number; // dia de inicio del ultimo dia (inclusive)
+		const rangeEndExclusive = addDays(rangeEnd, 1);
+
+		const rangeHasEntries = visibleEntries.some((entry) => entry.start >= rangeStart && entry.start < rangeEndExclusive);
+		if (!rangeHasEntries) {
+			this.renderResultsEmptyState(container, rangeStart, rangeEnd);
+			return;
+		}
+
+		const totalDays = Math.round((rangeEndExclusive - rangeStart) / 86400000);
+		const loadedDays = Math.min(this.resultsLoadedPages * RESULTS_PAGE_DAYS, totalDays);
+
+		for (let i = 0; i < loadedDays; i++) {
+			if (token !== this.renderToken) return;
+			await this.renderDaySection(container, addDays(rangeStart, i), visibleEntries, true, token, true);
+		}
+
+		if (loadedDays < totalDays) {
+			const loadMoreWrap = container.createDiv({ cls: "task-time-tracker-log-results-load-more" });
+			const loadMoreBtn = loadMoreWrap.createEl("button", { text: t("log.resultsLoadMore") });
+			loadMoreBtn.addEventListener("click", () => {
+				this.resultsLoadedPages += 1;
+				void this.render();
+			});
+		}
+	}
+
+	// "Quitar filtro" hace lo mismo que "Volver"/"Limpiar" en este modo
+	// (ver [[Vista de resultados por rango]]#"Limpiar" en modo Resultados):
+	// no hay un filtro de proyecto que quitar aqui especificamente (a
+	// diferencia de renderFilteredEmptyState, que si distingue esa causa) —
+	// un rango vacio, con o sin filtro de proyecto combinado, tiene un unico
+	// mensaje y una unica salida: abandonar el rango.
+	private renderResultsEmptyState(container: Element, rangeStart: number, rangeEnd: number): void {
+		const sameMonth =
+			new Date(rangeStart).getMonth() === new Date(rangeEnd).getMonth() &&
+			new Date(rangeStart).getFullYear() === new Date(rangeEnd).getFullYear();
+		const startLabel = sameMonth ? String(new Date(rangeStart).getDate()) : formatShortDate(rangeStart);
+		const endLabel = formatShortDate(rangeEnd);
+
+		const wrap = container.createDiv({ cls: "task-time-tracker-log-results-empty" });
+		const textEl = wrap.createEl("p", { cls: "task-time-tracker-log-results-empty-text" });
+		textEl.createSpan({ text: `${t("log.resultsEmptyPrefix")} ` });
+		textEl.createSpan({
+			text: `${startLabel} ${t("log.resultsEmptyJoiner")} ${endLabel}`,
+			cls: "task-time-tracker-log-results-empty-range",
+		});
+
+		const clearBtn = wrap.createEl("button", { text: t("log.filterRemoveButton") });
+		clearBtn.addEventListener("click", () => {
+			this.viewMode = "day";
+			this.anchorDate = startOfDay(Date.now());
+			void this.render();
+		});
+	}
+
+	// Total de tiempo trackeado en la vista actual (dia, semana o el rango
+	// completo de Resultados — nunca solo la parte ya cargada si hay
+	// paginacion, ver renderResultsSection()), junto al titulo. A
+	// diferencia del total compacto de cada tarjeta (formatDurationCompact),
+	// aqui se usa formatDuration (HH:MM:SS): es un unico numero destacado,
+	// no una lista de totales por tarea donde el formato compacto evita
+	// que compita visualmente con el titulo de cada tarjeta.
 	private renderViewTotal(container: Element, allEntries: TimeEntry[]): void {
-		const rangeStart = this.viewMode === "day" ? startOfDay(this.anchorDate) : startOfWeek(this.anchorDate);
-		const rangeEnd = this.viewMode === "day" ? addDays(rangeStart, 1) : addDays(rangeStart, 7);
+		const { start: rangeStart, end: rangeEnd } = this.getViewRangeBounds();
 		const viewEntries = allEntries.filter((entry) => entry.start >= rangeStart && entry.start < rangeEnd);
 
 		const activeEntry = viewEntries.find((entry) => entry.end === null) ?? null;
@@ -975,9 +1305,26 @@ export class TimeLogView extends ItemView {
 			.reduce((sum, entry) => sum + ((entry.end as number) - entry.start), 0);
 		const totalMs = completedMs + (activeEntry ? Date.now() - activeEntry.start : 0);
 
-		const totalGroup = container.createSpan({ cls: "task-time-tracker-totals-duration-group" });
-		setIcon(totalGroup.createSpan({ cls: "task-time-tracker-totals-duration-icon" }), "clock");
-		const value = totalGroup.createSpan({ text: formatDuration(totalMs), cls: "task-time-tracker-totals-duration" });
+		// Etiqueta "Total del rango" (rediseno visual del Historial, agosto
+		// 2026): mismo dato de siempre (el total del rango visible, sube en
+		// vivo si hay sesion activa), solo se le añade el rotulo encima —
+		// util sobre todo en Resultados, sin "hoy"/"esta semana" implicitos.
+		const totalCol = container.createDiv({ cls: "task-time-tracker-log-total-col" });
+		totalCol.createSpan({ text: t("log.rangeTotalLabel"), cls: "task-time-tracker-log-total-label" });
+		const totalGroup = totalCol.createSpan({ cls: "task-time-tracker-totals-duration-group" });
+		// Icono solo si la sesion activa cae dentro del rango visible — ver
+		// mismo criterio en renderTaskCard() y renderDayHeading().
+		if (activeEntry) {
+			setIcon(totalGroup.createSpan({ cls: "task-time-tracker-totals-duration-icon" }), "clock");
+		}
+		// task-time-tracker-log-view-total-value: escala grande (22px en el
+		// prototipo) exclusiva de este total de cabecera — la clase base
+		// task-time-tracker-totals-duration se queda en la escala pequeña
+		// que comparten la tarjeta de tarea y la confirmacion de borrado.
+		const value = totalGroup.createSpan({
+			text: formatDuration(totalMs),
+			cls: "task-time-tracker-totals-duration task-time-tracker-log-view-total-value",
+		});
 
 		if (activeEntry) {
 			this.activeCardTicks.push({ kind: "duration", el: value, completedMs, start: activeEntry.start });

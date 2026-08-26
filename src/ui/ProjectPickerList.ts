@@ -10,6 +10,7 @@
 import { setIcon } from "obsidian";
 import { t } from "../i18n";
 import { Project } from "../types";
+import { positionPopover } from "./positionPopover";
 
 export interface ProjectPickerListOptions {
 	// null: proyectos aun no disponibles, se muestra el skeleton (ver
@@ -19,6 +20,17 @@ export interface ProjectPickerListOptions {
 	projects: Project[] | null;
 	selectedId: string | null;
 	showClearOption: boolean;
+	// Fila fija "No project" para el filtro del header (ver
+	// TimeLogView.ts#renderProjectFilter): visualmente identica a la fila
+	// "Sin proyecto" de showClearOption, pero con semantica distinta (
+	// filtrar por ausencia de proyecto, no asignarla) y por eso con su
+	// propio estado de seleccion, independiente de selectedId — en el
+	// filtro selectedId===null es ambiguo entre "sin filtro" y "filtro No
+	// project", asi que ese estado se resuelve aparte. Mutuamente
+	// excluyente con showClearOption en la practica (ningun caller activa
+	// las dos), aunque el componente no lo impone.
+	showNoProjectFilterOption?: boolean;
+	noProjectFilterSelected?: boolean;
 	onSelect: (projectId: string | null) => void;
 }
 
@@ -64,7 +76,8 @@ export class ProjectPickerList {
 		if (!listEl) return;
 		listEl.empty();
 
-		const { projects, selectedId, showClearOption, onSelect } = this.options;
+		const { projects, selectedId, showClearOption, showNoProjectFilterOption, noProjectFilterSelected, onSelect } =
+			this.options;
 
 		if (projects === null) {
 			for (let i = 0; i < SKELETON_ROW_COUNT; i++) {
@@ -80,6 +93,16 @@ export class ProjectPickerList {
 				label: t("log.editModalNoProject"),
 				clientName: null,
 				selected: selectedId === null,
+				isClear: true,
+				onClick: () => onSelect(null),
+			});
+		}
+
+		if (showNoProjectFilterOption) {
+			this.renderRow(listEl, {
+				label: t("log.editModalNoProject"),
+				clientName: null,
+				selected: !!noProjectFilterSelected,
 				isClear: true,
 				onClick: () => onSelect(null),
 			});
@@ -149,6 +172,8 @@ export interface ProjectPickerPopoverOptions {
 	projects: Project[] | null;
 	selectedId: string | null;
 	showClearOption: boolean;
+	showNoProjectFilterOption?: boolean;
+	noProjectFilterSelected?: boolean;
 	onSelect: (projectId: string | null) => void;
 	// Notifica al caller cuando el popover se cierra, por el motivo que
 	// sea (seleccion, click fuera, Escape). EditTaskModal lo usa para
@@ -182,6 +207,8 @@ export function openProjectPickerPopover(options: ProjectPickerPopoverOptions): 
 		projects: options.projects,
 		selectedId: options.selectedId,
 		showClearOption: options.showClearOption,
+		showNoProjectFilterOption: options.showNoProjectFilterOption,
+		noProjectFilterSelected: options.noProjectFilterSelected,
 		onSelect: (id) => {
 			options.onSelect(id);
 			close();
@@ -215,30 +242,4 @@ export function openProjectPickerPopover(options: ProjectPickerPopoverOptions): 
 	document.addEventListener("keydown", onKeydown, true);
 
 	activePopover = { anchorEl: options.anchorEl, close };
-}
-
-// Anclado por posicion (getBoundingClientRect), no por ancho del
-// contenedor padre — debe verse igual en sidebar estrecho y en tab
-// central. Preferido debajo del boton, alineado a su borde izquierdo;
-// si no cabe verticalmente se voltea encima, y horizontalmente se
-// recorta contra los bordes de la ventana con un margen fijo.
-function positionPopover(popoverEl: HTMLElement, anchorEl: HTMLElement): void {
-	const rect = anchorEl.getBoundingClientRect();
-	const margin = 8;
-	const width = Math.min(300, window.innerWidth - margin * 2);
-	popoverEl.style.width = `${width}px`;
-
-	let left = rect.left;
-	if (left + width > window.innerWidth - margin) left = window.innerWidth - margin - width;
-	if (left < margin) left = margin;
-
-	const popoverHeight = popoverEl.offsetHeight;
-	let top = rect.bottom + 4;
-	if (top + popoverHeight > window.innerHeight - margin) {
-		top = rect.top - popoverHeight - 4;
-		if (top < margin) top = margin;
-	}
-
-	popoverEl.style.left = `${left}px`;
-	popoverEl.style.top = `${top}px`;
 }

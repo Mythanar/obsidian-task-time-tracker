@@ -1057,3 +1057,92 @@ una entrada aquí.
   de la flecha muted (ver entrada anterior) sí se mantiene scoped, al
   ser un ajuste de color deliberadamente distinto solo para esa
   tarjeta, no de tipografía.
+
+## Fase 5 — rediseño visual del Historial (cabecera + lista)
+
+Adopta el pulido visual de un prototipo de Claude Design
+(`Time Tracker Tab.dc.html`, actualizado varias veces durante la ronda)
+para la cabecera del panel y la lista de tareas, en las tres vistas
+(Día, Semana, Resultados). Varias rondas de QA visual, cada una
+corrigiendo algo que la anterior no había resuelto del todo — se deja
+constancia de las que dejaron una lección reutilizable, no solo del
+resultado final.
+
+- **Cabecera reducida a una sola fila**, no tres: toggle Día/Semana +
+  Hoy + flechas/fecha + iconos de calendario y filtro, todo junto
+  (`margin-left: auto` en el grupo de iconos), con `border-bottom`
+  como separador. Sustituye el diseño de fila superior + fila inferior
+  de una iteración anterior (ver "Fase 5 — total de la vista y
+  rediseño del navegador de fecha" arriba) — esa nota describía tres
+  filas por error de interpretación del prototipo real, que siempre
+  usó una.
+- **Subtítulo bajo "Time Tracker"**: "N tareas · M sesiones" en Día,
+  "N tareas · M días con actividad" en Semana/Resultados — nunca "N
+  tareas · 1 día con actividad" en Día (dato trivial en un solo día).
+  Etiqueta "Total del rango" añadida sobre el total de la esquina
+  (mismo dato de siempre, solo se le pone rótulo).
+- **Icono de reloj/cronómetro junto a un total: solo si ESE total
+  tiene la sesión activa** (cabecera, tarjeta o cabecera de día),
+  nunca fijo — indicador de "esto suma en vivo", no decoración. El
+  prototipo no lleva icono en absoluto; se decidió mantenerlo pero
+  condicionado, porque aporta información real que una maqueta
+  estática no necesitaba representar.
+- **Agrupación por día: un único contenedor (borde/radio/fondo
+  compartidos) por día, con `border-top` como divisor entre tareas**
+  (`:not(:first-child)`, selector puramente posicional), en vez de
+  tarjetas sueltas con hueco entre sí. El primer intento de esta ronda
+  lo planteó como "solo CSS sobre las clases existentes" y no tocó el
+  markup — bastaba, porque `renderTaskList()` ya creaba un contenedor
+  por día; el border/radio/fondo solo tenían que moverse de la fila a
+  ese contenedor.
+- **Bug de QA real, no solo de valores**: tras el rediseño anterior,
+  varias rondas de ajustes de tipografía/espaciado no convergían
+  porque el problema no era de valores CSS sueltos — la jerarquía del
+  DOM de la tarjeta no coincidía con la del diseño. El diseño real
+  agrupa icono+título+proyecto/cliente en un bloque propio
+  (`flex: 1 1 auto`, columna), del que la columna de duración+sesiones
+  y el kebab son hermanos — no hijos sueltos de la misma fila que el
+  icono y el título. Sin esa jerarquía, ningún `align-items` conseguía
+  alinear la columna derecha contra el bloque completo (título+meta),
+  solo contra la primera línea. Lección: ante varias rondas de QA
+  visual sin converger, comparar el HTML real generado contra el HTML
+  de referencia elemento por elemento antes de seguir ajustando CSS.
+- **Título de tarea: hasta 2 líneas antes de truncar**, vía
+  `display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient:
+  vertical;` (soportado en Chromium/Electron, base de Obsidian) — no
+  una altura fija ni un segundo `<span>` de línea siempre presente.
+  `applyTruncationTooltip()` tuvo que aprender a comparar también
+  `scrollHeight`/`clientHeight`, no solo `scrollWidth`/`clientWidth`:
+  el recorte por `line-clamp` trunca por alto, no por ancho.
+- **Todos los iconos de la tarjeta necesitan tamaño explícito en el
+  `<svg>`** (14px tarea, 11px proyecto/cliente, 15px kebab) — sin él,
+  Lucide/Obsidian renderiza a su tamaño por defecto (~24px),
+  desbordando visualmente el resto de la fila.
+- **El botón de nota necesitó, además, una caja fija (14×16px,
+  `padding: 0`)**, no solo el `<svg>` a tamaño explícito: sin caja
+  propia, el `<button>` nativo de Obsidian (`clickable-icon`) conserva
+  su padding por defecto y el botón acaba más alto que una sola línea
+  de texto — estirando toda la fila y dando la falsa impresión de que
+  el título reservaba espacio para una segunda línea que no usaba
+  (bug que en un principio se diagnosticó, incorrectamente, como un
+  problema del `line-clamp`). El botón kebab nunca sufrió esto porque
+  ya tenía una caja fija (28×28) desde antes; con `box-sizing:
+  border-box` (el que usa Obsidian globalmente), una caja explícita
+  absorbe el padding nativo en vez de sumarse a él.
+- **`align-items: center` en el propio botón de nota anulaba el
+  `margin-top: 2px` del icono**: aunque la fila exterior
+  (`.task-time-tracker-log-card-title-line`) ya usaba
+  `align-items: flex-start` para pegar el icono a la primera línea del
+  título, el botón en sí era OTRO contenedor flex con
+  `align-items: center`, que recentraba el `<svg>` dentro de su propia
+  caja (más alta que el icono) y anulaba el margen. Fix: `flex-start`
+  también en el botón, no solo en la fila que lo contiene.
+- **Sin chevron**: la fila entera ya expande/colapsa al clic (revert
+  parcial deliberado de la decisión de Fase 5 "ningún control depende
+  solo del hover" — el gesto de clic ya existía, el hover en
+  escritorio es un añadido visual sobre el mismo gesto, y en móvil el
+  tap sigue funcionando igual). Un chevron dedicado quedó redundante y
+  competía por espacio con el título.
+- **El tt-id deja de pintarse en la tarjeta** (seguía existiendo como
+  concepto interno) — no tenía hueco en el diseño de columna derecha
+  del prototipo y no aporta nada al usuario final en esa vista.
