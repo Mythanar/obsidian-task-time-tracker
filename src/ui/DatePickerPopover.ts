@@ -25,28 +25,14 @@
 // otro rango arbitrario no navega todavia — pendiente de "Vista de
 // resultados por rango".
 //
-// El boton "Limpiar" del pie no tiene un equivalente literal de "sin
-// fecha" en este panel (a diferencia del filtro de proyecto, la
-// navegacion por fecha siempre muestra algun dia/semana, nunca "ninguno").
-// Revisado dos veces tras QA (agosto 2026):
-// v1 solo cancelaba un rango a medias sin tocar nada mas — se sentia "sin
-// efecto" la mayoria de las veces (p. ej. clicar Limpiar justo despues de
-// elegir un solo dia, que ya deja pending en true, no cambiaba nada
-// visible).
-// v2 volvia a la fecha con la que se abrio el picker (selectedDate) —
-// pero si esa fecha YA era un filtro aplicado en una apertura anterior
-// (el caso normal: abrir el picker, no tocar nada, clicar Limpiar), no
-// cambiaba nada visible tampoco, y si se abria de nuevo despues de haber
-// elegido otra fecha, "limpiar" devolvia ese filtro previo en vez de
-// quitarlo — se leia como que Limpiar volvia a aplicar un filtro viejo,
-// no como que limpiaba nada.
-// v3 (actual): Limpiar es equivalente a "Hoy" — el filtro de fecha no
-// tiene un "apagado" real, asi que su version mas parecida a "vacio" es
-// la fecha neutra (hoy, vista Dia — el mismo criterio que usa
-// TimeLogView.ts#renderDateNav para decidir si el icono de calendario se
-// muestra "activo"). Siguen siendo dos botones separados porque cada uno
-// comunica una intencion distinta (ir a hoy vs. quitar el filtro), aunque
-// el resultado sea el mismo.
+// El pie tenia hasta agosto 2026 un segundo boton "Limpiar" ademas de
+// "Hoy". El filtro de fecha no tiene un "apagado" real (a diferencia del
+// filtro de proyecto, la navegacion por fecha siempre muestra algun
+// dia/semana, nunca "ninguno"), asi que tras dos iteraciones de QA
+// "Limpiar" acabo siendo funcionalmente identico a "Hoy" (mismo
+// goToToday()) — dos botones para una sola accion. Eliminado por
+// redundante (decision del usuario, fix responsive de cabecera, agosto
+// 2026): "Hoy" es ahora el unico punto de salida del filtro de fecha.
 
 import { setIcon } from "obsidian";
 import { t } from "../i18n";
@@ -194,10 +180,6 @@ export function openDatePickerPopover(options: DatePickerPopoverOptions): void {
 	const footerActionsEl = footerEl.createDiv({ cls: "task-time-tracker-datepicker-footer-actions" });
 	const todayBtn = footerActionsEl.createEl("button", { text: t("log.today") });
 	todayBtn.addEventListener("click", () => goToToday());
-	// Mismo destino que "Hoy" (ver comentario de cabecera): la version
-	// mas parecida a "sin filtro" que existe en este panel.
-	const clearBtn = footerActionsEl.createEl("button", { text: t("log.datePickerClear") });
-	clearBtn.addEventListener("click", () => goToToday());
 
 	function onDayClick(dayStart: number): void {
 		// Segundo clic en OTRO dia mientras hay un dia pendiente: completa

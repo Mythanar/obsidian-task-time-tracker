@@ -776,16 +776,21 @@ export class TimeLogView extends ItemView {
 	}
 
 	// Rediseno de cabecera (Selector de fecha, agosto 2026 — version
-	// definitiva aportada por el usuario via Time Tracker.dc.html; version
-	// de fila UNICA corregida en la 3a pasada de QA visual del rediseno
-	// visual del Historial — la primera implementacion la partio en dos
-	// filas por error, el prototipo real usa una sola, ver Time Tracker
-	// Tab.dc.html lineas 59-76) — toggle Dia/Semana + Hoy + flechas+fecha,
-	// todo en la misma linea, con calendario y Filter al final de esa
-	// misma fila (margin-left: auto). En modo Resultados (ver [[Vista de
-	// resultados por rango]]) el toggle y "Hoy" se ocultan (no tiene
-	// sentido "avanzar" un rango arbitrario) y "Volver" ocupa el lugar de
-	// las flechas+fecha; calendario y Filter mantienen su posicion.
+	// definitiva aportada por el usuario via Time Tracker.dc.html; fix de
+	// responsive con container queries, agosto 2026) — tres grupos fijos
+	// (toggle Dia/Semana, flechas+fecha, calendario+Filter) dispuestos en
+	// grid via CSS (ver .task-time-tracker-log-datenav-row): en formato
+	// Ancho los tres van en una sola fila con calendario+Filter anclado al
+	// borde derecho; en formato Compacto (< 400px de contenedor) el toggle
+	// y calendario+Filter comparten la fila superior y flechas+fecha baja a
+	// una segunda fila propia. Sin boton "Hoy" en esta barra bajo ningun
+	// formato — decision de producto: el unico punto de entrada a "Hoy" es
+	// el footer del date-picker (ver DatePickerPopover.ts#goToToday), que
+	// ya lo ofrece, asi que aqui seria un atajo redundante. En modo
+	// Resultados (ver [[Vista de resultados por rango]]) el toggle se
+	// oculta (no tiene sentido "avanzar" un rango arbitrario) y "Volver"
+	// ocupa el lugar de las flechas+fecha; calendario y Filter mantienen su
+	// posicion y agrupacion.
 	private renderDateNav(container: Element): void {
 		const nav = container.createDiv({ cls: "task-time-tracker-log-datenav" });
 
@@ -813,19 +818,6 @@ export class TimeLogView extends ItemView {
 				this.viewMode = "week";
 				void this.render();
 			});
-
-			const todayBtn = row.createEl("button", {
-				text: t("log.today"),
-				cls: "task-time-tracker-log-datenav-today",
-			});
-			todayBtn.addEventListener("click", () => {
-				// "Hoy" siempre lleva a la vista diaria de hoy, incluso si se
-				// pulsa desde vista semanal — no solo mueve la fecha dentro del
-				// modo activo.
-				this.viewMode = "day";
-				this.anchorDate = startOfDay(Date.now());
-				void this.render();
-			});
 		}
 
 		if (this.viewMode === "results") {
@@ -844,7 +836,7 @@ export class TimeLogView extends ItemView {
 			});
 		} else {
 			const range = row.createDiv({ cls: "task-time-tracker-log-datenav-range" });
-			const prevBtn = range.createEl("button", { cls: "clickable-icon" });
+			const prevBtn = range.createEl("button", { cls: "clickable-icon task-time-tracker-icon-btn" });
 			setIcon(prevBtn, "chevron-left");
 			prevBtn.setAttribute("aria-label", this.viewMode === "day" ? t("log.navPrevDay") : t("log.navPrevWeek"));
 			prevBtn.addEventListener("click", () => {
@@ -854,7 +846,7 @@ export class TimeLogView extends ItemView {
 
 			range.createSpan({ text: this.formatRangeLabel(), cls: "task-time-tracker-log-datenav-label" });
 
-			const nextBtn = range.createEl("button", { cls: "clickable-icon" });
+			const nextBtn = range.createEl("button", { cls: "clickable-icon task-time-tracker-icon-btn" });
 			setIcon(nextBtn, "chevron-right");
 			nextBtn.setAttribute("aria-label", this.viewMode === "day" ? t("log.navNextDay") : t("log.navNextWeek"));
 			nextBtn.addEventListener("click", () => {
@@ -863,10 +855,13 @@ export class TimeLogView extends ItemView {
 			});
 		}
 
-		// margin-left: auto (ver CSS) empuja este boton y todo lo que va
-		// despues (el filtro) juntos al extremo derecho de la fila, sin
-		// separarlos entre si — calendario y Filter van pegados.
-		const calendarBtn = row.createEl("button", {
+		// Grupo atomico calendario+Filter: nunca se separan entre si ni
+		// cambian de posicion (siempre anclados al borde derecho de la fila,
+		// ver CSS grid-area en .task-time-tracker-log-datenav-actions) — este
+		// wrapper es lo que los mantiene juntos como una sola unidad de
+		// layout en vez de dos elementos sueltos que el grid pudiera separar.
+		const actions = row.createDiv({ cls: "task-time-tracker-log-datenav-actions" });
+		const calendarBtn = actions.createEl("button", {
 			cls: "task-time-tracker-log-datenav-calendar task-time-tracker-log-header-icon-btn task-time-tracker-icon-btn",
 		});
 		// "Filtro de fecha activo" no es un estado propio separado (a
@@ -913,7 +908,7 @@ export class TimeLogView extends ItemView {
 			});
 		});
 
-		this.renderProjectFilter(row);
+		this.renderProjectFilter(actions);
 	}
 
 	// Boton de filtro por proyecto, junto al calendario: solo icono

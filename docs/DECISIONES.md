@@ -1146,3 +1146,51 @@ resultado final.
 - **El tt-id deja de pintarse en la tarjeta** (seguía existiendo como
   concepto interno) — no tenía hueco en el diseño de columna derecha
   del prototipo y no aporta nada al usuario final en esa vista.
+
+## Fase 5 — fix responsive de la cabecera del Historial y limpieza del date-picker
+
+- **Container queries (`@container`), no media queries, con solo 2
+  formatos.** `.task-time-tracker-log-datenav` pasa a
+  `container-type: inline-size`; la fila de controles usa CSS Grid con
+  `grid-template-areas` en vez de `flex-wrap`. Formato Ancho (≥400px de
+  contenedor: toggle + flechas/fecha + calendario/filtro en una sola
+  fila) y Compacto (<400px: toggle+iconos arriba, flechas/fecha debajo).
+  400px es el único punto de corte; tablet no tiene tratamiento propio,
+  hereda Ancho. Motivo: el ancho real del panel/leaf no se corresponde
+  con el viewport (un side panel puede ser estrecho en un monitor
+  grande, y viceversa), a diferencia de los ajustes de mobile anteriores
+  de esta fase.
+- **El botón "Hoy" se elimina de la cabecera del Historial.** Quedaba
+  redundante con el que ya existe en el pie del date-picker (mismo
+  destino, `goToToday()`); el único punto de entrada a "Hoy" pasa a ser
+  abrir el calendario y pulsar "Hoy" en su pie. Calendario y filtro de
+  proyecto se agrupan en un único bloque atómico (nunca se separan entre
+  sí), siempre anclado al borde derecho de la fila en ambos formatos.
+- **Bug real de CSS Grid encontrado y corregido: una columna `1fr` no se
+  encoge por debajo del min-content de su contenido por defecto.** En el
+  tramo ~400-550px, con el toggle y el grupo calendario/filtro ya
+  ocupando su ancho `auto`, la columna central (`1fr`) no tenía margen
+  para bajar por debajo de lo que pedía el grupo flechas+fecha —
+  agravado por el `min-width: 21ch` fijo de la etiqueta de fecha (ver
+  "Fase 5 — total de la vista y rediseño del navegador de fecha" más
+  arriba), que actuaba como un suelo, no como una preferencia. El
+  resultado: el grupo desbordaba visualmente su columna y pisaba el
+  toggle Día/Semana. Fix en dos partes: `minmax(0, 1fr)` en la columna
+  central, y la etiqueta pasa de `min-width: 21ch` a
+  `flex: 0 1 21ch; min-width: 0` — mismo ancho preferido cuando hay
+  espacio (sin jitter al alternar Día/Semana), pero ahora capaz de
+  encogerse de verdad y activar su propio `text-overflow: ellipsis` en
+  vez de desbordar. Verificado con un harness estático (HTML+CSS reales
+  del componente, sin depender de Obsidian) en todo el rango 260-600px,
+  en label de día y de semana.
+- **Botón "Limpiar" eliminado del pie del date-picker.** Tras la
+  investigación de por qué el usuario reportaba que "Limpiar" y "Hoy"
+  "hacían lo mismo": ambos llamaban a `goToToday()` — eran, literalmente,
+  dos botones para una sola acción, pese a que `DatePickerPopover.ts`
+  documentaba en su cabecera dos rondas previas de QA (v1/v2) intentando
+  darle a "Limpiar" un comportamiento propio distinto de "Hoy" antes de
+  asentarse en que ambos hicieran lo mismo (v3) — ese historial, ya sin
+  utilidad una vez eliminado el botón, se resume y se quita del
+  comentario. "Hoy" queda como único punto de salida del filtro de
+  fecha. Se elimina también la clave de traducción
+  `log.datePickerClear`, sin más usos en el codebase.

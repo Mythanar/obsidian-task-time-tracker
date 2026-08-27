@@ -184,7 +184,6 @@ export const es: Record<TranslationKey, string> = {
 	"log.datePickerPrevMonth": "Mes anterior",
 	"log.datePickerNextMonth": "Mes siguiente",
 	"log.datePickerSelectWeekAriaLabel": "Seleccionar semana {week}",
-	"log.datePickerClear": "Limpiar",
 	"log.datePickerWeekLabel": "Semana {week} · {start} – {end}",
 	"log.datePickerPendingHint": "{label} · elige el fin del rango",
 	"log.resultsBack": "Volver",

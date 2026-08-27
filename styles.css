@@ -1113,40 +1113,109 @@
 	color: var(--text-faint);
 }
 
-/* Rediseno de cabecera (Selector de fecha, agosto 2026; corregido a fila
-   UNICA en la 3a pasada de QA visual del rediseno visual del Historial —
-   ver Time Tracker Tab.dc.html lineas 59-76): toggle Dia/Semana + Hoy +
-   flechas+fecha, todo en la misma linea, con calendario y Filter al
-   final de esa misma fila (margin-left: auto, ver
-   .task-time-tracker-log-datenav-calendar). flex-wrap: en un sidebar muy
-   angosto el conjunto puede bajar a mas de una linea visual, pero sigue
-   siendo un unico contenedor logico, no dos filas separadas a proposito. */
+/* Rediseno de cabecera (Selector de fecha, agosto 2026; fix de responsive
+   con container queries, agosto 2026 — bug critico corregido: en anchos
+   intermedios el grupo calendario+Filter caia a una segunda linea sin
+   margen suficiente y se solapaba con el contenido de debajo). Container
+   query, no media query: el ancho real del panel/leaf no se corresponde
+   con el viewport (un side panel puede ser estrecho en un monitor grande,
+   y viceversa). Establecido aqui (elemento padre de
+   .task-time-tracker-log-datenav-row) en vez de en la propia fila para
+   evitar cualquier referencia circular entre el contenedor de la query y
+   el grid que esa query controla. */
 .task-time-tracker-log-datenav {
 	display: flex;
 	flex-direction: column;
 	margin-top: 1em;
 	margin-bottom: 0.75em;
+	container-type: inline-size;
+	container-name: tt-datenav;
 }
 
+/* display:flex es solo el fallback pre-container-queries; a partir de
+   400px de contenedor pasa a grid en una fila (formato Ancho) y por debajo
+   a grid en dos filas (formato Compacto) — ver los dos bloques
+   @container mas abajo. Solo 2 formatos, sin tratamiento propio para
+   tablet (hereda Ancho) — 400px es el unico punto de corte. */
 .task-time-tracker-log-datenav-row {
 	display: flex;
 	align-items: center;
 	gap: 0.625em;
 	flex-wrap: wrap;
 	padding-bottom: 0.875em;
+	margin-bottom: 16px;
 	border-bottom: 1px solid var(--background-modifier-border);
+	min-height: 40px;
 }
 
-/* Dia/Semana, flechas prev/siguiente, calendario y "Hoy": mismo motivo que
-   .task-time-tracker-log-edit-actions button de arriba — sin esto se
+/* Formato Ancho (>= 400px de contenedor): los tres grupos fijos —
+   toggle Dia/Semana, flechas+fecha, calendario+Filter — en una sola fila.
+   El grupo central se centra en el espacio flexible (1fr) y el ultimo
+   queda anclado al borde derecho por definicion de columnas (auto al
+   final), sin necesidad de margin-left: auto. minmax(0, 1fr) en vez de
+   1fr a secas — bug critico QA (agosto 2026): una columna 1fr tiene un
+   minimo automatico implicito igual al min-content de su contenido, NO
+   0; con mode+actions ya anchos (auto, no negociable), esa columna
+   central no podia encogerse por debajo del ancho minimo de
+   .task-time-tracker-log-datenav-range y el grupo flechas+fecha
+   desbordaba su track pisando visualmente el toggle Dia/Semana en el
+   tramo justo por encima de este breakpoint (~400-550px). minmax(0, 1fr)
+   le quita ese suelo automatico — ver tambien min-width:0 + el cambio de
+   min-width a flex-basis en .task-time-tracker-log-datenav-label mas
+   abajo, la otra mitad del mismo fix. */
+@container tt-datenav (min-width: 400px) {
+	.task-time-tracker-log-datenav-row {
+		display: grid;
+		grid-template-columns: auto minmax(0, 1fr) auto;
+		grid-template-areas: "mode range actions";
+		gap: 16px;
+	}
+}
+
+/* Formato Compacto (< 400px de contenedor): fila 1 con el toggle a la
+   izquierda y calendario+Filter anclado a la derecha; fila 2 con
+   flechas+fecha ocupando el ancho completo, centrada. margin-bottom y
+   min-height mayores que en Ancho: hay una fila extra apilada, y sin este
+   margen extra el conjunto se solapa con el divisor/"Sin sesiones este
+   dia" de debajo (bug critico que motivo este fix). */
+@container tt-datenav (max-width: 399px) {
+	.task-time-tracker-log-datenav-row {
+		display: grid;
+		grid-template-columns: 1fr auto;
+		grid-template-areas:
+			"mode actions"
+			"range range";
+		row-gap: 10px;
+		column-gap: 12px;
+		margin-bottom: 24px;
+		min-height: 88px;
+	}
+}
+
+/* Dia/Semana, flechas prev/siguiente, calendario y "Volver": mismo motivo
+   que .task-time-tracker-log-edit-actions button de arriba — sin esto se
    quedan con el cursor por defecto del navegador en esta vista. */
 .task-time-tracker-log-datenav button {
 	cursor: pointer;
 }
 
+/* Target tactil minimo 44x44px (WCAG 2.5.5) en movil — ligado a
+   .is-mobile (clase que Obsidian añade al body), no al breakpoint de
+   ancho del container query: un side panel ancho en movil tambien
+   necesita targets grandes. En desktop se mantienen los tamaños
+   compactos actuales sin forzar 44px. */
+.is-mobile .task-time-tracker-log-datenav-row button {
+	min-width: 44px;
+	min-height: 44px;
+}
+
 /* Toggle Dia/Semana como un solo control segmentado (un borde, un fondo,
-   sin huecos entre los dos botones) en vez de dos botones sueltos. */
+   sin huecos entre los dos botones) en vez de dos botones sueltos. Grupo
+   fijo "mode" del grid de .task-time-tracker-log-datenav-row — no se
+   renderiza en modo Resultados, dejando esa area del grid vacia. */
 .task-time-tracker-log-datenav-mode {
+	grid-area: mode;
+	justify-self: start;
 	display: flex;
 	flex-shrink: 0;
 	border: 1px solid var(--background-modifier-border);
@@ -1166,46 +1235,69 @@
 	color: var(--text-on-accent);
 }
 
-/* Flechas + fecha: un grupo mas dentro de la fila unica (ya no el unico
-   contenido de una fila propia que centrar) — mismo margin-left:6px que
-   el prototipo separandolo de "Hoy". */
+/* Flechas + fecha: grupo fijo "range" del grid — centrado en el espacio
+   flexible que le deja el grid en ambos formatos (columna 1fr en Ancho,
+   fila propia de ancho completo en Compacto). "Volver" (modo Resultados,
+   ver .task-time-tracker-log-results-back) ocupa esta misma area cuando
+   sustituye a las flechas+fecha. */
 .task-time-tracker-log-datenav-range {
+	grid-area: range;
+	justify-self: center;
+	min-width: 0;
 	display: flex;
 	align-items: center;
 	gap: 0.35em;
-	flex: 0 0 auto;
-	margin-left: 0.375em;
 	white-space: nowrap;
 }
 
-/* min-width igual para el rango de dia ("Mie, 12 ago 2026") y el de
-   semana ("8/10/2026 - 8/16/2026", mas ancho): sin esto, cambiar de
-   Dia a Semana angosta o ensancha la fila superior al alternar el modo,
-   con el panel en el mismo ancho. 21ch cubre el mas ancho de los dos
-   formatos (semana). */
+/* flex-basis 21ch (no min-width) igual para el rango de dia ("Mie, 12 ago
+   2026") y el de semana ("8/10/2026 - 8/16/2026", mas ancho): sin esto,
+   cambiar de Dia a Semana angosta o ensancha la fila superior al
+   alternar el modo, con el panel en el mismo ancho. 21ch cubre el mas
+   ancho de los dos formatos (semana) — pero como PREFERENCIA, no como
+   suelo: min-width:0 + overflow:hidden dejan que el propio min-content
+   de este span baje a ~0 (en vez de a 21ch), que es lo que le permite a
+   .task-time-tracker-log-datenav-range encogerse de verdad en el tramo
+   ~400-550px en vez de desbordar su columna (ver comentario en el bloque
+   @container Ancho mas arriba — bug critico QA agosto 2026: con
+   min-width:21ch como suelo, el ellipsis nunca llegaba a activarse
+   porque el span se negaba a bajar de 21ch, asi que el desborde persistia
+   igual). */
 .task-time-tracker-log-datenav-label {
 	font-weight: 600;
 	text-align: center;
 	white-space: nowrap;
-	min-width: 21ch;
+	flex: 0 1 21ch;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
 }
 
-.task-time-tracker-log-datenav-today {
+/* Grupo atomico calendario+Filter (ver TimeLogView.ts#renderDateNav):
+   nunca se separan entre si ni cambian de grid-area — siempre anclados al
+   borde derecho de la fila en ambos formatos (justify-self: end), lo que
+   corrige el bug de solapamiento/desagrupacion en anchos intermedios. */
+.task-time-tracker-log-datenav-actions {
+	grid-area: actions;
+	justify-self: end;
+	display: flex;
+	align-items: center;
+	gap: 8px;
 	flex-shrink: 0;
 }
 
-/* Calendario y Filter van juntos al extremo derecho de la fila superior,
-   pegados entre si — margin-left: auto en el calendario (no en Filter)
-   empuja ambos como bloque, en vez de justify-content: space-between en
-   la fila (que con tres elementos — toggle, Hoy, calendario — dejaria a
-   Hoy flotando en medio en vez de agrupado con el toggle a la
-   izquierda). */
+@container tt-datenav (max-width: 399px) {
+	.task-time-tracker-log-datenav-actions {
+		gap: 6px;
+	}
+}
+
 .task-time-tracker-log-datenav-calendar {
 	flex-shrink: 0;
-	margin-left: auto;
 }
 
-/* Filtro por proyecto (ver TimeLogView.ts#renderProjectFilter). */
+/* Filtro por proyecto (ver TimeLogView.ts#renderProjectFilter), dentro del
+   grupo calendario+Filter. */
 .task-time-tracker-log-filter {
 	display: flex;
 	align-items: center;
@@ -1240,13 +1332,9 @@
 }
 
 /* Boton solo-icono compartido entre calendario y filtro de proyecto en
-   reposo (QA agosto 2026 — unificar aspecto entre los dos, y que
-   coincida con el boton "Hoy" ya existente en la misma barra, no con el
-   estilo plano del prototipo de Claude Design): sin fondo/borde/sombra
-   propios, deja el boton nativo de Obsidian tal cual, igual que
-   .task-time-tracker-log-datenav-today — mismo motivo por el que ese
-   boton no necesita ningun reset. Solo centra el icono y evita que se
-   encoja. */
+   reposo (QA agosto 2026 — unificar aspecto entre los dos): sin fondo/
+   borde/sombra propios, deja el boton nativo de Obsidian tal cual. Solo
+   centra el icono y evita que se encoja. */
 .task-time-tracker-log-header-icon-btn {
 	display: flex;
 	align-items: center;
@@ -1368,9 +1456,12 @@
 
 /* Boton "Volver" de la vista de Resultados (ver
    TimeLogView.ts#renderDateNav): sustituye a las flechas+fecha en la
-   misma fila, boton nativo de Obsidian sin overrides — mismo criterio
-   que el resto de botones de esta barra (ver "Today"). */
+   misma area del grid (grid-area: range, ver
+   .task-time-tracker-log-datenav-range), boton nativo de Obsidian sin
+   overrides. */
 .task-time-tracker-log-results-back {
+	grid-area: range;
+	justify-self: center;
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35em;

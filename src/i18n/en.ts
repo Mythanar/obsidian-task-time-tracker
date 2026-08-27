@@ -188,7 +188,6 @@ export const en = {
 	"log.datePickerPrevMonth": "Previous month",
 	"log.datePickerNextMonth": "Next month",
 	"log.datePickerSelectWeekAriaLabel": "Select week {week}",
-	"log.datePickerClear": "Clear",
 	"log.datePickerWeekLabel": "Week {week} · {start} – {end}",
 	"log.datePickerPendingHint": "{label} · pick the end of the range",
 	"log.resultsBack": "Back",

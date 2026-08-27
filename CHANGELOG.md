@@ -16,10 +16,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - History panel: reworked header and task-card layout for readability. Header condensed from three rows into one (Day/Week toggle, Today, date navigation, and the calendar/project-filter icons all together); added a subtitle under the panel title ("N tasks · M sessions" in Day view, "N tasks · M days with activity" in Week/Results) and a "Range total" label above the corner total. In Week/Results, each day's tasks now sit inside a single grouped container (rounded border, shared background, thin dividers between tasks) instead of separate cards with gaps between them, under a title + connector line + day-total heading. Task cards: titles now wrap to two lines before truncating (previously cut off at one), the note/kebab/project icons got explicit sizing (they were silently falling back to Obsidian's larger default), and clicking anywhere on a card (not just a small toggle) expands or collapses its sessions, with a hover highlight on desktop.
+- History panel: the header's date navigation row now adapts to the panel's real width (a container query, not the window's) instead of just wrapping — the calendar and project-filter icons always stay grouped together, anchored to the right edge, whether the panel is a narrow docked sidebar or a wide central tab. The standalone "Today" button is removed from the header — it was redundant with the one already in the calendar popover's footer, which is now the single entry point back to today's view.
+- Date-picker popover: removed the "Clear" button from the footer — it did exactly what "Today" already does (jump back to today's day view). "Today" is now the only reset action.
 
 ### Fixed
 
 - Export modal: the title was rendered as its own heading inside the modal body, one line below the close (X) button instead of aligned with it. Now uses the modal's native title (same fix already applied to the "Edit task" dialog) — affects all three export formats equally, since the title doesn't depend on which one is selected.
+- History panel: at panel widths roughly between 400 and 550px, the date arrows/label in the header could visually overlap the Day/Week toggle instead of adapting to the available space.
 
 ## [0.0.28] - 2026-08-21
 
