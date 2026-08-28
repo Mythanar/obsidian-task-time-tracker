@@ -112,9 +112,18 @@
 	flex-shrink: 0;
 }
 
+/* display: block (fix QA agosto 2026, release 0.0.29) — sin esto el svg
+   queda con su comportamiento inline por defecto, que reserva debajo el
+   hueco de descendentes de una linea de texto normal; align-items:center
+   del contenedor (.task-time-tracker-totals-duration-group) entonces
+   centra esa caja con hueco extra, no el icono visible, y el icono queda
+   corrido hacia arriba respecto al valor grande (22px) que tiene al lado.
+   Mismo patron ya aplicado en .task-time-tracker-log-card-stop-icon svg y
+   .task-time-tracker-inline-icon svg. */
 .task-time-tracker-totals-duration-icon svg {
 	width: 0.9em;
 	height: 0.9em;
+	display: block;
 	color: var(--interactive-accent);
 }
 
@@ -1133,10 +1142,14 @@
 }
 
 /* display:flex es solo el fallback pre-container-queries; a partir de
-   400px de contenedor pasa a grid en una fila (formato Ancho) y por debajo
+   480px de contenedor pasa a grid en una fila (formato Ancho) y por debajo
    a grid en dos filas (formato Compacto) — ver los dos bloques
    @container mas abajo. Solo 2 formatos, sin tratamiento propio para
-   tablet (hereda Ancho) — 400px es el unico punto de corte. */
+   tablet (hereda Ancho) — 480px es el unico punto de corte, compartido por
+   las 3 vistas (Dia, Semana, Resultados) — rediseno de cabecera v2, agosto
+   2026, spec + prototipos "Cabecera Time Tracker.dc.html" y "Header
+   Responsive Wireframes.dc.html" (estrategia "1c"), en sustitucion del
+   breakpoint anterior a 400px. */
 .task-time-tracker-log-datenav-row {
 	display: flex;
 	align-items: center;
@@ -1148,7 +1161,7 @@
 	min-height: 40px;
 }
 
-/* Formato Ancho (>= 400px de contenedor): los tres grupos fijos —
+/* Formato Ancho (>= 480px de contenedor): los tres grupos fijos —
    toggle Dia/Semana, flechas+fecha, calendario+Filter — en una sola fila.
    El grupo central se centra en el espacio flexible (1fr) y el ultimo
    queda anclado al borde derecho por definicion de columnas (auto al
@@ -1159,11 +1172,11 @@
    central no podia encogerse por debajo del ancho minimo de
    .task-time-tracker-log-datenav-range y el grupo flechas+fecha
    desbordaba su track pisando visualmente el toggle Dia/Semana en el
-   tramo justo por encima de este breakpoint (~400-550px). minmax(0, 1fr)
-   le quita ese suelo automatico — ver tambien min-width:0 + el cambio de
-   min-width a flex-basis en .task-time-tracker-log-datenav-label mas
-   abajo, la otra mitad del mismo fix. */
-@container tt-datenav (min-width: 400px) {
+   tramo justo por encima de este breakpoint. minmax(0, 1fr) le quita ese
+   suelo automatico — ver tambien min-width:0 + el cambio de min-width a
+   flex-basis en .task-time-tracker-log-datenav-label mas abajo, la otra
+   mitad del mismo fix. */
+@container tt-datenav (min-width: 480px) {
 	.task-time-tracker-log-datenav-row {
 		display: grid;
 		grid-template-columns: auto minmax(0, 1fr) auto;
@@ -1172,13 +1185,16 @@
 	}
 }
 
-/* Formato Compacto (< 400px de contenedor): fila 1 con el toggle a la
-   izquierda y calendario+Filter anclado a la derecha; fila 2 con
-   flechas+fecha ocupando el ancho completo, centrada. margin-bottom y
+/* Formato Compacto (< 480px de contenedor): fila 1 con el toggle/"Volver"
+   a la izquierda y calendario+Filter anclado a la derecha; fila 2 es un
+   control de ANCHO COMPLETO con marco (ver el @container que reestiliza
+   .task-time-tracker-log-datenav-range mas abajo, y
+   .task-time-tracker-log-results-rangebox para Resultados) — ya no es
+   texto centrado sin caja como en la v1 de este rediseno. margin-bottom y
    min-height mayores que en Ancho: hay una fila extra apilada, y sin este
    margen extra el conjunto se solapa con el divisor/"Sin sesiones este
-   dia" de debajo (bug critico que motivo este fix). */
-@container tt-datenav (max-width: 399px) {
+   dia" de debajo (bug critico que motivo este fix en la v1). */
+@container tt-datenav (max-width: 479px) {
 	.task-time-tracker-log-datenav-row {
 		display: grid;
 		grid-template-columns: 1fr auto;
@@ -1236,10 +1252,17 @@
 }
 
 /* Flechas + fecha: grupo fijo "range" del grid — centrado en el espacio
-   flexible que le deja el grid en ambos formatos (columna 1fr en Ancho,
-   fila propia de ancho completo en Compacto). "Volver" (modo Resultados,
-   ver .task-time-tracker-log-results-back) ocupa esta misma area cuando
-   sustituye a las flechas+fecha. */
+   flexible que le deja el grid en formato Ancho, SIN caja/borde propio
+   (decision de producto del rediseno v2, Cambio 2 — a diferencia de la
+   caja con marco que si lleva el rango de Resultados, ver
+   .task-time-tracker-log-results-rangebox). En formato Compacto pasa a
+   ser un control de ancho completo con marco (ver el @container mas abajo)
+   — sigue siendo el mismo elemento, solo cambia su aspecto/tamaño segun el
+   ancho del contenedor. "Volver" (modo Resultados, ver
+   .task-time-tracker-log-results-back) ocupa esta misma area del grid
+   cuando sustituye al toggle Dia/Semana, pero NO a este grupo — el rango
+   de Resultados vive en su propio elemento (rangebox), tambien en el area
+   "range". */
 .task-time-tracker-log-datenav-range {
 	grid-area: range;
 	justify-self: center;
@@ -1258,11 +1281,11 @@
    suelo: min-width:0 + overflow:hidden dejan que el propio min-content
    de este span baje a ~0 (en vez de a 21ch), que es lo que le permite a
    .task-time-tracker-log-datenav-range encogerse de verdad en el tramo
-   ~400-550px en vez de desbordar su columna (ver comentario en el bloque
-   @container Ancho mas arriba — bug critico QA agosto 2026: con
-   min-width:21ch como suelo, el ellipsis nunca llegaba a activarse
-   porque el span se negaba a bajar de 21ch, asi que el desborde persistia
-   igual). */
+   justo por encima del breakpoint Ancho en vez de desbordar su columna
+   (ver comentario en el bloque @container Ancho mas arriba — bug critico
+   QA agosto 2026: con min-width:21ch como suelo, el ellipsis nunca
+   llegaba a activarse porque el span se negaba a bajar de 21ch, asi que
+   el desborde persistia igual). */
 .task-time-tracker-log-datenav-label {
 	font-weight: 600;
 	text-align: center;
@@ -1271,6 +1294,62 @@
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
+}
+
+/* Formato Compacto (Cambio 3, rediseno de cabecera v2, agosto 2026):
+   .task-time-tracker-log-datenav-range deja de ser un grupo centrado sin
+   caja y pasa a ser un stepper de ANCHO COMPLETO con marco — mismo patron
+   que "1c" del prototipo de referencia. justify-self:stretch (en vez de
+   center) para que ocupe todo el ancho de la fila "range range";
+   grid 44px/1fr/44px en vez de flex: las celdas 1 y 3 son el target
+   tactil de las flechas (44px, mejora respecto al tamaño compacto de
+   Ancho, pensado para mobile), la celda central es la fecha. gap:0 (no el
+   0.35em de Ancho) porque los separadores entre celdas son bordes, no
+   huecos. */
+@container tt-datenav (max-width: 479px) {
+	.task-time-tracker-log-datenav-range {
+		display: grid;
+		grid-template-columns: 44px 1fr 44px;
+		gap: 0;
+		justify-self: stretch;
+		border: 1px solid var(--background-modifier-border);
+		border-radius: var(--radius-s);
+		background: var(--background-secondary);
+	}
+
+	/* Sin height fijo (bug QA agosto 2026 — fix verificado por el usuario:
+	   38px se quedaba corto para el contenido real de la fila, y los
+	   divisores verticales entre celdas sobresalian por fuera del borde de
+	   la caja). La altura se ajusta sola al contenido; el target tactil de
+	   44px de las flechas no depende de esto — lo cubre .task-time-tracker-
+	   icon-btn con su ::after de hit-area invisible (inset:-10px), no la
+	   altura visual real del boton. Las flechas ocupan toda su celda (44px
+	   de ancho) en vez de flotar centradas en una celda mas grande que
+	   ellas; border-radius:0 porque aqui viven pegadas al marco de la caja,
+	   no sueltas como en Ancho. El divisor va en el borde interior de cada
+	   celda (right en la primera, left en la ultima) para no depender del
+	   orden real de los hijos mas alla de "primero y ultimo". */
+	.task-time-tracker-log-datenav-range > button:first-child,
+	.task-time-tracker-log-datenav-range > button:last-child {
+		width: 100%;
+		height: 100%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 0;
+	}
+
+	.task-time-tracker-log-datenav-range > button:first-child {
+		border-right: 1px solid var(--background-modifier-border);
+	}
+
+	.task-time-tracker-log-datenav-range > button:last-child {
+		border-left: 1px solid var(--background-modifier-border);
+	}
+
+	.task-time-tracker-log-datenav-label {
+		padding: 0 6px;
+	}
 }
 
 /* Grupo atomico calendario+Filter (ver TimeLogView.ts#renderDateNav):
@@ -1286,7 +1365,7 @@
 	flex-shrink: 0;
 }
 
-@container tt-datenav (max-width: 399px) {
+@container tt-datenav (max-width: 479px) {
 	.task-time-tracker-log-datenav-actions {
 		gap: 6px;
 	}
@@ -1297,7 +1376,10 @@
 }
 
 /* Filtro por proyecto (ver TimeLogView.ts#renderProjectFilter), dentro del
-   grupo calendario+Filter. */
+   grupo calendario+Filter. flex-shrink:0: nunca cede espacio ni compite
+   con el resto de la fila — ver .task-time-tracker-log-filter-btn mas
+   abajo para como se adapta el boton en si (cambio binario por
+   breakpoint, no recorte progresivo). */
 .task-time-tracker-log-filter {
 	display: flex;
 	align-items: center;
@@ -1311,24 +1393,67 @@
    misma clase base: icono + texto opcional. El aspecto visual (fondo,
    tamaño, icono-solo vs pill) lo pone cada contexto por separado — ver
    .task-time-tracker-log-header-icon-btn mas abajo para el boton del
-   header. max-width + ellipsis: el nombre de un proyecto largo no debe
-   romper el layout de la barra de navegacion ni del modal. */
+   header. flex-shrink:0 heredado de esa misma clase: el boton NUNCA
+   compite por espacio con el resto de la fila (bug QA agosto 2026,
+   rediseno de cabecera v2 — un intento de recorte progresivo via
+   flex-shrink/min-width dinamicos causo dos regresiones: la caja de fecha
+   de Resultados cortandose, y la fila de Dia/Semana rota, porque metia al
+   filtro a competir por el espacio de toda la fila). max-width: limite
+   fijo, propio del boton, no relacionado con el espacio disponible en la
+   fila — solo salvaguarda nombres de proyecto extremadamente largos (ver
+   .task-time-tracker-log-filter-btn-label para el ellipsis). En formato
+   Compacto (<480px, ver el @container mas abajo) el nombre desaparece
+   del todo — cambio binario atado al mismo breakpoint que ya gobierna el
+   resto de la cabecera, no un estado intermedio. */
 .task-time-tracker-log-filter-btn {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35em;
 	cursor: pointer;
-	max-width: 12em;
+	max-width: 180px;
 }
 
 .task-time-tracker-log-filter-btn svg {
 	flex-shrink: 0;
 }
 
+/* min-width:0 aqui es un ajuste interno y autocontenido del boton (para
+   que el ellipsis realmente se active dentro del max-width fijo de
+   .task-time-tracker-log-filter-btn), no una invitacion a encogerse por
+   presion del resto de la fila — el boton en si sigue siendo
+   flex-shrink:0 (ver arriba), asi que esto no repite el problema de las
+   regresiones QA agosto 2026. */
 .task-time-tracker-log-filter-btn-label {
+	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+/* Breakpoint PROPIO de este boton (fix QA agosto 2026) — deliberadamente
+   NO el de 480px que gobierna el resto de la cabecera (ver los
+   @container de mas arriba): el nombre de proyecto desaparece por
+   completo y el boton se queda solo con el icono de embudo, cambio
+   binario sin recorte progresivo ni estado intermedio (rediseno de bug 6,
+   tras descartar el enfoque de recorte dinamico que causaba
+   regresiones). Umbral distinto segun la vista, medido aparte: 610px en
+   Dia/Semana (comparte fila con el toggle) y 575px en Resultados (comparte
+   fila con "Volver" y la caja de rango, algo menos cargada) — is-results
+   (ver renderDateNav) distingue ambos casos dentro del mismo contenedor
+   de container-query. Cambiar el breakpoint de 2 filas de la cabecera
+   (480px) no afecta a este, y viceversa. El icono "x" de quitar filtro
+   (.task-time-tracker-log-filter-clear) no se ve afectado, sigue siempre
+   visible en ambos formatos. */
+@container tt-datenav (max-width: 609px) {
+	.task-time-tracker-log-datenav:not(.is-results) .task-time-tracker-log-filter-btn-label {
+		display: none;
+	}
+}
+
+@container tt-datenav (max-width: 574px) {
+	.task-time-tracker-log-datenav.is-results .task-time-tracker-log-filter-btn-label {
+		display: none;
+	}
 }
 
 /* Boton solo-icono compartido entre calendario y filtro de proyecto en
@@ -1342,11 +1467,14 @@
 	flex-shrink: 0;
 }
 
-/* Estado activo (solo el filtro de proyecto llega a tenerlo — el
-   calendario se queda siempre solo-icono, ver renderDateNav): fondo
-   tintado de --interactive-accent a baja opacidad + texto en acento,
-   distinto del fill solido que usa el toggle Dia/Semana activo, para no
-   competir visualmente con el en la misma barra. */
+/* Estado activo: fondo tintado de --interactive-accent a baja opacidad +
+   texto en acento, distinto del fill solido que usa el toggle Dia/Semana
+   activo, para no competir visualmente con el en la misma barra. Lo usan
+   tanto el filtro de proyecto (cuando hay proyecto/"No project"
+   seleccionado) como el calendario (isDateFilterActive, ver
+   renderDateNav) — este ultimo queda activo en Semana, en Dia si no es
+   "hoy", y siempre en Resultados (Cambio 2, rediseno de cabecera v2,
+   agosto 2026: indica que ese es el filtro de fecha aplicado). */
 .task-time-tracker-log-header-icon-btn.is-active {
 	gap: 0.35em;
 	background-color: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
@@ -1454,17 +1582,77 @@
 	color: var(--text-faint);
 }
 
-/* Boton "Volver" de la vista de Resultados (ver
-   TimeLogView.ts#renderDateNav): sustituye a las flechas+fecha en la
-   misma area del grid (grid-area: range, ver
-   .task-time-tracker-log-datenav-range), boton nativo de Obsidian sin
-   overrides. */
+/* Boton "Volver" (ver TimeLogView.ts#renderDateNav): mismo mecanismo
+   ESTRUCTURADO de Dia/Semana (grid de 3 areas "mode range actions" + los
+   bloques @container de arriba) — nunca wrap libre, exactamente 2 filas
+   fijas en Compacto (fila 1: "Volver"+acciones, fila 2: rangebox de ancho
+   completo, ver mas abajo). "Volver" ocupa el area "mode" — mismo hueco y
+   mismo justify-self:start que el toggle Dia/Semana al que sustituye. */
 .task-time-tracker-log-results-back {
-	grid-area: range;
-	justify-self: center;
+	grid-area: mode;
+	justify-self: start;
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35em;
+}
+
+/* Caja del rango de Resultados (Cambio 2/3, rediseno de cabecera v2,
+   agosto 2026 — ver TimeLogView.ts#formatResultsRangeTitle/
+   formatResultsRangeDays): marco (borde + fondo + radio) en vez de texto
+   plano, para que no se vea desequilibrado frente a "Volver" y
+   calendario+Filter, que si son controles con su propio marco. Ocupa el
+   area "range" del mismo grid que las flechas+fecha de Dia/Semana. En
+   Ancho es una pill centrada de tamaño ajustado a su contenido (34px alto,
+   14px de padding horizontal); en Compacto (ver el @container mas abajo)
+   pasa a ser una barra de ANCHO COMPLETO (justify-self:stretch), la misma
+   idea de "control de ancho completo" que el stepper de Dia/Semana, pero
+   sin flechas ni divisores — es estatica, solo texto. */
+.task-time-tracker-log-results-rangebox {
+	grid-area: range;
+	justify-self: center;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	height: 34px;
+	padding: 0 14px;
+	min-width: 0;
+	max-width: 100%;
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-s);
+	background: var(--background-secondary);
+	white-space: nowrap;
+}
+
+@container tt-datenav (max-width: 479px) {
+	.task-time-tracker-log-results-rangebox {
+		justify-self: stretch;
+		height: 38px;
+		padding: 0 12px;
+	}
+}
+
+/* Rango ("14 jun - 17 ago"): unico elemento que se trunca si no cabe —
+   min-width:0 + ellipsis, mismo criterio que
+   .task-time-tracker-log-datenav-label (necesario ademas del
+   minmax(0,1fr) de la columna, ver el comentario extenso ahi). El
+   metadato de dias (ver abajo) se queda siempre visible entero. */
+.task-time-tracker-log-results-rangebox-label {
+	font-weight: 600;
+	color: var(--text-normal);
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Metadato "· N dias" (Cambio 4): mas tenue y pequeño que el rango, nunca
+   se trunca (flex-shrink:0) — el rango es lo primero que cede espacio. */
+.task-time-tracker-log-results-rangebox-meta {
+	font-size: 0.85em;
+	color: var(--text-faint);
+	white-space: nowrap;
+	flex-shrink: 0;
 }
 
 /* "Cargar mas" (ver renderResultsSection — paginacion de rangos amplios):
@@ -2097,13 +2285,22 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 
 .task-time-tracker-edit-modal-project-label {
 	color: var(--text-muted);
+	flex-shrink: 0;
+	white-space: nowrap;
 }
 
 /* El modal tiene mas ancho disponible que la barra de navegacion del
    header — permite un nombre de proyecto algo mas largo antes de
-   truncar (ver max-width en .task-time-tracker-log-filter-btn). */
+   truncar (ver max-width en .task-time-tracker-log-filter-btn). min-width:0
+   (bug QA agosto 2026, mobile): sin esto, el boton -siendo item flex de
+   .task-time-tracker-edit-modal-project-row- no se dejaba encoger por
+   debajo del ancho del texto del proyecto (min-width:auto por defecto en
+   items flex), asi que en pantallas mas estrechas que 20em el boton se
+   salia del modal entero (scroll horizontal de pagina) en vez de activar
+   el ellipsis ya presente en .task-time-tracker-log-filter-btn-label. */
 .task-time-tracker-edit-modal-project-btn {
 	max-width: 20em;
+	min-width: 0;
 }
 
 /* Espacio reservado para el feedback inline tras reasignar proyecto (QA

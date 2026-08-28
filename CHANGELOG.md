@@ -23,6 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Export modal: the title was rendered as its own heading inside the modal body, one line below the close (X) button instead of aligned with it. Now uses the modal's native title (same fix already applied to the "Edit task" dialog) — affects all three export formats equally, since the title doesn't depend on which one is selected.
 - History panel: at panel widths roughly between 400 and 550px, the date arrows/label in the header could visually overlap the Day/Week toggle instead of adapting to the available space.
+- History panel: the calendar popover could misbehave right after picking a day, week, or range from it — reopening it, or clicking the calendar icon again to close it, would sometimes do nothing, because the header rebuilds that icon on every change and the popover kept watching the old one.
+- History panel: reopening the calendar while a week or a custom range was already the active view now highlights that whole range again in the grid, instead of showing only its first day as selected.
+- Results view: the "Remove filters" button (previously "Remove filter") now also clears an active project filter, not just the date range, when a range comes up empty.
 
 ## [0.0.28] - 2026-08-21
 

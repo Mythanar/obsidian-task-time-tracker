@@ -136,6 +136,8 @@ export const es: Record<TranslationKey, string> = {
 	"log.task.plural": "tareas",
 	"log.dayWithActivity.singular": "día con actividad",
 	"log.dayWithActivity.plural": "días con actividad",
+	"log.day.singular": "día",
+	"log.day.plural": "días",
 	"log.rangeTotalLabel": "Total del rango",
 	"log.ongoing": "en curso",
 	"log.editStartDateLabel": "Fecha inicio",
@@ -190,6 +192,7 @@ export const es: Record<TranslationKey, string> = {
 	"log.resultsLoadMore": "Cargar más",
 	"log.resultsEmptyPrefix": "Sin sesiones entre",
 	"log.resultsEmptyJoiner": "y",
+	"log.resultsFilterRemoveButton": "Quitar filtros",
 
 	// 8. Notices adicionales (src/main.ts, src/ui/TimeLogView.ts)
 	"notice.noActiveSession": "No hay ninguna sesión de tracking activa.",

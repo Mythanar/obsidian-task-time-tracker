@@ -140,6 +140,8 @@ export const en = {
 	"log.task.plural": "tasks",
 	"log.dayWithActivity.singular": "day with activity",
 	"log.dayWithActivity.plural": "days with activity",
+	"log.day.singular": "day",
+	"log.day.plural": "days",
 	"log.rangeTotalLabel": "Range total",
 	"log.ongoing": "ongoing",
 	"log.editStartDateLabel": "Start date",
@@ -194,6 +196,7 @@ export const en = {
 	"log.resultsLoadMore": "Load more",
 	"log.resultsEmptyPrefix": "No sessions between",
 	"log.resultsEmptyJoiner": "and",
+	"log.resultsFilterRemoveButton": "Remove filters",
 
 	// 8. Notices adicionales (src/main.ts, src/ui/TimeLogView.ts)
 	"notice.noActiveSession": "No active tracking session.",

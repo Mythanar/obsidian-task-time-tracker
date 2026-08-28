@@ -43,6 +43,14 @@ export interface DatePickerPopoverOptions {
 	// Dia mostrado como seleccion inicial (normalmente el anchorDate del
 	// panel) y mes mostrado al abrir.
 	selectedDate: number;
+	// Fin del rango ya activo en el panel (fix QA agosto 2026 — release
+	// 0.0.29: antes de esto, reabrir el picker con una semana o un rango de
+	// resultados ya aplicado solo marcaba selectedDate como un dia suelto,
+	// perdiendo el resto del rango en el grid aunque el filtro siguiera
+	// activo). Opcional: si se omite, se asume selectedDate === fin (dia
+	// suelto), que es el comportamiento de siempre para Dia/Semana cuando
+	// el caller no tiene un rango que preservar.
+	selectedRangeEnd?: number;
 	// Se llama en cada clic que resuelve algo (dia, semana o "Hoy"), nunca
 	// en el clic que solo arranca un rango a medias — ver comentario de
 	// cabecera. start/end en ms (startOfDay); start <= end siempre.
@@ -124,7 +132,33 @@ function formatSelectionLabel(start: number, end: number): string {
 // tipos de popover distintos, pero cada uno se cierra solo con que el
 // click caiga fuera de si mismo, asi que abrir uno mientras el otro esta
 // abierto ya lo cierra por el listener de "click fuera" del otro.
-let activePopover: { anchorEl: HTMLElement; close: () => void } | null = null;
+let activePopover: {
+	anchorEl: HTMLElement;
+	popoverEl: HTMLElement;
+	options: DatePickerPopoverOptions;
+	close: () => void;
+} | null = null;
+
+// Reancla el popover activo a un nuevo elemento boton, sin cerrarlo ni
+// perder su estado interno (mes mostrado, seleccion pendiente de rango).
+// Necesario porque TimeLogView reconstruye su barra de navegacion entera
+// desde cero en cada render (container.empty()) — incluido el boton de
+// calendario, y ese render se dispara tambien desde el propio onChange de
+// este picker al aplicar una seleccion (dia/semana/rango). Sin reanclar,
+// tanto el listener de "clic fuera" como el singleton de apertura/cierre
+// seguian comparando contra el boton viejo, ya desmontado del DOM: un
+// segundo clic en el boton NUEVO se leia a la vez como "fuera" (el
+// listener del boton viejo lo cerraba) y como "abrir" (el propio handler
+// del boton nuevo), dando la sensacion de que el picker nunca llegaba a
+// cerrarse (bug QA agosto 2026). El caller debe llamar a esto tras cada
+// render con la referencia fresca al boton — no-op si no hay popover
+// abierto.
+export function reanchorDatePickerPopover(newAnchorEl: HTMLElement): void {
+	if (!activePopover) return;
+	activePopover.anchorEl = newAnchorEl;
+	activePopover.options.anchorEl = newAnchorEl;
+	positionPopover(activePopover.popoverEl, newAnchorEl);
+}
 
 export function openDatePickerPopover(options: DatePickerPopoverOptions): void {
 	if (activePopover && activePopover.anchorEl === options.anchorEl) {
@@ -136,7 +170,7 @@ export function openDatePickerPopover(options: DatePickerPopoverOptions): void {
 	const popoverEl = document.body.createDiv({ cls: "task-time-tracker-datepicker-popover" });
 	let displayMonth = startOfMonth(options.selectedDate);
 	let start = startOfDay(options.selectedDate);
-	let end = start;
+	let end = startOfDay(options.selectedRangeEnd ?? options.selectedDate);
 	// true entre el primer y el segundo clic de un rango de dias — el pie
 	// muestra un aviso mientras tanto (ver formatFooterLabel). Un clic en
 	// semana o en "Hoy" siempre lo deja en false: resuelven de inmediato,
@@ -303,5 +337,5 @@ export function openDatePickerPopover(options: DatePickerPopoverOptions): void {
 	document.addEventListener("mousedown", onOutsideMousedown, true);
 	document.addEventListener("keydown", onKeydown, true);
 
-	activePopover = { anchorEl: options.anchorEl, close };
+	activePopover = { anchorEl: options.anchorEl, popoverEl, options, close };
 }

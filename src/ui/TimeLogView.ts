@@ -15,7 +15,7 @@ import { formatDuration, formatDurationCompact } from "../core/TrackingEngine";
 import { parseCheckboxLine, ResolvedTask, TaskIdentifier } from "../core/TaskIdentifier";
 import { t } from "../i18n";
 import { DeleteTaskResult, EntryUpdateResult, Project, TimeEntry } from "../types";
-import { openDatePickerPopover } from "./DatePickerPopover";
+import { openDatePickerPopover, reanchorDatePickerPopover } from "./DatePickerPopover";
 import { EditTaskModal } from "./EditTaskModal";
 import { InlineTrackingBus } from "./InlineTrackingBus";
 import { openProjectPickerPopover } from "./ProjectPickerList";
@@ -74,6 +74,42 @@ function isSameLocalDay(ms: number, dayStartMs: number): boolean {
 // Obsidian.
 function formatShortDate(ms: number): string {
 	return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+// Titulo del rango en la cabecera de Resultados (mejora agosto 2026, release
+// 0.0.29 — ver renderDateNav): mismo guion "-" que el resto del panel, pero
+// mas compacto que el date-picker o el estado vacio de Resultados (que
+// siempre muestran el mes completo en ambos lados, ver
+// renderResultsEmptyState) — aqui se omite mes/año en el extremo izquierdo
+// cuando coincide con el derecho, ya que es un titulo de una sola linea
+// pensado para caber junto a "Volver" y calendario+Filter en la misma fila.
+function formatResultsRangeTitle(startMs: number, endMs: number): string {
+	const start = new Date(startMs);
+	const end = new Date(endMs);
+	const sameYear = start.getFullYear() === end.getFullYear();
+	const sameMonth = sameYear && start.getMonth() === end.getMonth();
+
+	if (sameMonth) {
+		return `${start.getDate()} - ${formatShortDate(endMs)}`;
+	}
+	if (sameYear) {
+		return `${formatShortDate(startMs)} - ${formatShortDate(endMs)}`;
+	}
+	const withYear = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+	return `${withYear(startMs)} - ${withYear(endMs)}`;
+}
+
+// Metadato "· N dias" de la caja del rango en Resultados (Cambio 4,
+// rediseno de cabecera agosto 2026): dias naturales del rango, ambos
+// extremos incluidos — no solo los dias con actividad (eso ya lo cubre el
+// subtitulo "N tareas · M dias con actividad", ver renderSubtitle). Math.
+// round (no division exacta) por el mismo motivo que renderResultsSection#
+// totalDays: un rango puede cruzar un cambio de horario de verano, donde
+// el dia civil real no mide exactamente 86400000ms.
+function formatResultsRangeDays(startMs: number, endMs: number): string {
+	const days = Math.round((endMs - startMs) / 86400000) + 1;
+	const word = days === 1 ? t("log.day.singular") : t("log.day.plural");
+	return `${days} ${word}`;
 }
 
 // Vista de resultados por rango — numero maximo de dias de calendario que
@@ -775,24 +811,36 @@ export class TimeLogView extends ItemView {
 		return null;
 	}
 
-	// Rediseno de cabecera (Selector de fecha, agosto 2026 — version
-	// definitiva aportada por el usuario via Time Tracker.dc.html; fix de
-	// responsive con container queries, agosto 2026) — tres grupos fijos
-	// (toggle Dia/Semana, flechas+fecha, calendario+Filter) dispuestos en
-	// grid via CSS (ver .task-time-tracker-log-datenav-row): en formato
-	// Ancho los tres van en una sola fila con calendario+Filter anclado al
-	// borde derecho; en formato Compacto (< 400px de contenedor) el toggle
-	// y calendario+Filter comparten la fila superior y flechas+fecha baja a
-	// una segunda fila propia. Sin boton "Hoy" en esta barra bajo ningun
-	// formato — decision de producto: el unico punto de entrada a "Hoy" es
-	// el footer del date-picker (ver DatePickerPopover.ts#goToToday), que
-	// ya lo ofrece, asi que aqui seria un atajo redundante. En modo
-	// Resultados (ver [[Vista de resultados por rango]]) el toggle se
-	// oculta (no tiene sentido "avanzar" un rango arbitrario) y "Volver"
-	// ocupa el lugar de las flechas+fecha; calendario y Filter mantienen su
-	// posicion y agrupacion.
+	// Rediseno de cabecera (v2, agosto 2026 — spec y prototipos aportados por
+	// el usuario: "Cabecera Time Tracker.dc.html" y "Header Responsive
+	// Wireframes.dc.html", estrategia "1c — Stepper de ancho completo".
+	// Sustituye el rediseno anterior de container queries a 400px, tras
+	// varias vueltas de parches sobre ese enfoque). Breakpoint unico a
+	// 480px de contenedor, compartido por las 3 vistas — ver los bloques
+	// @container en styles.css:
+	// - Formato Ancho (>=480px): grid "auto 1fr auto" en una sola fila —
+	//   izquierda: toggle Dia/Semana o "Volver"; centro: flechas+fecha SIN
+	//   caja propia en Dia/Semana, caja con marco (rango + "· N dias") en
+	//   Resultados (ver formatResultsRangeTitle/formatResultsRangeDays);
+	//   derecha: calendario+Filter, siempre anclados al borde derecho.
+	// - Formato Compacto (<480px), 2 filas: fila 1 = toggle/Volver a la
+	//   izquierda + calendario+Filter a la derecha (space-between); fila 2 =
+	//   control de ANCHO COMPLETO con marco — en Dia/Semana un stepper
+	//   real (grid 44px 1fr 44px, targets tactiles en los extremos, ver el
+	//   @container que reestiliza .task-time-tracker-log-datenav-range); en
+	//   Resultados la misma caja pero sin flechas ni divisores, solo texto
+	//   centrado (rango + metadato) — no es interactiva.
+	// Sin boton "Hoy" en esta barra bajo ningun formato — decision de
+	// producto: el unico punto de entrada a "Hoy" es el footer del date-
+	// picker (ver DatePickerPopover.ts#goToToday).
 	private renderDateNav(container: Element): void {
 		const nav = container.createDiv({ cls: "task-time-tracker-log-datenav" });
+		// Distingue Resultados de Dia/Semana para el breakpoint propio del
+		// boton de filtro (ver el @container de
+		// .task-time-tracker-log-filter-btn-label en styles.css) — 610px en
+		// Dia/Semana, 575px en Resultados, ninguno de los dos ligado al
+		// breakpoint de 480px que gobierna el resto de la cabecera.
+		nav.toggleClass("is-results", this.viewMode === "results");
 
 		const row = nav.createDiv({ cls: "task-time-tracker-log-datenav-row" });
 
@@ -816,14 +864,16 @@ export class TimeLogView extends ItemView {
 			weekBtn.addEventListener("click", () => {
 				if (this.viewMode === "week") return;
 				this.viewMode = "week";
+				this.anchorDate = startOfWeek(this.anchorDate);
 				void this.render();
 			});
 		}
 
 		if (this.viewMode === "results") {
-			// Sustituye a las flechas+fecha en su misma posicion de la fila —
-			// "Volver" lleva siempre a vista Dia con la fecha de hoy (no
-			// recuerda si se venia de Dia o Semana; mismo destino que
+			// Ocupa el area "mode" del grid (ver .task-time-tracker-log-results-back)
+			// — mismo hueco que el toggle Dia/Semana, alineado igual a la
+			// izquierda. "Volver" lleva siempre a vista Dia con la fecha de
+			// hoy (no recuerda si se venia de Dia o Semana; mismo destino que
 			// "Limpiar" del date-picker en este modo, ver
 			// DatePickerPopover.ts#goToToday).
 			const backBtn = row.createEl("button", { cls: "task-time-tracker-log-results-back" });
@@ -833,6 +883,30 @@ export class TimeLogView extends ItemView {
 				this.viewMode = "day";
 				this.anchorDate = startOfDay(Date.now());
 				void this.render();
+			});
+
+			// Rango seleccionado (Cambio 2/3/4, rediseno de cabecera agosto
+			// 2026): caja con marco (borde + fondo, ver
+			// .task-time-tracker-log-results-rangebox) en vez de texto plano
+			// — antes se veia desequilibrado frente a "Volver" y calendario+
+			// Filter, que si son controles con su propio marco. Ocupa el
+			// area "range" del grid, el mismo hueco central que las
+			// flechas+fecha en Dia/Semana, pero sin flechas de navegar (un
+			// rango arbitrario no tiene "anterior/siguiente"). Texto en dos
+			// partes: el rango en si (formatResultsRangeTitle, formato ya
+			// existente, sin cambios) y un metadato de dias naturales del
+			// rango completo, ambos extremos incluidos (formatResultsRangeDays
+			// — no solo los dias con actividad, eso ya lo cubre el subtitulo).
+			const rangeStart = this.resultsRangeStart as number;
+			const rangeEnd = this.resultsRangeEnd as number;
+			const rangeBox = row.createDiv({ cls: "task-time-tracker-log-results-rangebox" });
+			rangeBox.createSpan({
+				text: formatResultsRangeTitle(rangeStart, rangeEnd),
+				cls: "task-time-tracker-log-results-rangebox-label",
+			});
+			rangeBox.createSpan({
+				text: `· ${formatResultsRangeDays(rangeStart, rangeEnd)}`,
+				cls: "task-time-tracker-log-results-rangebox-meta",
 			});
 		} else {
 			const range = row.createDiv({ cls: "task-time-tracker-log-datenav-range" });
@@ -864,6 +938,15 @@ export class TimeLogView extends ItemView {
 		const calendarBtn = actions.createEl("button", {
 			cls: "task-time-tracker-log-datenav-calendar task-time-tracker-log-header-icon-btn task-time-tracker-icon-btn",
 		});
+		// render() reconstruye esta barra entera desde cero (container.empty()
+		// en render()), incluido este boton — tambien en el render que dispara
+		// el propio onChange del picker al aplicar una seleccion. Reancla el
+		// popover (si esta abierto) al boton nuevo para que el listener de
+		// "clic fuera" y el singleton de abrir/cerrar no sigan comparando
+		// contra el boton viejo, ya desmontado (bug QA agosto 2026: el picker
+		// parecia no cerrarse nunca tras seleccionar algo dentro). No-op si no
+		// hay popover abierto.
+		reanchorDatePickerPopover(calendarBtn);
 		// "Filtro de fecha activo" no es un estado propio separado (a
 		// diferencia del filtro de proyecto, la navegacion por fecha
 		// siempre muestra algun dia/semana, nunca "ninguno") — se deriva de
@@ -879,9 +962,21 @@ export class TimeLogView extends ItemView {
 		calendarBtn.setAttribute("aria-label", t("log.datePickerAriaLabel"));
 		setTooltip(calendarBtn, t("log.datePickerAriaLabel"));
 		calendarBtn.addEventListener("click", () => {
+			// Fin del rango ya activo, para que el picker lo marque completo al
+			// reabrirse (fix QA agosto 2026): Semana es anchorDate+6 dias (lunes
+			// a domingo, ver [[Vista de resultados por rango]] y renderDateNav),
+			// Resultados es el fin de rango guardado; Dia no tiene rango, un
+			// dia suelto.
+			const selectedRangeEnd =
+				this.viewMode === "week"
+					? addDays(this.anchorDate, 6)
+					: this.viewMode === "results"
+						? (this.resultsRangeEnd as number)
+						: this.anchorDate;
 			openDatePickerPopover({
 				anchorEl: calendarBtn,
-				selectedDate: this.anchorDate,
+				selectedDate: this.viewMode === "results" ? (this.resultsRangeStart as number) : this.anchorDate,
+				selectedRangeEnd,
 				// El picker no distingue "click en el numero de semana" de
 				// "rango de dias que resulta ser justo una semana" — ambos
 				// llegan aqui como el mismo (start, end), y da igual: los
@@ -1254,12 +1349,13 @@ export class TimeLogView extends ItemView {
 		}
 	}
 
-	// "Quitar filtro" hace lo mismo que "Volver"/"Limpiar" en este modo
-	// (ver [[Vista de resultados por rango]]#"Limpiar" en modo Resultados):
-	// no hay un filtro de proyecto que quitar aqui especificamente (a
-	// diferencia de renderFilteredEmptyState, que si distingue esa causa) —
-	// un rango vacio, con o sin filtro de proyecto combinado, tiene un unico
-	// mensaje y una unica salida: abandonar el rango.
+	// "Quitar filtros" (plural, QA agosto 2026 — release 0.0.29): el rango
+	// vacio de Resultados puede deberse al rango de fechas, al filtro de
+	// proyecto/"No project", o a la combinacion de ambos — a diferencia de
+	// renderFilteredEmptyState (que solo puede deberse al filtro de
+	// proyecto, sin rango en Dia/Semana), aqui no hay forma de distinguir
+	// la causa, asi que el boton quita los dos a la vez y vuelve siempre a
+	// Dia/hoy (mismo destino que "Volver"/"Limpiar" en este modo).
 	private renderResultsEmptyState(container: Element, rangeStart: number, rangeEnd: number): void {
 		const sameMonth =
 			new Date(rangeStart).getMonth() === new Date(rangeEnd).getMonth() &&
@@ -1275,10 +1371,12 @@ export class TimeLogView extends ItemView {
 			cls: "task-time-tracker-log-results-empty-range",
 		});
 
-		const clearBtn = wrap.createEl("button", { text: t("log.filterRemoveButton") });
+		const clearBtn = wrap.createEl("button", { text: t("log.resultsFilterRemoveButton") });
 		clearBtn.addEventListener("click", () => {
 			this.viewMode = "day";
 			this.anchorDate = startOfDay(Date.now());
+			this.projectFilterId = null;
+			this.projectFilterNoProject = false;
 			void this.render();
 		});
 	}
