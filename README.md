@@ -11,7 +11,8 @@ A local-first Obsidian plugin for **tracking time directly on the checkboxes in 
 
  <a href="https://community.obsidian.md/plugins/task-time-tracker">➔ Install it from the Obsidian Community Plugins directory.</a>
 
-<img src="docs/images/obsidian-dark.png" alt="Task Time Tracker plugin shown in Obsidian, with a note open and the History panel visible" width="100%" style="max-width:800px; margin-bottom:1rem; border-radius:10px;">
+
+<img src="docs/images/obsidian-dark-29.png" alt="Task Time Tracker plugin shown in Obsidian, with a note open and the History panel visible" width="100%" style="max-width:800px; margin-bottom:1rem; border-radius:10px;">
 
 ## Contents
 
@@ -32,7 +33,7 @@ A local-first Obsidian plugin for **tracking time directly on the checkboxes in 
 3. **Watch the status bar** — a live timer shows the task name and elapsed time as you work.
 4. **Stop when you're done** — one click closes the session. Switching tasks does this automatically.
 5. **Check off the task — and tracking wraps up on its own**. Marking a task done (or cancelled) stops any active tracking automatically and saves the session, no extra step needed. Reopen the task later and you can pick up tracking again.
-6. **Review your history** — sessions grouped by task, with day and week navigation.
+6. **Review your history** — sessions grouped by task. Step through Day or Week with the arrows, or open the calendar to jump straight to any date, pick a week, or select a custom range — a range opens a dedicated Results view, sessions grouped by day with a running total.
 
 <img src="docs/images/badges-demo.gif" alt="Animated demo of the task badge states — play, active tracking, and completed" width="450" style="border-radius:12px; margin:2rem 0;">
 
@@ -59,7 +60,7 @@ Every tracked task gets a short, unique identifier stored inline with the task t
 - Go to **Settings → Task identifier format** to choose between **Normal** (fully visible), **Reduced** (small and low-opacity — the default), or **Hidden** entirely.
 - This styling requires the [Dataview](https://github.com/blacksmithgu/obsidian-dataview) plugin — Dataview is what renders the identifier at all, so it's also what makes it queryable (e.g. `WHERE tt-id = "..."`) and stylable. **Dataview is entirely optional**: tracking, history, and export all work exactly the same without it.
 - Without Dataview installed, the identifier is shown as plain text (e.g. `[tt-id:: a3f9k2mp]`) — this is a known limitation of relying on Dataview for the styling, not a bug.
-- In Source mode, the raw identifier is always visible regardless of this setting, so you can always find and inspect it if needed.
+- In Source mode, the raw identifier is always visible regardless of this setting, so you can always find and inspect it if needed. It's also shown — with a one-click copy button — in the **Edit task** dialog, the quickest way to grab it without switching to Source mode.
 
 **Normal** — shown as Dataview would normally render any inline field.
 
@@ -79,12 +80,12 @@ Every tracked task gets a short, unique identifier stored inline with the task t
 - **One timer, no confusion** — only one active timer at a time. Switching tasks closes the previous session automatically, without losing data.
 - **Fits your task format** — works with Tasks-style checkboxes (`- [ ]`, `* [ ]`, `+ [ ]`), numbered lists, and nested tasks.
 - **Plays nicely with Dataview, but never depends on it** — an optional, subtle-by-default identifier keeps your history linked to each task and makes it queryable, without cluttering your notes.
-- **A clear history** — a dedicated panel with per-task cards, day/week navigation, and inline editing or deletion of sessions.
+- **A clear history** — a dedicated panel with per-task cards, day/week navigation or any custom date range, and inline editing or deletion of sessions.
 - **Organize with projects & clients** — group your tasks under projects (each with an optional client) from Settings, then filter the History panel down to a single one at a time.
 - **Export on your terms** — generate a generic CSV or one formatted for Toggl's official importer. You choose when to export — never automatic, never in the background.
 - **Zero external API calls** — the plugin never connects to any third-party service, at any point in its operation. Your time data stays in your vault.
 
-<img src="docs/images/history-panel.png" alt="The History panel, showing a couple of expanded task cards" width="515" style="border-radius:12px;margin:2rem 0;">
+<img src="docs/images/history-panel-29.png" alt="The History panel, showing a couple of expanded task cards" width="415" style="border-radius:12px;margin:2rem 0;">
 
 ## Projects & clients
 
@@ -96,11 +97,12 @@ Add projects one by one, or paste a whole list at once (`Project; Client` per li
 
 Assign a project to any tracked task from its **Edit task** dialog — pick one from a searchable list, each row showing the project and its client if it has one.
 
-<img src="docs/images/project-picker-modal.png" alt="Project picker inside Edit task" width="515" style="border-radius:12px;margin:2rem 0;">
+
+<img src="docs/images/project-picker-modal-29.png" alt="Project picker inside Edit task" width="515" style="border-radius:12px;margin:2rem 0;">
 
 Once you're tracking by project, filter the History panel down to a single one at a time with the **Filter** button in its header. The filter resets every time you reopen Obsidian, so it's never a setting you forget you left on.
 
-<img src="docs/images/filter-in-panel.png" alt="Filter button + popover in the History panel header" width="515" style="border-radius:12px;margin:2rem 0;">
+<img src="docs/images/filter-in-panel-29.png" alt="Filter button + popover in the History panel header" width="515" style="border-radius:12px;margin:2rem 0;">
 
 ## Commands
 
@@ -109,7 +111,7 @@ All actions are also available from Obsidian's Command Palette (`Cmd/Ctrl + P`),
 - **Time Tracker: Start tracking on current task** — starts tracking the task under your cursor.
 - **Time Tracker: Stop active tracking** — stops whatever timer is currently running.
 - **Time Tracker: Open time log panel** — opens the History panel.
-- **Time Tracker: Export time entries...** — opens the export dialog to generate a CSV (generic or Toggl-formatted) for a chosen date range.
+- **Time Tracker: Export time entries...** — opens the export dialog to generate a CSV (generic, Toggl-formatted, or Clockify-formatted) for a chosen date range.
 
 ## Privacy & architecture
 
@@ -121,16 +123,18 @@ This isn't a missing feature waiting to be built. It's a deliberate architectura
 
 ## Export
 
-Two export formats are available whenever you need them:
+Three export formats are available whenever you need them:
 
 - **Generic CSV** — opens cleanly in any spreadsheet tool.
 - **Toggl-formatted CSV** — matches the exact columns expected by Toggl's official importer.
+- **Clockify-formatted CSV** — matches the exact columns expected by Clockify's Timesheets importer. Importing time entries into Clockify needs a paid plan or trial — a limitation on Clockify's side, not this plugin's.
 
-Generic CSV exports also include the project and client assigned to each task, if any — ready to use for per-client reporting. (The Toggl-formatted CSV doesn't include these columns.)
+Generic CSV exports also include the project and client assigned to each task, if any — ready to use for per-client reporting. (The Toggl and Clockify formats can include them too, each behind its own "Include Project"/"Include Client" toggle in Settings — off by default.)
 
-*More export formats (Clockify, Harvest, and others) are planned.*
+*More export formats (Harvest, Everhour, and others) are planned.*
 
-<a href="https://toggl.com/" target="_blank"><img src="docs/images/toggl-track-logo-crop.png" alt="Toggl logo" width="120"></a>
+<a href="https://toggl.com/" target="_blank"><img src="docs/images/toggl-logo.png" alt="Toggl logo" width="150" style="border-radius:6px"></a><br>
+<a href="https://clockify.me/" target="_blank"><img src="docs/images/clockify-logo.png" alt="Clockify logo" width="150" style="border-radius:6px"></a>
 
 
 ## Installation

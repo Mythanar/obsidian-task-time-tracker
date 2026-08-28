@@ -28,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - History panel: the calendar popover could misbehave right after picking a day, week, or range from it — reopening it, or clicking the calendar icon again to close it, would sometimes do nothing, because the header rebuilds that icon on every change and the popover kept watching the old one.
 - History panel: reopening the calendar while a week or a custom range was already the active view now highlights that whole range again in the grid, instead of showing only its first day as selected.
 - Results view: the "Remove filters" button (previously "Remove filter") now also clears an active project filter, not just the date range, when a range comes up empty.
+- "Edit task" dialog: editing a session's date could silently accept an out-of-range day (e.g. day 88) and save it as a completely different, unintended date instead of rejecting it. The date fields are now validated against the real number of days in the given month/year, and "Save" is disabled with an inline error if either date is invalid.
 
 ## [0.0.28] - 2026-08-21
 
