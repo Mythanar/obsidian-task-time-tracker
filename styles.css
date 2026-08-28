@@ -2232,6 +2232,46 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	padding-right: 2.5em;
 }
 
+/* Metadato secundario "tt-id" bajo el nombre de la nota (ver
+   EditTaskModal.ts) — siempre visible, no sujeto a los niveles Normal/
+   Reducido/Oculto que existen para el tt-id renderizado en la nota via
+   Dataview (ajuste distinto, sobre la nota). Mismo tamaño/color atenuado
+   que ya usa .task-time-tracker-log-subtitle del panel, para el mismo
+   proposito (dato de apoyo, no un campo destacado). */
+.task-time-tracker-edit-modal-id-row {
+	display: flex;
+	align-items: center;
+	gap: 0.4em;
+	margin-top: 0.15em;
+	font-size: 0.78em;
+	color: var(--text-muted);
+}
+
+.task-time-tracker-edit-modal-id-key {
+	color: var(--text-faint);
+}
+
+.task-time-tracker-edit-modal-id-value {
+	font-family: var(--font-monospace);
+}
+
+.task-time-tracker-edit-modal-id-copy {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	color: var(--text-faint);
+	cursor: pointer;
+}
+
+.task-time-tracker-edit-modal-id-copy:hover {
+	color: var(--text-normal);
+}
+
+.task-time-tracker-edit-modal-id-copy svg {
+	width: 12px;
+	height: 12px;
+}
+
 /* Modal "Editar tarea" (ver EditTaskModal.ts) — lista de sesiones con
    scroll propio, separada del resto del modal (nombre de la tarea,
    selector de Proyecto/Cliente, footer). Reutiliza las clases ya

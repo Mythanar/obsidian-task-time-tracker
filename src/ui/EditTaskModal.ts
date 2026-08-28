@@ -7,7 +7,7 @@
 // tarjeta, ver TimeLogView.ts) y el borrado de la tarea completa vive
 // solo en el menu kebab de la tarjeta, nunca aqui.
 
-import { App, Modal, Setting, setIcon } from "obsidian";
+import { App, Modal, Notice, Setting, setIcon } from "obsidian";
 import { formatDuration, formatDurationCompact } from "../core/TrackingEngine";
 import { t } from "../i18n";
 import { EntryUpdateResult, Project, TimeEntry } from "../types";
@@ -107,6 +107,27 @@ export class EditTaskModal extends Modal {
 		// cerrar (X) dentro del modal-header — resuelve el desalineamiento
 		// de raiz, sin necesidad de parchear un margin-top a mano.
 		this.setTitle(this.label);
+
+		// Metadato secundario (siempre visible, no sujeto a los niveles
+		// Normal/Reducido/Oculto del tt-id renderizado en la nota via
+		// Dataview — eso es un ajuste distinto sobre la nota, ver
+		// SettingsTab.ts#taskIdFormat): id limpio (sin corchetes ni
+		// "tt-id::", igual que la columna del CSV de exportacion, ver
+		// CsvAdapter.ts) mas boton de copiar. Mismo estilo atenuado que ya
+		// usa el subtitulo del panel (task-time-tracker-log-subtitle).
+		const idRow = contentEl.createDiv({ cls: "task-time-tracker-edit-modal-id-row" });
+		idRow.createSpan({ text: "tt-id", cls: "task-time-tracker-edit-modal-id-key" });
+		idRow.createSpan({ text: this.taskId, cls: "task-time-tracker-edit-modal-id-value" });
+		const copyIdBtn = idRow.createEl("button", {
+			cls: "task-time-tracker-edit-modal-id-copy task-time-tracker-icon-btn clickable-icon",
+		});
+		setIcon(copyIdBtn, "copy");
+		copyIdBtn.setAttribute("aria-label", t("log.editModalCopyIdAriaLabel"));
+		copyIdBtn.addEventListener("click", () => {
+			void navigator.clipboard.writeText(this.taskId).then(() => {
+				new Notice(t("log.editModalIdCopied"));
+			});
+		});
 
 		// Boton + popover (componente compartido "Project picker list", ver
 		// ProjectPickerList.ts) en vez del <select> nativo anterior: label y

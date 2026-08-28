@@ -178,6 +178,8 @@ export const en = {
 	"log.editModalNoProject": "No project",
 	"log.editModalProjectUpdated": "Project updated",
 	"log.editModalSessionsHeading": "Sessions",
+	"log.editModalCopyIdAriaLabel": "Copy task ID",
+	"log.editModalIdCopied": "Task ID copied",
 	"log.close": "Close",
 	"log.projectPicker.searchPlaceholder": "Search project or client",
 	"log.projectPicker.noMatches": 'No matches for "{query}"',

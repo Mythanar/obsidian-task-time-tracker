@@ -174,6 +174,8 @@ export const es: Record<TranslationKey, string> = {
 	"log.editModalNoProject": "Sin proyecto",
 	"log.editModalProjectUpdated": "Proyecto actualizado",
 	"log.editModalSessionsHeading": "Sesiones",
+	"log.editModalCopyIdAriaLabel": "Copiar id de tarea",
+	"log.editModalIdCopied": "Id de tarea copiado",
 	"log.close": "Cerrar",
 	"log.projectPicker.searchPlaceholder": "Buscar proyecto o cliente",
 	"log.projectPicker.noMatches": "Sin coincidencias para «{query}»",
