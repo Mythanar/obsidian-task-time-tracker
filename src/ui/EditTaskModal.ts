@@ -395,7 +395,8 @@ export class EditTaskModal extends Modal {
 		const messageEl = form.createEl("p", { cls: "task-time-tracker-log-edit-message" });
 
 		const actions = form.createDiv({ cls: "task-time-tracker-log-edit-actions" });
-		actions.createEl("button", { text: t("log.save"), cls: "mod-cta" }).addEventListener("click", () => {
+		const saveButton = actions.createEl("button", { text: t("log.save"), cls: "mod-cta" });
+		saveButton.addEventListener("click", () => {
 			void this.saveDraft(entry);
 		});
 		actions.createEl("button", { text: t("log.cancel") }).addEventListener("click", () => {
@@ -427,15 +428,24 @@ export class EditTaskModal extends Modal {
 		// inicio (una vez el formato es valido) 4) aviso de solapamiento
 		// (solo con formato valido y fin > inicio) 5) nada.
 		const updateMessage = () => {
-			if (draft.error) {
-				setMessage(draft.error, "error");
-				return;
-			}
 			const startDateInvalid = draft.startDateEvaluated && parseDateInput(draft.startDate) === null;
 			const endDateInvalid = draft.endDateEvaluated && parseDateInput(draft.endDate) === null;
 			const startTimeInvalid = draft.startTimeEvaluated && parseTimeInput(draft.startTime) === null;
 			const endTimeInvalid = draft.endTimeEvaluated && parseTimeInput(draft.endTime) === null;
-			if (startDateInvalid || endDateInvalid || startTimeInvalid || endTimeInvalid) {
+			const formatInvalid = startDateInvalid || endDateInvalid || startTimeInvalid || endTimeInvalid;
+			// Bloqueo real del boton, no solo un mensaje, y computado siempre
+			// (no solo dentro de la rama de formato invalido): un valor con
+			// formato invalido (ej. dia fuera de rango del mes) nunca debe
+			// poder llegar a saveDraft() ni por accidente — ver bug critico QA
+			// 0.0.29 (fecha invalida se guardaba silenciosamente como otra
+			// fecha distinta, sin aviso).
+			saveButton.disabled = formatInvalid;
+
+			if (draft.error) {
+				setMessage(draft.error, "error");
+				return;
+			}
+			if (formatInvalid) {
 				setMessage(t("log.errorFormat"), "error");
 				return;
 			}

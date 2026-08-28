@@ -65,11 +65,23 @@ export function parseTimeInput(value: string): ParsedTime | null {
 }
 
 // Devuelve la medianoche local de esa fecha, o null si el campo no tiene
-// el formato "YYYY-MM-DD" que produce <input type="date">.
+// el formato "YYYY-MM-DD" que produce <input type="date">, o si el dia no
+// existe en ese mes/año (ej. "2026-08-88", o "2026-02-29" en un año no
+// bisiesto). El constructor de Date por si solo NO rechaza esto: hace
+// overflow silencioso hacia meses/años siguientes (new Date(2026, 7, 88)
+// da octubre), asi que se reconstruye la fecha y se compara componente a
+// componente contra lo tecleado — si Date la reinterpreto, alguno no
+// coincide y se rechaza. Bug critico QA 0.0.29: sin este chequeo, un dia
+// fuera de rango se guardaba como una fecha distinta sin ningun aviso.
 export function parseDateInput(value: string): number | null {
 	const match = value.match(DATE_INPUT_REGEX);
 	if (!match) return null;
-	return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).getTime();
+	const year = Number(match[1]);
+	const month = Number(match[2]) - 1;
+	const day = Number(match[3]);
+	const date = new Date(year, month, day);
+	if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
+	return date.getTime();
 }
 
 function combineDateAndTime(dateAtMidnightMs: number, time: ParsedTime): number {
