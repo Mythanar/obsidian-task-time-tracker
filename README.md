@@ -19,6 +19,7 @@ A local-first Obsidian plugin for **tracking time directly on the checkboxes in 
 - [How it works](#how-it-works)
 - [Features](#features)
 - [Projects & clients](#projects--clients)
+- [Dashboard](#dashboard)
 - [Commands](#commands)
 - [Privacy & architecture](#privacy--architecture)
 - [Export](#export)
@@ -82,6 +83,7 @@ Every tracked task gets a short, unique identifier stored inline with the task t
 - **Plays nicely with Dataview, but never depends on it** — an optional, subtle-by-default identifier keeps your history linked to each task and makes it queryable, without cluttering your notes.
 - **A clear history** — a dedicated panel with per-task cards, day/week navigation or any custom date range, and inline editing or deletion of sessions.
 - **Organize with projects & clients** — group your tasks under projects (each with an optional client) from Settings, then filter the History panel down to a single one at a time.
+- **A 30-day overview at a glance** — the Dashboard view totals your last 30 days by project, client, day, and task, no filters or setup needed.
 - **Export on your terms** — generate a generic CSV or one formatted for Toggl's official importer. You choose when to export — never automatic, never in the background.
 - **Zero external API calls** — the plugin never connects to any third-party service, at any point in its operation. Your time data stays in your vault.
 
@@ -104,6 +106,23 @@ Once you're tracking by project, filter the History panel down to a single one a
 
 <img src="docs/images/filter-in-panel-29.png" alt="Filter button + popover in the History panel header" width="515" style="border-radius:12px;margin:2rem 0;">
 
+## Dashboard
+
+A dedicated view for a no-filter overview of your last 30 days — opened from its own icon in the ribbon, with the total for the window shown right next to its title.
+
+<img src="docs/images/dashboard-ribbon-30.png" alt="Dashboard icon in the ribbon" width="180" style="border-radius:12px;margin:2rem 0;">
+
+Four blocks share the same row format as the rest of the plugin (name + total time in `HH:MM:SS` + number of sessions):
+
+- **By project** and **by client** — ranked by total time, with a "No project"/"No client" row for anything not assigned.
+- **By day** — chronological (most recent first), not ranked, since it's a timeline rather than a leaderboard.
+- **By task** — ranked by total time; if a task's source note was deleted, its name still shows (in italics) instead of an error.
+
+Day and task blocks show the top 5 by default, with a "Show all" link loading 50 more at a time. The 30-day window is fixed — no range picker or extra filters, since the four blocks already break the same data down by project, client, day, and task.
+
+<img src="docs/images/dashboard-30.png" alt="Dashboard panel" width="415" style="border-radius:12px;margin:2rem 0;">
+
+
 ## Commands
 
 All actions are also available from Obsidian's Command Palette (`Cmd/Ctrl + P`), so you're never dependent on hovering over a checkbox or finding the status bar:
@@ -120,6 +139,8 @@ Task Time Tracker never calls an external API — not for tracking, not for expo
 Every session is stored locally in your vault. When you export, the plugin writes a file to disk; nothing is transmitted anywhere. You take that file and upload it yourself, whenever you choose, to the native importer of whichever platform you use.
 
 This isn't a missing feature waiting to be built. It's a deliberate architectural decision: your time data is yours, and it doesn't leave your machine unless you decide to move it. The same philosophy applies to what the plugin puts inside your notes: the task identifier is the only thing it ever writes there, and it stays as unobtrusive as possible by default.
+
+To keep a task linked to its history even if you move or rename its note, the plugin reads across your vault's markdown files looking for its tt-id — this stays entirely on your device, like everything else here, and is never transmitted anywhere. The one-click copy button next to the tt-id in the Edit task dialog uses your operating system's clipboard, exactly like any other copy button you'd find in Obsidian.
 
 ## Export
 
