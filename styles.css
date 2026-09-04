@@ -2759,3 +2759,163 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	background-color: var(--interactive-hover);
 	color: var(--text-normal);
 }
+
+/* Dashboard (src/ui/DashboardView.ts) — ventana fija de 30 dias, sin
+   selector de rango. Vive en una pestana del workspace principal, con el
+   padding por defecto del view-content de Obsidian (no se anade padding
+   propio al contenedor raiz). */
+.task-time-tracker-dashboard-header {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 0.35em 1em;
+	margin-bottom: 1.5em;
+}
+
+.task-time-tracker-dashboard-header h1 {
+	margin: 0;
+}
+
+.task-time-tracker-dashboard-title-row {
+	display: flex;
+	align-items: baseline;
+	gap: 0.6em;
+}
+
+/* Total global de la ventana de 30 dias — unico total que se muestra ya
+   en la vista (Fix QA 0.0.30: los 4 bloques dejaron de repetirlo cada
+   uno en su cabecera). Mismo formato HH:MM:SS que formatDuration() usa
+   en el resto del plugin. */
+.task-time-tracker-dashboard-total {
+	font-family: var(--font-monospace);
+	font-size: 1.5em;
+	font-weight: 600;
+	color: var(--text-normal);
+}
+
+.task-time-tracker-dashboard-meta {
+	font-size: 0.8em;
+	color: var(--text-muted);
+	padding-bottom: 0.3em;
+}
+
+.task-time-tracker-dashboard-block {
+	margin-bottom: 1.75em;
+}
+
+.task-time-tracker-dashboard-block-header {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 1em;
+	padding: 0 0.5em 0.4em;
+	border-bottom: 1px solid var(--background-modifier-border);
+	margin-bottom: 0.2em;
+}
+
+.task-time-tracker-dashboard-block-header h3 {
+	margin: 0;
+	font-size: 0.95em;
+}
+
+.task-time-tracker-dashboard-block-meta {
+	font-size: 0.78em;
+	color: var(--text-muted);
+	white-space: nowrap;
+}
+
+.task-time-tracker-dashboard-row {
+	display: flex;
+	align-items: center;
+	gap: 0.75em;
+	padding: 0.4em 0.5em;
+	border-bottom: 1px solid var(--background-modifier-border-hover);
+}
+
+.task-time-tracker-dashboard-row:last-child {
+	border-bottom: none;
+}
+
+.task-time-tracker-dashboard-row-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	font-size: 0.85em;
+}
+
+.task-time-tracker-dashboard-row-name.is-muted {
+	font-style: italic;
+	color: var(--text-muted);
+}
+
+/* Fix QA 0.0.30 — Por tarea, nota de origen borrada: solo cursiva, sin
+   atenuar el color (la tarea si existe, a diferencia de "sin
+   proyecto/cliente" que usa is-muted). */
+.task-time-tracker-dashboard-row-name.is-italic {
+	font-style: italic;
+}
+
+.task-time-tracker-dashboard-row-duration {
+	font-family: var(--font-monospace);
+	font-size: 0.85em;
+	font-weight: 500;
+	flex-shrink: 0;
+}
+
+.task-time-tracker-dashboard-row-count {
+	width: 90px;
+	flex-shrink: 0;
+	text-align: right;
+	font-size: 0.78em;
+	color: var(--text-muted);
+}
+
+.task-time-tracker-dashboard-load-more {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75em;
+	padding: 0.5em 0.5em 0.2em;
+}
+
+.task-time-tracker-dashboard-load-more-link {
+	color: var(--interactive-accent);
+	font-size: 0.82em;
+	font-weight: 500;
+	cursor: pointer;
+}
+
+.task-time-tracker-dashboard-load-more-link:hover {
+	text-decoration: underline;
+}
+
+.task-time-tracker-dashboard-load-more-count {
+	font-size: 0.78em;
+	color: var(--text-muted);
+}
+
+.task-time-tracker-dashboard-empty {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.75em;
+	padding: 3em 1.5em;
+	border: 1px dashed var(--background-modifier-border);
+	border-radius: var(--radius-m);
+	text-align: center;
+}
+
+.task-time-tracker-dashboard-empty-title {
+	margin: 0;
+	color: var(--text-normal);
+}
+
+.task-time-tracker-dashboard-empty-body {
+	margin: 0;
+	max-width: 380px;
+	font-size: 0.85em;
+	color: var(--text-muted);
+}

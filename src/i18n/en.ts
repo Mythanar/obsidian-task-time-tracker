@@ -11,9 +11,14 @@ export const en = {
 	"cmd.stop": "Stop active tracking",
 	"cmd.openLog": "Open time log panel",
 	"cmd.export": "Export time entries...",
+	"cmd.openDashboard": "Open dashboard",
 
 	// 2. Status bar (src/ui/StatusBarWidget.ts)
 	"statusbar.idle": "No active tracking",
+
+	// 2b. Ribbon icon menu (src/main.ts)
+	"ribbon.tooltip": "Task Time Tracker",
+	"ribbon.dashboardItem": "Dashboard",
 
 	// 4. Modal de recuperacion (src/ui/RecoveryModal.ts)
 	"recovery.title": "Unclosed tracking session",
@@ -128,6 +133,10 @@ export const en = {
 	"settings.clockify.paymentWall.name": "Importing time entries",
 	"settings.clockify.paymentWall.desc":
 		"Requires a paid Clockify plan or trial. This plugin will generate the CSV either way, but Clockify won't import the time entries until your workspace has access to that feature.",
+	"settings.tasksCompat.heading": "Using the Tasks plugin?",
+	"settings.tasksCompat.desc":
+		"Earlier versions could leave the tracking identifier (tt-id) in a position Tasks didn't recognize in its queries. This button reviews your tasks and fixes it — it only moves the identifier, nothing else, and you can repeat it whenever you want.",
+	"settings.tasksCompat.button": "Repair tasks",
 
 	// 7. Historial (src/ui/TimeLogView.ts)
 	"log.title": "Time Tracker",
@@ -200,6 +209,38 @@ export const en = {
 	"log.resultsEmptyJoiner": "and",
 	"log.resultsFilterRemoveButton": "Remove filters",
 
+	// 7b. Dashboard (src/ui/DashboardView.ts) — ventana fija de 30 dias
+	// naturales (hoy + los 29 anteriores), sin selector de rango (ver
+	// brief "Dashboard"). "·" y "longest first" no llevan unidad propia
+	// a traducir aparte, mismo criterio que el resto del glosario.
+	"dashboard.title": "Dashboard",
+	"dashboard.last30Days": "Last 30 days",
+	"dashboard.byProjectHeading": "By project",
+	"dashboard.byClientHeading": "By client",
+	"dashboard.byDayHeading": "By day",
+	"dashboard.byTaskHeading": "By task",
+	"dashboard.project.singular": "project",
+	"dashboard.project.plural": "projects",
+	"dashboard.client.singular": "client",
+	"dashboard.client.plural": "clients",
+	"dashboard.noProject": "No project",
+	"dashboard.noClient": "No client",
+	"dashboard.last": "Last",
+	"dashboard.top": "Top",
+	"dashboard.of": "of",
+	"dashboard.longestFirst": "longest first",
+	"dashboard.showMoreDays": "Show {n} more days",
+	"dashboard.showMoreTasks": "Show {n} more tasks",
+	"dashboard.shownOfCount": "{shown} of {count} shown",
+	"dashboard.emptyNeverTitle": "No sessions tracked yet.",
+	"dashboard.emptyNeverBody": "Start a timer on any task and its time will show up here, grouped by project, client, day and task.",
+	"dashboard.emptyNeverButton": "Start tracking",
+	"dashboard.emptyNeverNotice": 'Place your cursor on a task checkbox in any note, then run "Start tracking on current task".',
+	"dashboard.emptyRecentTitle": "No sessions in the last 30 days.",
+	"dashboard.emptyRecentBody":
+		"Your earlier sessions are still there — the last one was on {date}, outside this window. Track something and it will appear here.",
+	"dashboard.emptyRecentButton": "Open history",
+
 	// 8. Notices adicionales (src/main.ts, src/ui/TimeLogView.ts)
 	"notice.noActiveSession": "No active tracking session.",
 	"notice.notATask": "The current line isn't a task (checkbox).",
@@ -209,6 +250,8 @@ export const en = {
 	"notice.exportError": "An error occurred while exporting. Check the console for details.",
 	"notice.noSessionsYet": "No sessions saved yet.",
 	"notice.noteNotFound": "Couldn't find a note for this task.",
+	"notice.tasksCompatResult": "Reviewed {reviewed} tasks, fixed {fixed}.",
+	"notice.tasksCompatResultNone": "Reviewed {reviewed} tasks — none needed a fix.",
 } as const;
 
 export type TranslationKey = keyof typeof en;

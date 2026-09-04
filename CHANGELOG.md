@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- History: a new "Dashboard" view (opened from its own ribbon icon) shows time totals for the last 30 days, grouped by project, client, day, and task — each sorted by total time, except by day, which is chronological (most recent first). Projects/clients without an assignment group under "No project"/"No client". A prominent total for the whole 30-day window sits next to the "Dashboard" title. Day and task blocks show the top 5 by default, with a "Show all" link loading 50 more at a time. Two empty states: no tracked time at all, or none in the last 30 days (with the date of the last session, if any, and a link to History). If a task's source note was deleted, its name still shows (in italics) instead of an error.
+- Settings: a "Reparar tareas" button (under "¿Usas el plugin Tasks?") reviews your entire vault and fixes any tt-id left in the wrong position by an earlier version of the plugin — safe to run repeatedly, only touches the identifier's position, and reports how many tasks were reviewed and fixed.
+
+### Fixed
+
+- Task linking: the tt-id identifier could end up inserted after existing Tasks plugin metadata (dates, priority, recurrence, id, depends-on) on the same line, which broke Tasks' own recognition of those fields in its queries. Now always inserted before any Tasks metadata already present on the line, both when tracking starts and when it stops (covers editing the task while tracking is active). Already-correct lines are left untouched.
+
 ## [0.0.29] - 2026-08-28
 
 ### Added

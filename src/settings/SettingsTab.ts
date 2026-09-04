@@ -159,6 +159,23 @@ export class SettingsTab extends PluginSettingTab {
 			);
 	}
 
+	// Bug del tt-id vs Tasks — boton bajo demanda que corrige, de una vez,
+	// las tareas trackeadas con una version anterior del plugin que
+	// dejaron el tt-id detras de sus metadatos (Tasks deja de reconocerlos
+	// en ese caso, ver TaskIdentifier.ts). Reutiliza la misma logica ya
+	// verificada de appendTaskId(), no hace falta ningun algoritmo nuevo
+	// aqui. Fix QA — el titulo va en setName() de esta misma fila, no en
+	// un encabezado de seccion aparte (ver display()); "Reparar tareas"
+	// es solo la etiqueta del boton, nunca el titulo del bloque.
+	private configureTasksCompat(setting: Setting): void {
+		setting
+			.setName(t("settings.tasksCompat.heading"))
+			.setDesc(t("settings.tasksCompat.desc"))
+			.addButton((button) =>
+				button.setButtonText(t("settings.tasksCompat.button")).onClick(() => void this.plugin.fixMisplacedTaskIds()),
+			);
+	}
+
 	// Fase 8 — proyectos/clientes: base para futuros adapters de
 	// exportacion (Clockify y otros esperan columnas Project/Client en
 	// su importador). Componente autocontenido, ver ProjectsSection.ts.
@@ -337,6 +354,8 @@ export class SettingsTab extends PluginSettingTab {
 		this.configureExportFolder(new Setting(containerEl));
 		this.configureExportAll(new Setting(containerEl));
 
+		this.configureTasksCompat(new Setting(containerEl));
+
 		new Setting(containerEl).setName(t("settings.projects.heading")).setHeading();
 		this.renderProjectsSection(containerEl);
 
@@ -385,6 +404,16 @@ export class SettingsTab extends PluginSettingTab {
 						name: t("settings.exportAll.name"),
 						desc: t("settings.exportAll.desc"),
 						render: (setting) => this.configureExportAll(setting),
+					},
+				],
+			},
+			{
+				type: "group",
+				items: [
+					{
+						name: t("settings.tasksCompat.heading"),
+						desc: t("settings.tasksCompat.desc"),
+						render: (setting) => this.configureTasksCompat(setting),
 					},
 				],
 			},

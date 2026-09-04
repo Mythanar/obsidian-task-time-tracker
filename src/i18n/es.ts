@@ -12,9 +12,14 @@ export const es: Record<TranslationKey, string> = {
 	"cmd.stop": "Detener tracking activo",
 	"cmd.openLog": "Abrir panel de historial",
 	"cmd.export": "Exportar registros de tiempo...",
+	"cmd.openDashboard": "Abrir dashboard",
 
 	// 2. Status bar (src/ui/StatusBarWidget.ts)
 	"statusbar.idle": "Sin tracking activo",
+
+	// 2b. Menu del icono de la barra lateral (src/main.ts)
+	"ribbon.tooltip": "Task Time Tracker",
+	"ribbon.dashboardItem": "Dashboard",
 
 	// 4. Modal de recuperacion (src/ui/RecoveryModal.ts)
 	"recovery.title": "Sesión de tracking sin cerrar",
@@ -124,6 +129,10 @@ export const es: Record<TranslationKey, string> = {
 	"settings.clockify.paymentWall.name": "Importar entradas de tiempo",
 	"settings.clockify.paymentWall.desc":
 		"Requiere un plan de pago de Clockify o un periodo de prueba. Este plugin generará el CSV de todas formas, pero Clockify no importará las entradas de tiempo hasta que tu espacio de trabajo tenga acceso a esa función.",
+	"settings.tasksCompat.heading": "¿Usas el plugin Tasks?",
+	"settings.tasksCompat.desc":
+		"Versiones anteriores podían dejar el identificador de seguimiento (tt-id) en una posición que Tasks no reconocía en sus queries. Este botón revisa tus tareas y lo corrige — solo mueve el identificador, nada más, y puedes repetirlo cuando quieras.",
+	"settings.tasksCompat.button": "Reparar tareas",
 
 	// 7. Historial (src/ui/TimeLogView.ts)
 	"log.title": "Time Tracker",
@@ -196,6 +205,36 @@ export const es: Record<TranslationKey, string> = {
 	"log.resultsEmptyJoiner": "y",
 	"log.resultsFilterRemoveButton": "Quitar filtros",
 
+	// 7b. Dashboard (src/ui/DashboardView.ts)
+	"dashboard.title": "Dashboard",
+	"dashboard.last30Days": "Últimos 30 días",
+	"dashboard.byProjectHeading": "Por proyecto",
+	"dashboard.byClientHeading": "Por cliente",
+	"dashboard.byDayHeading": "Por día",
+	"dashboard.byTaskHeading": "Por tarea",
+	"dashboard.project.singular": "proyecto",
+	"dashboard.project.plural": "proyectos",
+	"dashboard.client.singular": "cliente",
+	"dashboard.client.plural": "clientes",
+	"dashboard.noProject": "Sin proyecto",
+	"dashboard.noClient": "Sin cliente",
+	"dashboard.last": "Últimos",
+	"dashboard.top": "Top",
+	"dashboard.of": "de",
+	"dashboard.longestFirst": "de mayor a menor",
+	"dashboard.showMoreDays": "Mostrar {n} días más",
+	"dashboard.showMoreTasks": "Mostrar {n} tareas más",
+	"dashboard.shownOfCount": "{shown} de {count} mostrados",
+	"dashboard.emptyNeverTitle": "Todavía no hay sesiones registradas.",
+	"dashboard.emptyNeverBody":
+		"Inicia un cronómetro en cualquier tarea y su tiempo aparecerá aquí, agrupado por proyecto, cliente, día y tarea.",
+	"dashboard.emptyNeverButton": "Iniciar tracking",
+	"dashboard.emptyNeverNotice": 'Coloca el cursor en el checkbox de una tarea en cualquier nota y ejecuta "Iniciar tracking en la tarea actual".',
+	"dashboard.emptyRecentTitle": "Sin sesiones en los últimos 30 días.",
+	"dashboard.emptyRecentBody":
+		"Tus sesiones anteriores siguen ahí — la última fue el {date}, fuera de esta ventana. Trackea algo y aparecerá aquí.",
+	"dashboard.emptyRecentButton": "Abrir historial",
+
 	// 8. Notices adicionales (src/main.ts, src/ui/TimeLogView.ts)
 	"notice.noActiveSession": "No hay ninguna sesión de tracking activa.",
 	"notice.notATask": "La línea actual no es una tarea (checkbox).",
@@ -205,4 +244,6 @@ export const es: Record<TranslationKey, string> = {
 	"notice.exportError": "Ocurrió un error al exportar. Revisa la consola para más detalles.",
 	"notice.noSessionsYet": "No hay sesiones guardadas todavía.",
 	"notice.noteNotFound": "No se encontró ninguna nota con esta tarea.",
+	"notice.tasksCompatResult": "Revisadas {reviewed} tareas, corregidas {fixed}.",
+	"notice.tasksCompatResultNone": "Revisadas {reviewed} tareas — ninguna necesitaba corrección.",
 };

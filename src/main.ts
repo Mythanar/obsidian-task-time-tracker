@@ -1,25 +1,24 @@
-import { Editor, MarkdownFileInfo, MarkdownView, Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
+import { Editor, MarkdownFileInfo, MarkdownView, Menu, Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
 import { TrackingEngine } from "./core/TrackingEngine";
 import { ProjectManager } from "./core/ProjectManager";
 import {
 	extractCheckboxState,
 	extractTaskId,
-	appendTaskId,
-	generateTaskId,
+	ensureTaskId,
 	isClosedCheckboxState,
 	parseCheckboxLine,
 	TaskIdentifier,
 } from "./core/TaskIdentifier";
 import { StatusBarWidget } from "./ui/StatusBarWidget";
 import { TimeLogView, TIME_LOG_VIEW_TYPE } from "./ui/TimeLogView";
+import { DashboardView, DASHBOARD_VIEW_TYPE } from "./ui/DashboardView";
 import { RecoveryModal } from "./ui/RecoveryModal";
 import { ExportModal, ExportFormat } from "./ui/ExportModal";
 import { ExportManager } from "./export/ExportManager";
 import { SettingsTab } from "./settings/SettingsTab";
-import { DEFAULT_SETTINGS, PluginState } from "./types";
+import { DEFAULT_SETTINGS, DeleteTaskResult, EntryUpdateResult, PluginState, TimeEntry } from "./types";
 import { InlineTrackingBus } from "./ui/InlineTrackingBus";
 import { createInlineTaskControlExtension } from "./ui/InlineTaskControlExtension";
-import { DeleteTaskResult, EntryUpdateResult } from "./types";
 import { t } from "./i18n";
 
 /**
@@ -102,6 +101,31 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 				}),
 		);
 
+		this.registerView(
+			DASHBOARD_VIEW_TYPE,
+			(leaf) =>
+				new DashboardView(leaf, () => this.trackingEngine.getEntries(), this.taskIdentifier, {
+					getProjectForTask: (taskId) => this.projectManager.getProjectForTask(taskId),
+					openHistory: () => void this.activateLogView(),
+				}),
+		);
+
+		// QA 0.0.30 fix 3 — "Informe de rendimiento" no esta construido ni
+		// asignado a esta version; se retira del menu hasta que se construya
+		// (ver CLAUDE.md, "Trabajo en curso"). El menu se conserva (en vez de
+		// abrir el Dashboard directo al click) para poder añadir esa entrada
+		// de vuelta sin otro cambio estructural.
+		this.addRibbonIcon("bar-chart-3", t("ribbon.tooltip"), (evt: MouseEvent) => {
+			const menu = new Menu();
+			menu.addItem((item) =>
+				item
+					.setTitle(t("ribbon.dashboardItem"))
+					.setIcon("bar-chart-3")
+					.onClick(() => void this.activateDashboardView()),
+			);
+			menu.showAtMouseEvent(evt);
+		});
+
 		// Respaldo: cubre ediciones que no pasan por un editor abierto en
 		// Obsidian (edicion externa al vault, sync entre dispositivos, o
 		// el propio guardado a disco del editor tras su debounce interno).
@@ -154,7 +178,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			id: "stop-active-tracking",
 			name: t("cmd.stop"),
 			callback: async () => {
-				const stopped = await this.trackingEngine.stop();
+				const stopped = await this.stopActiveTracking();
 				if (!stopped) {
 					new Notice(t("notice.noActiveSession"));
 				}
@@ -168,6 +192,12 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			id: "open-time-log-panel",
 			name: t("cmd.openLog"),
 			callback: () => this.activateLogView(),
+		});
+
+		this.addCommand({
+			id: "open-dashboard-view",
+			name: t("cmd.openDashboard"),
+			callback: () => this.activateDashboardView(),
 		});
 
 		this.addCommand({
@@ -196,7 +226,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 				this.app,
 				active,
 				() => {
-					void this.trackingEngine.stop().then(() => {
+					void this.stopActiveTracking().then(() => {
 						this.statusBarWidget.refresh();
 						this.refreshLogViews();
 						this.notifyTrackingChanged();
@@ -238,10 +268,9 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			return;
 		}
 
-		let taskId = extractTaskId(line);
-		if (!taskId) {
-			taskId = generateTaskId();
-			editor.setLine(cursor.line, appendTaskId(line, taskId));
+		const { taskId, updatedLine } = ensureTaskId(line);
+		if (updatedLine !== line) {
+			editor.setLine(cursor.line, updatedLine);
 		}
 
 		const filePath = ctx.file?.path ?? "";
@@ -295,7 +324,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		for (const line of content.split("\n")) {
 			if (extractTaskId(line) !== active.taskId) continue;
 			if (isClosedCheckboxState(extractCheckboxState(line))) {
-				await this.trackingEngine.stop();
+				await this.stopActiveTracking();
 				this.statusBarWidget.refresh();
 				this.refreshLogViews();
 				this.notifyTrackingChanged();
@@ -318,11 +347,30 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	}
 
 	private async handleInlineStop(): Promise<void> {
-		const stopped = await this.trackingEngine.stop();
+		const stopped = await this.stopActiveTracking();
 		if (!stopped) return;
 		this.statusBarWidget.refresh();
 		this.refreshLogViews();
 		this.notifyTrackingChanged();
+	}
+
+	// Fix pendiente de la pieza 1 (bug del tt-id vs metadatos de Tasks) —
+	// punto unico donde se cierra la sesion activa y se guarda el
+	// TimeEntry: todos los flujos de stop (comando, RecoveryModal, control
+	// inline, auto-stop al cerrar el checkbox en stopIfActiveTaskClosedIn)
+	// pasan por aqui en vez de llamar a trackingEngine.stop() por su
+	// cuenta, para que la recolocacion del tt-id (ensureTaskId() ya
+	// verificado en la pieza 1, ver repositionTaskId() en
+	// TaskIdentifier.ts) se aplique siempre en el mismo sitio. Cubre el
+	// caso de que la tarea se haya editado a mano mientras estaba en
+	// marcha y el tt-id haya quedado mal colocado — la correccion al
+	// empezar a trackear no alcanza a una edicion posterior en marcha.
+	private async stopActiveTracking(): Promise<TimeEntry | null> {
+		const stopped = await this.trackingEngine.stop();
+		if (stopped) {
+			await this.taskIdentifier.repositionTaskId(stopped.taskId);
+		}
+		return stopped;
 	}
 
 	// Avisa a los controles inline ya montados (icono junto al checkbox)
@@ -398,6 +446,17 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			console.error("Task Time Tracker: error exportando a CSV", error);
 			new Notice(t("notice.exportError"));
 		}
+	}
+
+	// Boton "Actualizar tareas" en Settings > Compatibilidad con Tasks —
+	// recorre el vault una vez, bajo demanda, corrigiendo tareas trackeadas
+	// con una version anterior que dejaron el tt-id detras de los
+	// metadatos de Tasks (ver appendTaskId() y fixMisplacedTaskIds() en
+	// TaskIdentifier.ts, que hacen todo el trabajo real).
+	async fixMisplacedTaskIds(): Promise<void> {
+		const { reviewed, fixed } = await this.taskIdentifier.fixMisplacedTaskIds();
+		const params = { reviewed: String(reviewed), fixed: String(fixed) };
+		new Notice(fixed > 0 ? t("notice.tasksCompatResult", params) : t("notice.tasksCompatResultNone", params));
 	}
 
 	// Fase 5 — el modal de exportacion permite completar el email de Toggl
@@ -516,6 +575,9 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		for (const leaf of this.app.workspace.getLeavesOfType(TIME_LOG_VIEW_TYPE)) {
 			if (leaf.view instanceof TimeLogView) leaf.view.refresh();
 		}
+		for (const leaf of this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE)) {
+			if (leaf.view instanceof DashboardView) leaf.view.refresh();
+		}
 	}
 
 	// Bloque 2 — la ubicacion (sidebar/tab) solo se decide al crear un leaf
@@ -534,6 +596,23 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 				: this.app.workspace.getRightLeaf(false);
 		if (!leaf) return;
 		await leaf.setViewState({ type: TIME_LOG_VIEW_TYPE, active: true });
+		await this.app.workspace.revealLeaf(leaf);
+	}
+
+	// Dashboard — siempre en pestana del workspace principal, sin ajuste
+	// de ubicacion (a diferencia del Historial): no es un panel de
+	// consulta rapida tipo sidebar, es una vista de una sola pantalla
+	// completa (ver brief "Dashboard").
+	private async activateDashboardView(): Promise<void> {
+		const existing = this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE);
+		if (existing[0]) {
+			await this.app.workspace.revealLeaf(existing[0]);
+			return;
+		}
+
+		const leaf = this.app.workspace.getLeaf("tab");
+		if (!leaf) return;
+		await leaf.setViewState({ type: DASHBOARD_VIEW_TYPE, active: true });
 		await this.app.workspace.revealLeaf(leaf);
 	}
 }

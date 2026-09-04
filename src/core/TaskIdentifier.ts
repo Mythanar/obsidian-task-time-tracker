@@ -19,6 +19,57 @@ const CHECKBOX_STATE_REGEX = /^\s*(?:[-*+]|\d+\.)\s*\[(.)\]/;
 const NANOID_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const NANOID_LENGTH = 8;
 
+// Bug conocido de Tasks (issue #1505, ver docs/DECISIONES.md y la nota de
+// bug en el vault): Tasks solo reconoce sus propios campos si quedan
+// DESPUES del tt-id en la linea; si el tt-id queda detras de ellos, Tasks
+// deja de reconocerlos todos por igual. La unica solucion fiable (no
+// depende de que Tasks cambie nada) es controlar donde insertamos el
+// tt-id: siempre antes de cualquier campo de Tasks presente en la linea.
+// Lista completa de campos por emoji, segun el Tasks Emoji Format oficial.
+const TASKS_DATE_MARKERS = ["➕", "📅", "⏳", "🛫", "✅", "❌"];
+const TASKS_PRIORITY_MARKERS = ["🔺", "⏫", "🔼", "🔽", "⏬"];
+
+// Cada patron reconoce UN campo de Tasks anclado al final de la cadena
+// (ver findTasksMetadataStart): solo importa si ese campo es el ultimo
+// tramo de la linea, no donde mas aparezca. El separador `(?:^|\s)` se
+// incluye en el match a proposito, para que el corte tambien absorba el
+// espacio que lo separaba del contenido anterior.
+const TASKS_TRAILING_FIELD_PATTERNS: RegExp[] = [
+	new RegExp(`(?:^|\\s)(?:${TASKS_DATE_MARKERS.join("|")})\\s?\\d{4}-\\d{2}-\\d{2}$`, "u"),
+	new RegExp(`(?:^|\\s)(?:${TASKS_PRIORITY_MARKERS.join("|")})$`, "u"),
+	/(?:^|\s)🏁\s?(?:keep|delete)$/u,
+	/(?:^|\s)🆔\s?\S+$/u,
+	/(?:^|\s)⛔\s?\S+$/u,
+	/(?:^|\s)🔁\s?.+$/u,
+];
+
+// Recorre `text` desde el final hacia atras, igual que Tasks internamente,
+// para encontrar donde empieza el bloque contiguo final de campos
+// reconocidos. Devuelve el indice de corte (longitud de `text` si no hay
+// ningun campo de Tasks al final).
+function findTasksMetadataStart(text: string): number {
+	const isWhitespace = (index: number) => /\s/.test(text[index] ?? "");
+
+	let end = text.length;
+	while (end > 0 && isWhitespace(end - 1)) end--;
+
+	let cut = true;
+	while (cut) {
+		cut = false;
+		const current = text.slice(0, end);
+		for (const pattern of TASKS_TRAILING_FIELD_PATTERNS) {
+			const match = pattern.exec(current);
+			if (match) {
+				end = match.index;
+				while (end > 0 && isWhitespace(end - 1)) end--;
+				cut = true;
+				break;
+			}
+		}
+	}
+	return end;
+}
+
 export function generateTaskId(): string {
 	const bytes = new Uint8Array(NANOID_LENGTH);
 	crypto.getRandomValues(bytes);
@@ -33,8 +84,26 @@ export function extractTaskId(line: string): string | null {
 	return line.match(TASK_ID_REGEX)?.[1] ?? null;
 }
 
+// Inserta (o recoloca, si ya tenia uno mal colocado por una version
+// anterior del plugin) el tt-id justo antes del bloque de metadatos de
+// Tasks al final de la linea, o al final si no hay ninguno. Idempotente:
+// si `line` ya tiene el tt-id bien colocado, devuelve una linea identica.
 export function appendTaskId(line: string, taskId: string): string {
-	return `${line.trimEnd()} [tt-id:: ${taskId}]`;
+	const withoutId = line.replace(TASK_ID_REGEX, "").trimEnd();
+	const boundary = findTasksMetadataStart(withoutId);
+	const before = withoutId.slice(0, boundary).trimEnd();
+	const metadata = withoutId.slice(boundary).trim();
+	const idToken = `[tt-id:: ${taskId}]`;
+	return metadata.length > 0 ? `${before} ${idToken} ${metadata}` : `${before} ${idToken}`;
+}
+
+// Punto de entrada compartido por los sitios que empiezan a trackear una
+// tarea: reutiliza el tt-id si ya existia (recolocandolo si hacia falta) o
+// genera uno nuevo. `updatedLine === line` cuando no hizo falta ningun
+// cambio, para que el llamador evite escribir en la nota sin necesidad.
+export function ensureTaskId(line: string): { taskId: string; updatedLine: string } {
+	const taskId = extractTaskId(line) ?? generateTaskId();
+	return { taskId, updatedLine: appendTaskId(line, taskId) };
 }
 
 export function stripTaskId(text: string): string {
@@ -68,6 +137,11 @@ export interface ResolvedTask {
 	lineNumber: number;
 }
 
+export interface FixMisplacedTaskIdsResult {
+	reviewed: number;
+	fixed: number;
+}
+
 export class TaskIdentifier {
 	constructor(private app: App) {}
 
@@ -95,6 +169,48 @@ export class TaskIdentifier {
 			if (found) return found;
 		}
 		return this.resolve(taskId);
+	}
+
+	// Fix pendiente de la pieza 1 — al detener el tracking (comando,
+	// RecoveryModal, control inline o auto-stop al cerrar el checkbox), se
+	// aprovecha ese mismo punto para recolocar el tt-id si quedo mal
+	// puesto mientras la tarea estaba en marcha (p.ej. el usuario edito la
+	// linea a mano). Misma logica de appendTaskId() ya verificada en la
+	// pieza 1, sin nada nuevo: esta funcion solo decide DONDE escribir el
+	// resultado. Si la nota esta abierta, escribe via el Editor en vivo
+	// (evita que esa vista se desincronice de un vault.process() por
+	// detras, mismo motivo que ya gobierna searchFiles() de arriba); si
+	// no, cae a vault.process() (atomico, igual que fixMisplacedTaskIds()).
+	async repositionTaskId(taskId: string): Promise<void> {
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			if (!(leaf.view instanceof MarkdownView) || !leaf.view.file) continue;
+			const { editor } = leaf.view;
+			for (let lineNumber = 0; lineNumber < editor.lineCount(); lineNumber++) {
+				const lineText = editor.getLine(lineNumber);
+				if (extractTaskId(lineText) !== taskId) continue;
+				const updated = appendTaskId(lineText, taskId);
+				if (updated !== lineText) editor.setLine(lineNumber, updated);
+				return;
+			}
+		}
+
+		const resolved = await this.resolve(taskId);
+		if (!resolved) return;
+		const file = this.app.vault.getAbstractFileByPath(resolved.filePath);
+		if (!(file instanceof TFile)) return;
+
+		await this.app.vault.process(file, (data) => {
+			const lines = data.split("\n");
+			for (let i = 0; i < lines.length; i++) {
+				const lineText = lines[i];
+				if (lineText === undefined || extractTaskId(lineText) !== taskId) continue;
+				const updated = appendTaskId(lineText, taskId);
+				if (updated === lineText) return data;
+				lines[i] = updated;
+				return lines.join("\n");
+			}
+			return data;
+		});
 	}
 
 	private async searchFiles(taskId: string, files: TFile[]): Promise<ResolvedTask | null> {
@@ -127,6 +243,53 @@ export class TaskIdentifier {
 			if (foundInCache) return foundInCache;
 		}
 		return null;
+	}
+
+	// Boton "Actualizar tareas" en Settings — corrige de una vez las tareas
+	// trackeadas con una version anterior del plugin, que pudieron quedar
+	// con el tt-id detras de los metadatos de Tasks (ver appendTaskId()).
+	// Reutiliza esa misma logica ya verificada, sin ningun algoritmo nuevo.
+	// Primero se comprueba con cachedRead() si una nota necesita algun
+	// cambio antes de tocarla: asi las notas ya correctas no se escriben
+	// nunca (ni un vault.process() de mas), acorde a "la vault del usuario
+	// es su casa". Solo las que de verdad lo necesitan se reescriben, y
+	// siempre con vault.process() (atomico, evita pisar una edicion
+	// simultanea del usuario o de otro plugin sobre la misma nota).
+	async fixMisplacedTaskIds(): Promise<FixMisplacedTaskIdsResult> {
+		let reviewed = 0;
+		let fixed = 0;
+
+		for (const file of this.app.vault.getMarkdownFiles()) {
+			const content = await this.app.vault.cachedRead(file);
+			if (!content.includes("[tt-id::")) continue;
+
+			let needsFix = false;
+			for (const line of content.split("\n")) {
+				const taskId = extractTaskId(line);
+				if (!taskId) continue;
+				reviewed++;
+				if (appendTaskId(line, taskId) !== line) needsFix = true;
+			}
+			if (!needsFix) continue;
+
+			await this.app.vault.process(file, (data) => {
+				const lines = data.split("\n");
+				for (let i = 0; i < lines.length; i++) {
+					const lineText = lines[i];
+					if (lineText === undefined) continue;
+					const taskId = extractTaskId(lineText);
+					if (!taskId) continue;
+					const updated = appendTaskId(lineText, taskId);
+					if (updated !== lineText) {
+						lines[i] = updated;
+						fixed++;
+					}
+				}
+				return lines.join("\n");
+			});
+		}
+
+		return { reviewed, fixed };
 	}
 
 	private findInContents(taskId: string, filePath: string, contents: string[]): ResolvedTask | null {

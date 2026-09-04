@@ -18,10 +18,9 @@ import { editorInfoField, TFile } from "obsidian";
 import { Extension, RangeSetBuilder } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
 import {
-	appendTaskId,
+	ensureTaskId,
 	extractCheckboxState,
 	extractTaskId,
-	generateTaskId,
 	isClosedCheckboxState,
 	parseCheckboxLine,
 } from "../core/TaskIdentifier";
@@ -80,11 +79,10 @@ class InlineTaskControlWidget extends WidgetType {
 		if (taskText === null) return;
 		if (isClosedCheckboxState(extractCheckboxState(currentText))) return;
 
-		let taskId = extractTaskId(currentText);
-		if (!taskId) {
-			taskId = generateTaskId();
+		const { taskId, updatedLine } = ensureTaskId(currentText);
+		if (updatedLine !== currentText) {
 			view.dispatch({
-				changes: { from: line.from, to: line.to, insert: appendTaskId(currentText, taskId) },
+				changes: { from: line.from, to: line.to, insert: updatedLine },
 			});
 		}
 
