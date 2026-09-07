@@ -1,6 +1,7 @@
 import { Editor, MarkdownFileInfo, MarkdownView, Menu, Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
 import { TrackingEngine } from "./core/TrackingEngine";
 import { ProjectManager } from "./core/ProjectManager";
+import { StateStore } from "./core/StateStore";
 import {
 	extractCheckboxState,
 	extractTaskId,
@@ -16,7 +17,7 @@ import { RecoveryModal } from "./ui/RecoveryModal";
 import { ExportModal, ExportFormat } from "./ui/ExportModal";
 import { ExportManager } from "./export/ExportManager";
 import { SettingsTab } from "./settings/SettingsTab";
-import { DEFAULT_SETTINGS, DeleteTaskResult, EntryUpdateResult, PluginState, TimeEntry } from "./types";
+import { DeleteTaskResult, EntryUpdateResult, PluginSettings, PluginState, TimeEntry } from "./types";
 import { InlineTrackingBus } from "./ui/InlineTrackingBus";
 import { createInlineTaskControlExtension } from "./ui/InlineTaskControlExtension";
 import { t } from "./i18n";
@@ -54,28 +55,28 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	statusBarWidget!: StatusBarWidget;
 	taskIdentifier!: TaskIdentifier;
 	exportManager!: ExportManager;
-	pluginState!: PluginState;
+	store!: StateStore;
 	private editorChangeDebounceTimer: number | null = null;
 	private inlineControlsBus = new InlineTrackingBus();
 
+	// The in-memory state lives in StateStore and is replaced wholesale
+	// after every write (read-before-write, see core/StateStore.ts), so it
+	// is exposed as a getter: no consumer can hold on to a captured
+	// reference to the state object.
+	get pluginState(): PluginState {
+		return this.store.getState();
+	}
+
 	async onload() {
-		const savedState = (await this.loadData()) as Partial<PluginState> | null;
-		this.pluginState = {
-			entries: savedState?.entries ?? [],
-			settings: {
-				toggl: { ...DEFAULT_SETTINGS.toggl, ...savedState?.settings?.toggl },
-				clockify: { ...DEFAULT_SETTINGS.clockify, ...savedState?.settings?.clockify },
-				logViewLocation: savedState?.settings?.logViewLocation ?? DEFAULT_SETTINGS.logViewLocation,
-				exportsFolder: savedState?.settings?.exportsFolder ?? DEFAULT_SETTINGS.exportsFolder,
-				taskIdFormat: savedState?.settings?.taskIdFormat ?? DEFAULT_SETTINGS.taskIdFormat,
-			},
-			projects: savedState?.projects ?? [],
-			taskProjects: savedState?.taskProjects ?? {},
-		};
+		this.store = new StateStore({
+			load: () => this.loadData(),
+			save: (state) => this.saveData(state),
+		});
+		await this.store.init();
 		this.applyTaskIdFormatClass();
 
-		this.trackingEngine = new TrackingEngine(this.pluginState, (s) => this.saveData(s));
-		this.projectManager = new ProjectManager(this.pluginState, (s) => this.saveData(s));
+		this.trackingEngine = new TrackingEngine(this.store);
+		this.projectManager = new ProjectManager(this.store);
 		this.taskIdentifier = new TaskIdentifier(this.app);
 		this.exportManager = new ExportManager(this.app, this.taskIdentifier, this.projectManager);
 		this.statusBarWidget = new StatusBarWidget(
@@ -241,6 +242,20 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 
 	onunload() {
 		document.body.classList.remove(...TASKID_FORMAT_BODY_CLASSES);
+	}
+
+	// Obsidian calls this when data.json changes outside this device
+	// (Obsidian Sync delivering another machine's changes, or a manual edit
+	// of the file). It only re-reads and refreshes the UI: observing an
+	// external change never justifies a save, and a re-read can neither
+	// create nor stop a timer — the active timer is still, as always,
+	// whichever session with end === null the disk reports.
+	async onExternalSettingsChange(): Promise<void> {
+		await this.store.reload();
+		this.applyTaskIdFormatClass();
+		this.statusBarWidget.refresh();
+		this.refreshLogViews();
+		this.notifyTrackingChanged();
 	}
 
 	// Fase 7 — aplica (o retira) la clase en document.body que activa el
@@ -464,8 +479,9 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	// ajuste de Settings > Toggl > Email (unica fuente de verdad), nunca
 	// como un valor exclusivo de esa exportacion.
 	private async saveTogglEmail(email: string): Promise<void> {
-		this.pluginState.settings.toggl.email = email;
-		await this.saveSettings();
+		await this.updateSettings((settings) => {
+			settings.toggl.email = email;
+		});
 	}
 
 	// Fase 8 — casilla "Incluir Proyecto y Cliente" del modal de exportacion:
@@ -474,16 +490,18 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	// exportacion (a diferencia del email, no tiene un estado intermedio
 	// invalido que proteger).
 	private async saveTogglIncludeProjectClient(value: boolean): Promise<void> {
-		this.pluginState.settings.toggl.includeProjectClient = value;
-		await this.saveSettings();
+		await this.updateSettings((settings) => {
+			settings.toggl.includeProjectClient = value;
+		});
 	}
 
 	// Fase 9 — mismo patron que saveTogglEmail: el modal de exportacion
 	// persiste aqui el email de Clockify tecleado ahi mismo, como el mismo
 	// ajuste de Settings > Clockify > Email (unica fuente de verdad).
 	private async saveClockifyEmail(email: string): Promise<void> {
-		this.pluginState.settings.clockify.email = email;
-		await this.saveSettings();
+		await this.updateSettings((settings) => {
+			settings.clockify.email = email;
+		});
 	}
 
 	// Fase 9 — mismo patron que saveTogglIncludeProjectClient: casilla
@@ -493,53 +511,61 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	// de agosto de 2026, ver docs/Vault/Tareas/Clockify.md: Project no es
 	// obligatorio para el importador de CSV de Clockify.
 	private async saveClockifyIncludeProject(value: boolean): Promise<void> {
-		this.pluginState.settings.clockify.includeProject = value;
-		await this.saveSettings();
+		await this.updateSettings((settings) => {
+			settings.clockify.includeProject = value;
+		});
 	}
 
 	// Fase 9 — mismo patron que saveTogglIncludeProjectClient: casilla
 	// "Include Client" del modal de exportacion, misma fuente de verdad que
 	// Settings > Clockify, se persiste al instante.
 	private async saveClockifyIncludeClient(value: boolean): Promise<void> {
-		this.pluginState.settings.clockify.includeClient = value;
-		await this.saveSettings();
+		await this.updateSettings((settings) => {
+			settings.clockify.includeClient = value;
+		});
 	}
 
-	async saveSettings(): Promise<void> {
-		await this.saveData(this.pluginState);
+	// The single write path for settings: applies the change to the state
+	// just read from disk, so touching a setting never clobbers sessions or
+	// projects created on another device.
+	async updateSettings(fn: (settings: PluginSettings) => void): Promise<void> {
+		await this.store.updateSettings(fn);
 	}
 
 	// Fase 5 UX — panel de Historial: edicion inline de inicio/fin de una
-	// sesion ya cerrada. Se opera directamente sobre pluginState.entries
-	// (el mismo array que ya usa TrackingEngine, pasado por referencia) en
-	// vez de agregar metodos a TrackingEngine — su responsabilidad sigue
-	// siendo solo el timer activo. El aviso de solapamiento con otra
-	// sesion se calcula en vivo del lado de TimeLogView mientras se
-	// edita, no aqui — el guardado nunca se bloquea por eso.
+	// sesion ya cerrada. El aviso de solapamiento con otra sesion se
+	// calcula en vivo del lado de TimeLogView mientras se edita, no aqui —
+	// el guardado nunca se bloquea por eso.
+	//
+	// Handled here, via StateStore, instead of adding methods to
+	// TrackingEngine — its responsibility is still only the active timer.
+	// The session is looked up in the state just read from disk, so the
+	// rest of the history (including anything that arrived by sync from
+	// another device) is left untouched.
 	async updateEntryTimes(entryId: string, start: number, end: number): Promise<EntryUpdateResult> {
-		const entries = this.trackingEngine.getEntries();
-		const entry = entries.find((e) => e.id === entryId);
-		if (!entry || entry.end === null) return { ok: false, error: "not-found" };
 		if (end <= start) return { ok: false, error: "invalid-range" };
 
-		entry.start = start;
-		entry.end = end;
-		await this.saveData(this.pluginState);
+		const result = await this.store.apply<EntryUpdateResult>((state) => {
+			const entry = state.entries.find((e) => e.id === entryId);
+			if (!entry || entry.end === null) {
+				return { result: { ok: false, error: "not-found" }, changed: false };
+			}
+			entry.start = start;
+			entry.end = end;
+			return { result: { ok: true } };
+		});
+		if (!result.ok) return result;
 
 		this.refreshLogViews();
 		this.notifyTrackingChanged();
-		return { ok: true };
+		return result;
 	}
 
 	// Fase 5 UX — panel de Historial: borrado definitivo de una sesion
 	// cerrada (la confirmacion vive en la UI, aqui ya se asume confirmado).
 	async deleteEntry(entryId: string): Promise<void> {
-		const entries = this.trackingEngine.getEntries();
-		const index = entries.findIndex((e) => e.id === entryId);
-		if (index === -1) return;
-
-		entries.splice(index, 1);
-		await this.saveData(this.pluginState);
+		const deleted = await this.store.deleteEntry(entryId);
+		if (!deleted) return;
 		this.refreshLogViews();
 		this.notifyTrackingChanged();
 	}
@@ -554,17 +580,27 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	// tenga la sesion activa (la confirmacion vive en la UI, aqui ya se
 	// asume confirmado salvo por este bloqueo).
 	async deleteTask(taskId: string): Promise<DeleteTaskResult> {
-		const active = this.trackingEngine.getActiveEntry();
-		if (active?.taskId === taskId) return { ok: false, error: "active" };
+		// The active-session guard is re-evaluated against the latest state
+		// from disk: the task may be running on another device.
+		const result = await this.store.apply<DeleteTaskResult>((state) => {
+			const active = state.entries.find((e) => e.end === null) ?? null;
+			if (active?.taskId === taskId) {
+				return { result: { ok: false, error: "active" }, changed: false };
+			}
+			let removed = 0;
+			for (let i = state.entries.length - 1; i >= 0; i--) {
+				if (state.entries[i]?.taskId === taskId) {
+					state.entries.splice(i, 1);
+					removed++;
+				}
+			}
+			return { result: { ok: true }, changed: removed > 0 };
+		});
+		if (!result.ok) return result;
 
-		const entries = this.trackingEngine.getEntries();
-		for (let i = entries.length - 1; i >= 0; i--) {
-			if (entries[i]?.taskId === taskId) entries.splice(i, 1);
-		}
-		await this.saveData(this.pluginState);
 		this.refreshLogViews();
 		this.notifyTrackingChanged();
-		return { ok: true };
+		return result;
 	}
 
 	// Publico: tambien lo llama ProjectsSection.ts (via SettingsTab.ts) tras

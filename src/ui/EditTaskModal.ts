@@ -31,12 +31,6 @@ export interface EditTaskModalActions {
 }
 
 export class EditTaskModal extends Modal {
-	// Copia local del historico completo de la tarea: los objetos son los
-	// mismos que usa el resto del plugin (misma referencia), asi que un
-	// updateEntryTimes() con exito ya deja start/end actualizados sin
-	// necesidad de tocar este array — solo el borrado necesita splice
-	// manual (ver el handler de "Yes, delete" dentro de renderEditForm()).
-	private entries: TimeEntry[];
 	private editingEntryId: string | null = null;
 	private draft: EditDraft | null = null;
 	private sessionsEl: HTMLElement | null = null;
@@ -58,12 +52,17 @@ export class EditTaskModal extends Modal {
 		app: App,
 		private taskId: string,
 		private label: string,
-		entries: TimeEntry[],
+		// The full history of THIS task and the project list, both as
+		// readers: the in-memory state is replaced wholesale after every
+		// write (read-before-write, see core/StateStore.ts), so capturing
+		// the array would leave orphan objects — and reading on demand also
+		// makes a change delivered by sync visible on the next render.
+		private getEntries: () => TimeEntry[],
 		// Todas las entries del plugin (no solo las de esta tarea): el
 		// aviso de solapamiento compara contra cualquier otra sesion, igual
 		// que ya hacia la edicion inline de Fase 5.
 		private getAllEntries: () => TimeEntry[],
-		private projects: Project[],
+		private getProjects: () => Project[],
 		currentProject: Project | null,
 		private actions: EditTaskModalActions,
 		// Refresca el panel del Historial detras del modal tras cada
@@ -71,7 +70,6 @@ export class EditTaskModal extends Modal {
 		private onChange: () => void,
 	) {
 		super(app);
-		this.entries = entries;
 		this.currentProjectId = currentProject?.id ?? "";
 	}
 
@@ -151,7 +149,7 @@ export class EditTaskModal extends Modal {
 			this.outsideMousedownGuardUntil = Number.MAX_SAFE_INTEGER;
 			openProjectPickerPopover({
 				anchorEl: projectBtn,
-				projects: this.projects,
+				projects: this.getProjects(),
 				selectedId: this.currentProjectId || null,
 				showClearOption: true,
 				onSelect: (projectId) => {
@@ -226,7 +224,7 @@ export class EditTaskModal extends Modal {
 	}
 
 	private updateProjectBtnLabel(el: HTMLElement): void {
-		const project = this.projects.find((p) => p.id === this.currentProjectId);
+		const project = this.getProjects().find((p) => p.id === this.currentProjectId);
 		el.setText(project ? project.name : t("log.editModalNoProject"));
 	}
 
@@ -235,9 +233,10 @@ export class EditTaskModal extends Modal {
 		if (!el) return;
 		el.empty();
 
-		const totalMs = this.entries.reduce((sum, entry) => sum + ((entry.end ?? Date.now()) - entry.start), 0);
+		const entries = this.getEntries();
+		const totalMs = entries.reduce((sum, entry) => sum + ((entry.end ?? Date.now()) - entry.start), 0);
 		el.createSpan({
-			text: `${this.entries.length} ${this.entries.length === 1 ? t("log.session.singular") : t("log.session.plural")}`,
+			text: `${entries.length} ${entries.length === 1 ? t("log.session.singular") : t("log.session.plural")}`,
 			cls: "task-time-tracker-log-session-count",
 		});
 		const totalGroup = el.createSpan({ cls: "task-time-tracker-totals-duration-group" });
@@ -254,13 +253,14 @@ export class EditTaskModal extends Modal {
 		if (!container) return;
 		container.empty();
 
-		if (this.entries.length === 0) {
+		const entries = this.getEntries();
+		if (entries.length === 0) {
 			container.createEl("p", { text: t("log.emptyDay"), cls: "task-time-tracker-log-empty-day" });
 			return;
 		}
 
 		const detail = container.createDiv({ cls: "task-time-tracker-log-card-detail" });
-		for (const entry of [...this.entries].sort((a, b) => a.start - b.start)) {
+		for (const entry of [...entries].sort((a, b) => a.start - b.start)) {
 			this.renderSessionRow(detail, entry);
 		}
 	}
@@ -328,8 +328,8 @@ export class EditTaskModal extends Modal {
 			const actions = form.createDiv({ cls: "task-time-tracker-log-edit-actions" });
 			actions.createEl("button", { text: t("log.deleteSessionYes"), cls: "mod-warning" }).addEventListener("click", () => {
 				void this.actions.deleteEntry(entry.id).then(() => {
-					const index = this.entries.findIndex((e) => e.id === entry.id);
-					if (index !== -1) this.entries.splice(index, 1);
+					// No local splice: renderSessions() re-reads the task's
+					// history, which no longer includes this session.
 					this.editingEntryId = null;
 					this.draft = null;
 					this.renderSessions();
