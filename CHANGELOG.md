@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.31] - 2026-09-07
+
+### Fixed
+
+- Multi-device sync: with Obsidian Sync (or any other sync between devices), a plugin instance left open on one device could still be holding a stale in-memory copy of `data.json` and overwrite time entries synced in from another device the moment it made its own next change. Entry, project, assignment, and settings changes are now applied by reloading the latest persisted state right before each write instead of saving the in-memory snapshot directly, and state is also reloaded when Obsidian reports an external settings change. Fixes [#2](https://github.com/Mythanar/obsidian-task-time-tracker/pull/2) (thanks @chenyenchung).
+
 ## [0.0.30] - 2026-09-04
 
 ### Added
