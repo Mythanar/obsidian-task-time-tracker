@@ -25,7 +25,7 @@ import {
 } from "obsidian";
 import type TaskTimeTrackerPlugin from "../main";
 import { t, TranslationKey } from "../i18n";
-import { DEFAULT_SETTINGS, isValidEmail, LogViewLocation, TaskIdFormat } from "../types";
+import { DEFAULT_SETTINGS, isValidEmail, LogViewLocation, PluginSettings, TaskIdFormat } from "../types";
 import { ProjectsSection, renderProjectsBanner } from "./ProjectsSection";
 
 function logViewLocationOptions(): Record<string, string> {
@@ -92,8 +92,9 @@ export class SettingsTab extends PluginSettingTab {
 				dropdown.addOptions(logViewLocationOptions());
 				dropdown.setValue(this.plugin.pluginState.settings.logViewLocation);
 				dropdown.onChange(async (value) => {
-					this.plugin.pluginState.settings.logViewLocation = value as LogViewLocation;
-					await this.plugin.saveSettings();
+					await this.plugin.updateSettings((settings) => {
+						settings.logViewLocation = value as LogViewLocation;
+					});
 				});
 			});
 	}
@@ -113,9 +114,10 @@ export class SettingsTab extends PluginSettingTab {
 				dropdown.addOptions(taskIdFormatOptions());
 				dropdown.setValue(this.plugin.pluginState.settings.taskIdFormat);
 				dropdown.onChange(async (value) => {
-					this.plugin.pluginState.settings.taskIdFormat = value as TaskIdFormat;
+					await this.plugin.updateSettings((settings) => {
+						settings.taskIdFormat = value as TaskIdFormat;
+					});
 					this.plugin.applyTaskIdFormatClass();
-					await this.plugin.saveSettings();
 				});
 			});
 	}
@@ -132,8 +134,9 @@ export class SettingsTab extends PluginSettingTab {
 				text.setPlaceholder(DEFAULT_SETTINGS.exportsFolder).setValue(this.plugin.pluginState.settings.exportsFolder);
 
 				const saveExportsFolder = async (path: string) => {
-					this.plugin.pluginState.settings.exportsFolder = path.trim();
-					await this.plugin.saveSettings();
+					await this.plugin.updateSettings((settings) => {
+						settings.exportsFolder = path.trim();
+					});
 				};
 
 				new FolderSuggest(this.app, text.inputEl, (path) => void saveExportsFolder(path));
@@ -223,12 +226,17 @@ export class SettingsTab extends PluginSettingTab {
 	// aqui para las dos.
 	private configureEmailField(
 		setting: Setting,
-		target: { email: string },
+		// A reader and a writer instead of a reference to the settings
+		// object: the state is replaced wholesale after every save (see
+		// core/StateStore.ts), so capturing it would leave an orphan object.
+		readEmail: () => string,
+		writeEmail: (settings: PluginSettings, email: string) => void,
 		placeholderKey: TranslationKey,
 		validDescKey: TranslationKey,
 	): void {
 		const renderEmailStatus = () => {
-			const invalid = target.email.length > 0 && !isValidEmail(target.email);
+			const email = readEmail();
+			const invalid = email.length > 0 && !isValidEmail(email);
 			setting.setDesc(invalid ? t("export.emailInvalid") : t(validDescKey));
 			setting.descEl.toggleClass("task-time-tracker-settings-error", invalid);
 		};
@@ -236,11 +244,10 @@ export class SettingsTab extends PluginSettingTab {
 		setting.addText((text) =>
 			text
 				.setPlaceholder(t(placeholderKey))
-				.setValue(target.email)
+				.setValue(readEmail())
 				.onChange(async (value) => {
-					target.email = value.trim();
+					await this.plugin.updateSettings((settings) => writeEmail(settings, value.trim()));
 					renderEmailStatus();
-					await this.plugin.saveSettings();
 				}),
 		);
 
@@ -251,7 +258,10 @@ export class SettingsTab extends PluginSettingTab {
 		setting.setName(t("settings.toggl.email.name"));
 		this.configureEmailField(
 			setting,
-			this.plugin.pluginState.settings.toggl,
+			() => this.plugin.pluginState.settings.toggl.email,
+			(settings, email) => {
+				settings.toggl.email = email;
+			},
 			"settings.toggl.email.placeholder",
 			"settings.toggl.email.descValid",
 		);
@@ -263,15 +273,14 @@ export class SettingsTab extends PluginSettingTab {
 	// del modal de exportacion (ver ExportModal.ts): cambiarla aqui se
 	// refleja alli y viceversa.
 	private configureTogglIncludeProjectClient(setting: Setting): void {
-		const { toggl } = this.plugin.pluginState.settings;
-
 		setting
 			.setName(t("settings.toggl.includeProjectClient.name"))
 			.setDesc(t("settings.toggl.includeProjectClient.desc"))
 			.addToggle((toggle) =>
-				toggle.setValue(toggl.includeProjectClient).onChange(async (value) => {
-					toggl.includeProjectClient = value;
-					await this.plugin.saveSettings();
+				toggle.setValue(this.plugin.pluginState.settings.toggl.includeProjectClient).onChange(async (value) => {
+					await this.plugin.updateSettings((settings) => {
+						settings.toggl.includeProjectClient = value;
+					});
 				}),
 			);
 	}
@@ -300,7 +309,10 @@ export class SettingsTab extends PluginSettingTab {
 		setting.setName(t("settings.clockify.email.name"));
 		this.configureEmailField(
 			setting,
-			this.plugin.pluginState.settings.clockify,
+			() => this.plugin.pluginState.settings.clockify.email,
+			(settings, email) => {
+				settings.clockify.email = email;
+			},
 			"settings.clockify.email.placeholder",
 			"settings.clockify.email.descValid",
 		);
@@ -313,15 +325,14 @@ export class SettingsTab extends PluginSettingTab {
 	// del importador), asi que se comporta igual que Include Client:
 	// opt-in, independiente, desmarcado por defecto.
 	private configureClockifyIncludeProject(setting: Setting): void {
-		const { clockify } = this.plugin.pluginState.settings;
-
 		setting
 			.setName(t("settings.clockify.includeProject.name"))
 			.setDesc(t("settings.clockify.includeProject.desc"))
 			.addToggle((toggle) =>
-				toggle.setValue(clockify.includeProject).onChange(async (value) => {
-					clockify.includeProject = value;
-					await this.plugin.saveSettings();
+				toggle.setValue(this.plugin.pluginState.settings.clockify.includeProject).onChange(async (value) => {
+					await this.plugin.updateSettings((settings) => {
+						settings.clockify.includeProject = value;
+					});
 				}),
 			);
 	}
@@ -330,15 +341,14 @@ export class SettingsTab extends PluginSettingTab {
 	// (ver arriba), desmarcado por defecto, mismo criterio "vault limpia
 	// por defecto" que Toggl.
 	private configureClockifyIncludeClient(setting: Setting): void {
-		const { clockify } = this.plugin.pluginState.settings;
-
 		setting
 			.setName(t("settings.clockify.includeClient.name"))
 			.setDesc(t("settings.clockify.includeClient.desc"))
 			.addToggle((toggle) =>
-				toggle.setValue(clockify.includeClient).onChange(async (value) => {
-					clockify.includeClient = value;
-					await this.plugin.saveSettings();
+				toggle.setValue(this.plugin.pluginState.settings.clockify.includeClient).onChange(async (value) => {
+					await this.plugin.updateSettings((settings) => {
+						settings.clockify.includeClient = value;
+					});
 				}),
 			);
 	}

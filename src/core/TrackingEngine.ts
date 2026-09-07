@@ -1,26 +1,26 @@
 // core/TrackingEngine.ts
 // Fase 1 — MVP de tracking local.
-// Responsabilidad: start/stop del timer activo, persistencia de TimeEntry[]
-// via saveData/loadData. Sin dependencia de red.
+// Responsabilidad: start/stop del timer activo. Sin dependencia de red.
+//
+// Persistence always goes through StateStore (read-before-write, see
+// core/StateStore.ts): the engine never saves its own in-memory copy.
 
-import { PluginState, TimeEntry } from "../types";
+import { StateStore } from "./StateStore";
+import { TimeEntry } from "../types";
 
 function generateId(): string {
 	return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export class TrackingEngine {
-	constructor(
-		private state: PluginState,
-		private persist: (state: PluginState) => Promise<void>,
-	) {}
+	constructor(private store: StateStore) {}
 
 	getActiveEntry(): TimeEntry | null {
-		return this.state.entries.find((entry) => entry.end === null) ?? null;
+		return this.store.getState().entries.find((entry) => entry.end === null) ?? null;
 	}
 
 	getEntries(): TimeEntry[] {
-		return this.state.entries;
+		return this.store.getState().entries;
 	}
 
 	// Suma de todas las sesiones ya cerradas de una tarea (por su tt-id).
@@ -28,7 +28,9 @@ export class TrackingEngine {
 	// badge de tiempo acumulado (y, si la tarea esta activa, se le suma el
 	// tiempo transcurrido de la sesion en curso aparte, en la UI).
 	getAccumulatedMs(taskId: string): number {
-		return this.state.entries
+		return this.store
+			.getState()
+			.entries
 			.filter((entry) => entry.taskId === taskId && entry.end !== null)
 			.reduce((sum, entry) => sum + ((entry.end as number) - entry.start), 0);
 	}
@@ -39,35 +41,75 @@ export class TrackingEngine {
 	// tt-id), no hay nada que hacer: se ignora la accion sin tocar nada.
 	// El vinculo con la tarea es el tt-id; taskText y filePath son
 	// snapshots inmutables de esta sesion, no se usan para el vinculo.
+	//
+	// The whole decision is taken INSIDE the mutation, on the state just
+	// read from disk: if another device left a session open and Sync has
+	// already delivered it here, it is visible and the one-active-timer
+	// rule still holds. Closing someone else's open session never destroys
+	// data (it gets an end, it is not removed), and a console warning is
+	// logged if there was more than one.
 	async start(taskId: string, taskText: string, filePath: string): Promise<"started" | "already-active"> {
-		const active = this.getActiveEntry();
-		if (active && active.taskId === taskId) {
-			return "already-active";
-		}
+		return this.store.apply((state) => {
+			const open = state.entries.filter((entry) => entry.end === null);
+			if (open.some((entry) => entry.taskId === taskId)) {
+				return { result: "already-active" as const, changed: false };
+			}
 
-		if (active) {
-			active.end = Date.now();
-		}
+			const now = Date.now();
+			if (open.length > 1) {
+				console.warn(
+					`Task Time Tracker: ${open.length} sesiones abiertas a la vez en data.json (posible tracking simultaneo en otro dispositivo). Se cierran todas al arrancar la nueva; no se descarta ninguna.`,
+				);
+			}
+			for (const entry of open) {
+				entry.end = now;
+			}
 
-		const entry: TimeEntry = {
-			id: generateId(),
-			taskId,
-			taskText,
-			filePath,
-			start: Date.now(),
-			end: null,
-		};
-		this.state.entries.push(entry);
-		await this.persist(this.state);
-		return "started";
+			state.entries.push({
+				id: generateId(),
+				taskId,
+				taskText,
+				filePath,
+				start: now,
+				end: null,
+			});
+			return { result: "started" as const };
+		});
 	}
 
+	// Closes the active session the user is looking at (the one in memory)
+	// by looking it up by id in the on-disk state. Defensive cases: if that
+	// session is not on disk it is reconstructed with its end instead of
+	// losing the operation, and if other sessions stay open (from another
+	// device) they are left untouched and warned about — no history is
+	// invented and no foreign record is discarded.
 	async stop(): Promise<TimeEntry | null> {
-		const active = this.getActiveEntry();
-		if (!active) return null;
-		active.end = Date.now();
-		await this.persist(this.state);
-		return active;
+		const remembered = this.getActiveEntry();
+		return this.store.apply((state) => {
+			const now = Date.now();
+			const open = state.entries.filter((entry) => entry.end === null);
+			const target =
+				(remembered ? open.find((entry) => entry.id === remembered.id) : undefined) ?? open[0] ?? null;
+
+			if (!target) {
+				if (!remembered) return { result: null, changed: false };
+				console.warn(
+					`Task Time Tracker: la sesion activa en memoria (${remembered.id}) no existe en data.json; se reconstruye cerrada para no perderla.`,
+				);
+				const restored: TimeEntry = { ...remembered, end: now };
+				state.entries.push(restored);
+				return { result: restored };
+			}
+
+			target.end = now;
+			const stillOpen = open.filter((entry) => entry !== target).length;
+			if (stillOpen > 0) {
+				console.warn(
+					`Task Time Tracker: quedan ${stillOpen} sesiones abiertas en data.json tras detener la actual (posible tracking en otro dispositivo). Se conservan tal cual.`,
+				);
+			}
+			return { result: target };
+		});
 	}
 }
 

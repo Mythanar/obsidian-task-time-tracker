@@ -1194,3 +1194,67 @@ resultado final.
   comentario. "Hoy" queda como único punto de salida del filtro de
   fecha. Se elimina también la clave de traducción
   `log.datePickerClear`, sin más usos en el codebase.
+
+## Seguridad frente a sync multi-dispositivo (leer-antes-de-escribir)
+
+- **El estado en memoria deja de ser la fuente de verdad al escribir.**
+  Hasta ahora el plugin cargaba `data.json` una sola vez en `onload()` y
+  cada operación guardaba el blob `PluginState` entero desde memoria. Con
+  Obsidian Sync y dos dispositivos activos eso perdía datos: A crea
+  sesiones → Sync deja el `data.json` nuevo en el disco de B → B, con su
+  copia vieja en RAM, toca cualquier cosa (start/stop, editar, borrar, un
+  ajuste, renombrar un proyecto) y reescribe el archivo entero desde
+  memoria obsoleta, borrando lo de A. La decisión: toda operación que
+  cambie estado **relee `data.json` justo antes de mutar**, aplica
+  únicamente su propia mutación sobre ese estado recién leído, guarda, y
+  solo entonces adopta el resultado persistido como estado en memoria.
+  Una operación sobre un registro nunca puede borrar registros ajenos que
+  existan en disco pero no en memoria. Vive en `core/StateStore.ts`
+  (`apply()` es la primitiva; `normalizeState()` el único punto de
+  conversión de lo que devuelva `loadData()` a un `PluginState` válido).
+- **No se fusionan snapshots completos.** Descartada la alternativa de
+  unir por id los dos estados (memoria + disco) después del hecho:
+  resucitaría registros borrados en otro dispositivo, ya que un registro
+  ausente en memoria puede significar "borrado" o "todavía no lo he
+  visto", y un snapshot no distingue los dos casos. Es la operación
+  concreta la que decide qué cambia.
+- **El formato de `data.json` no cambia.** Ni migración, ni campos de
+  metadatos nuevos, ni archivos por sesión: los usuarios existentes
+  actualizan sin hacer nada, y el histórico, la exportación, el Dashboard
+  y la recuperación de sesión activa siguen igual.
+- **Nada captura el objeto de estado.** Como el store lo reemplaza entero
+  tras cada escritura, `main.ts` expone `pluginState` como getter, y
+  `TrackingEngine`, `ProjectManager`, `SettingsTab` y `EditTaskModal`
+  leen a través de accesores en cada uso en vez de guardar una
+  referencia. Los paneles (`TimeLogView`, `DashboardView`), la status bar
+  y el control inline ya leían así, no necesitaron cambios.
+- **`onExternalSettingsChange()` refresca, nunca guarda.** Es el aviso de
+  Obsidian de que `data.json` cambió por fuera (Sync entregando lo de
+  otro equipo, o una edición manual). Solo relee y refresca UI: observar
+  un cambio externo no justifica una escritura, y una relectura no puede
+  crear ni detener un timer — el timer activo sigue siendo, como siempre,
+  la sesión con `end === null` que diga el disco.
+- **Sesiones abiertas simultáneas: se cierran, nunca se descartan.** Si
+  el disco trae más de una sesión con `end === null` (tracking arrancado
+  en otro dispositivo), `start()` las cierra todas antes de abrir la
+  nueva y avisa por consola; `stop()` cierra solo la que el usuario está
+  viendo y deja las demás intactas, avisando también. Si la sesión activa
+  en memoria ya no está en disco, se reconstruye cerrada en vez de perder
+  la operación. En ningún caso se borra un registro ni se inventa
+  historial.
+- **Carrera que sigue sin resolver, aceptada a propósito.** A lee el
+  estado viejo, B lee el estado viejo, A escribe lo suyo, B escribe lo
+  suyo antes de que Sync le haya entregado el cambio de A. Leer antes de
+  escribir no puede fusionar datos que todavía no han llegado a la
+  máquina; resolver eso exigiría un formato con historial por registro (o
+  un archivo por sesión), fuera del alcance. Lo que sí queda garantizado:
+  en cuanto una versión sincronizada está en el disco local, ninguna
+  operación local posterior pisa los registros ajenos de esa versión.
+- **Primeras pruebas automatizadas del proyecto.** `tests/` +
+  `npm test`, con el runner nativo de Node (`node --test`) sobre las
+  pruebas compiladas por el esbuild que el proyecto ya usa
+  (`esbuild.test.mjs`). Sin ninguna dependencia de desarrollo nueva, y
+  funciona igual en las tres versiones de Node del CI (20, 22 y 24), que
+  no comparten soporte nativo de TypeScript. El "disco" simulado hace un
+  ida y vuelta por JSON en cada `load`/`save`, así que memoria y disco
+  nunca comparten referencias y una prueba no puede pasar por accidente.

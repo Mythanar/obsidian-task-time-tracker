@@ -668,9 +668,9 @@ export class TimeLogView extends ItemView {
 			this.app,
 			taskId,
 			label,
-			this.actions.getEntriesForTask(taskId),
+			() => this.actions.getEntriesForTask(taskId),
 			this.getEntries,
-			this.actions.getProjects(),
+			() => this.actions.getProjects(),
 			this.actions.getProjectForTask(taskId),
 			{
 				assignProject: (id, projectId) => this.actions.assignProject(id, projectId),

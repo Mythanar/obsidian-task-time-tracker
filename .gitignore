@@ -12,6 +12,9 @@ node_modules
 # They should be uploaded to GitHub releases instead.
 main.js
 
+# Pruebas compiladas por esbuild.test.mjs para `node --test`
+tests/dist
+
 # Exclude sourcemaps
 *.map
 

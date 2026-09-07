@@ -7,9 +7,11 @@ export default defineConfig(
 		'node_modules',
 		'dist',
 		'esbuild.config.mjs',
+		'esbuild.test.mjs',
 		'version-bump.mjs',
 		'versions.json',
 		'main.js',
+		'tests/dist',
 		'package.json',
 		'package-lock.json',
 		'tsconfig.json',
@@ -29,4 +31,15 @@ export default defineConfig(
 		},
 	},
 	...obsidianmd.configs.recommended,
+	{
+		// Las pruebas corren en Node (node --test), nunca dentro de
+		// Obsidian ni en movil: las reglas de la plataforma no aplican, y
+		// describe()/it() del runner nativo devuelven promesas que el
+		// propio runner gestiona.
+		files: ['tests/**/*.ts'],
+		rules: {
+			'obsidianmd/no-nodejs-modules': 'off',
+			'@typescript-eslint/no-floating-promises': 'off',
+		},
+	},
 );
