@@ -141,6 +141,7 @@ export const en = {
 	// 7. Historial (src/ui/TimeLogView.ts)
 	"log.title": "Time Tracker",
 	"log.taskNotFound": "Task not found",
+	"log.noteNotFound": "Note not found",
 	"log.emptyAll": "No sessions recorded yet.",
 	"log.emptyDay": "No sessions this day.",
 	"log.session.singular": "session",

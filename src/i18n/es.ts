@@ -137,6 +137,7 @@ export const es: Record<TranslationKey, string> = {
 	// 7. Historial (src/ui/TimeLogView.ts)
 	"log.title": "Time Tracker",
 	"log.taskNotFound": "Tarea no encontrada",
+	"log.noteNotFound": "Nota no encontrada",
 	"log.emptyAll": "Todavía no hay sesiones registradas.",
 	"log.emptyDay": "Sin sesiones este día.",
 	"log.session.singular": "sesión",

@@ -37,8 +37,11 @@
 	margin-bottom: 0.25em;
 }
 
-.task-time-tracker-log-task-missing {
-	color: var(--text-error);
+/* Bug 0.0.32 — titulo real (taskText) cuando la nota se borro: solo
+   cursiva, sin tocar el color del texto (a diferencia del icono, que si
+   se colorea de error — ver .task-time-tracker-log-card-note-missing). */
+.task-time-tracker-log-task-title-missing-note {
+	font-style: italic;
 }
 
 .task-time-tracker-log-task-snapshot {
@@ -504,6 +507,16 @@
 
 .task-time-tracker-log-card-note:hover {
 	color: var(--text-accent);
+}
+
+/* Bug 0.0.32 — icono de nota borrada (file-x): unico elemento de la
+   tarjeta que se colorea de error; titulo y linea secundaria mantienen su
+   color normal (ver .task-time-tracker-log-task-title-missing-note). El
+   hover se fija tambien en error para no sugerir una navegacion (color de
+   accent) que este boton ya no ofrece. */
+.task-time-tracker-log-card-note-missing,
+.task-time-tracker-log-card-note-missing:hover {
+	color: var(--text-error);
 }
 
 /* Fila cuya tarea tiene el tracking activo en este momento: contorno de
@@ -2230,6 +2243,17 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	   envolver. */
 	box-sizing: border-box;
 	padding-right: 2.5em;
+}
+
+/* Bug 0.0.32 — aviso "Note not found" bajo el titulo del modal cuando la
+   nota se borro. Mismo tamaño/color atenuado que el tt-id de abajo, mas
+   cursiva (a diferencia del titulo, que se mantiene en su estilo normal
+   — ver EditTaskModal.ts#onOpen). */
+.task-time-tracker-edit-modal-note-missing {
+	margin-top: 0.15em;
+	font-size: 0.78em;
+	font-style: italic;
+	color: var(--text-muted);
 }
 
 /* Metadato secundario "tt-id" bajo el nombre de la nota (ver

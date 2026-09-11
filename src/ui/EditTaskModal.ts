@@ -52,6 +52,13 @@ export class EditTaskModal extends Modal {
 		app: App,
 		private taskId: string,
 		private label: string,
+		// Bug 0.0.32 — nota borrada: `label` ya llega como el taskText real
+		// (mismo snapshot que usa la tarjeta del Historial, ver
+		// TimeLogView.ts#renderTaskCard), no el generico "Task not found"/
+		// "Tarea no encontrada". Este flag solo controla el aviso adicional
+		// "Note not found" bajo el titulo — no afecta a tt-id, Project ni
+		// Sessions, que ya funcionan sin depender de la nota.
+		private isMissing: boolean,
 		// The full history of THIS task and the project list, both as
 		// readers: the in-memory state is replaced wholesale after every
 		// write (read-before-write, see core/StateStore.ts), so capturing
@@ -105,6 +112,14 @@ export class EditTaskModal extends Modal {
 		// cerrar (X) dentro del modal-header — resuelve el desalineamiento
 		// de raiz, sin necesidad de parchear un margin-top a mano.
 		this.setTitle(this.label);
+
+		// Bug 0.0.32 — nota borrada: aviso en cursiva bajo el titulo, distinto
+		// del tratamiento de la tarjeta del Historial (ahi el nombre va en
+		// cursiva; aqui es el titulo el que queda normal y este aviso el que
+		// va en cursiva, ver encargo). No afecta a tt-id/Project/Sessions.
+		if (this.isMissing) {
+			contentEl.createDiv({ text: t("log.noteNotFound"), cls: "task-time-tracker-edit-modal-note-missing" });
+		}
 
 		// Metadato secundario (siempre visible, no sujeto a los niveles
 		// Normal/Reducido/Oculto del tt-id renderizado en la nota via

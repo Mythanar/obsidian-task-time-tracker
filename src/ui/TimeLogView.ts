@@ -397,7 +397,7 @@ export class TimeLogView extends ItemView {
 			// (mismo tamaño e hit-area) — solo cambia el icono y la accion al
 			// clic, que ya no puede abrir una nota que no existe.
 			const missingBtn = titleLine.createEl("button", {
-				cls: "task-time-tracker-log-card-note task-time-tracker-icon-btn clickable-icon",
+				cls: "task-time-tracker-log-card-note task-time-tracker-log-card-note-missing task-time-tracker-icon-btn clickable-icon",
 			});
 			setIcon(missingBtn, "file-x");
 			missingBtn.setAttribute("aria-label", t("log.noteNotFoundAriaLabel"));
@@ -410,14 +410,24 @@ export class TimeLogView extends ItemView {
 		// Titulo: sin hover ni accion de clic propia (la navegacion vive
 		// solo en el icono de arriba) — solo tooltip con el texto completo
 		// en desktop si esta truncado.
-		const title = titleLine.createDiv({ text: label, cls: "task-time-tracker-log-task" });
+		// Bug 0.0.32 — nota borrada: el titulo ya no muestra el generico
+		// "Task not found"/"Tarea no encontrada" (ese texto sigue vivo en
+		// taskLabel(), usado solo por la confirmacion de borrado, fuera de
+		// este bug); en su lugar usa taskText, el mismo snapshot inmutable
+		// que ya resuelve este mismo caso en el Dashboard (ver
+		// resolveTaskLabels() en DashboardView.ts), en cursiva y sin tocar
+		// el color del titulo.
+		const mostRecent = isMissing
+			? taskEntries.reduce((latest, entry) => (entry.start > latest.start ? entry : latest))
+			: null;
+		const titleText = mostRecent ? mostRecent.taskText : label;
+		const title = titleLine.createDiv({ text: titleText, cls: "task-time-tracker-log-task" });
 		if (isMissing) {
-			title.addClass("task-time-tracker-log-task-missing");
+			title.addClass("task-time-tracker-log-task-title-missing-note");
 		}
 
 		if (isMissing) {
-			const mostRecent = taskEntries.reduce((latest, entry) => (entry.start > latest.start ? entry : latest));
-			infoBlock.createDiv({ text: mostRecent.taskText, cls: "task-time-tracker-log-task-snapshot" });
+			infoBlock.createDiv({ text: t("log.noteNotFound"), cls: "task-time-tracker-log-task-snapshot" });
 		}
 
 		// Fila 2 — Proyecto/Cliente: solo si hay proyecto asignado (vinculo
@@ -471,7 +481,7 @@ export class TimeLogView extends ItemView {
 		setTooltip(menuBtn, t("log.taskMenuAriaLabel"));
 		menuBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
-			this.openTaskMenu(menuBtn, taskId, label);
+			this.openTaskMenu(menuBtn, taskId, titleText, isMissing);
 		});
 
 		if (activeEntry) {
@@ -627,13 +637,13 @@ export class TimeLogView extends ItemView {
 	// Zona 2 — menu kebab: Editar (abre EditTaskModal con el historico
 	// completo de la tarea) y Eliminar (misma guarda de sesion activa y
 	// misma confirmacion de borrado de tarea completa de siempre, Fase 5).
-	private openTaskMenu(anchor: HTMLElement, taskId: string, label: string): void {
+	private openTaskMenu(anchor: HTMLElement, taskId: string, label: string, isMissing: boolean): void {
 		const menu = new Menu();
 		menu.addItem((item) =>
 			item
 				.setTitle(t("log.menuEdit"))
 				.setIcon("pencil")
-				.onClick(() => this.openEditTaskModal(taskId, label)),
+				.onClick(() => this.openEditTaskModal(taskId, label, isMissing)),
 		);
 		menu.addSeparator();
 		menu.addItem((item) =>
@@ -663,11 +673,12 @@ export class TimeLogView extends ItemView {
 	// Abre el modal de Editar con el historico completo de la tarea (no
 	// solo las entries acotadas al dia/semana visible de esta tarjeta) —
 	// ver TimeLogViewActions#getEntriesForTask.
-	private openEditTaskModal(taskId: string, label: string): void {
+	private openEditTaskModal(taskId: string, label: string, isMissing: boolean): void {
 		new EditTaskModal(
 			this.app,
 			taskId,
 			label,
+			isMissing,
 			() => this.actions.getEntriesForTask(taskId),
 			this.getEntries,
 			() => this.actions.getProjects(),
