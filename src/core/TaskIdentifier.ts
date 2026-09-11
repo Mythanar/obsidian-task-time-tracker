@@ -11,10 +11,17 @@
 import { App, MarkdownView, TFile } from "obsidian";
 
 const TASK_ID_REGEX = /\[tt-id::\s*([0-9A-Za-z]+)\]/;
+// Prefijo de callout/blockquote: cero o mas ">" (cada uno con su propio
+// espacio en blanco opcional antes y despues), para que una tarea dentro
+// de un callout -o de un callout anidado, "> > "- se reconozca igual que
+// una fuera de uno. Obsidian antepone ese ">" literal a cada linea del
+// callout en el documento subyacente; no se retira de line.text solo
+// porque Live Preview lo dibuje como una barra decorativa.
+const BLOCKQUOTE_PREFIX = "(?:\\s*>)*";
 // Viñeta: "-", "*", "+" o lista numerada ("1.", "2.", ...). El \s* inicial
 // cubre la indentacion, asi que las tareas anidadas se detectan igual.
-const CHECKBOX_LINE_REGEX = /^\s*(?:[-*+]|\d+\.)\s*\[.\]\s*(.+?)\s*$/;
-const CHECKBOX_STATE_REGEX = /^\s*(?:[-*+]|\d+\.)\s*\[(.)\]/;
+const CHECKBOX_LINE_REGEX = new RegExp(`^${BLOCKQUOTE_PREFIX}\\s*(?:[-*+]|\\d+\\.)\\s*\\[.\\]\\s*(.+?)\\s*$`);
+const CHECKBOX_STATE_REGEX = new RegExp(`^${BLOCKQUOTE_PREFIX}\\s*(?:[-*+]|\\d+\\.)\\s*\\[(.)\\]`);
 
 const NANOID_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const NANOID_LENGTH = 8;
