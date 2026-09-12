@@ -169,7 +169,7 @@ Sin traducción necesaria (símbolos/datos dinámicos): fecha (`toLocaleDateStri
 
 Sin traducción necesaria: `→` (separadores) y `+1` (badge medianoche) — ambos solo en la fila estática de sesión, ya no en el formulario de edición (ver nota abajo); `—` (duración sin cerrar/no calculable todavía), placeholder `HH:MM:SS`.
 
-> ✅ **Rediseño del formulario de edición inline:** ahora agrupa los campos en parejas etiquetadas con icono (fecha inicio/hora inicio, fecha fin/hora fin), todas como texto libre — incluida la fecha, que deja de ser un `<input type="date">` nativo y de inferirse por comparación de horas. Decisión revisada respecto a la original de Fase 5 Bloque 1 ("la fecha de fin nunca se edita directamente"); ver `DECISIONES.md`. Añade un bloque de "Duración calculada" que sustituye a la vista previa junto a los campos, y separa "Eliminar sesión" del resto de botones con una línea divisoria.
+> ✅ **Rediseño del formulario de edición inline:** ahora agrupa los campos en parejas etiquetadas con icono (fecha inicio/hora inicio, fecha fin/hora fin), todas como texto libre — incluida la fecha, que deja de ser un `<input type="date">` nativo y de inferirse por comparación de horas. Decisión revisada respecto a la original de Fase 5 Bloque 1 ("la fecha de fin nunca se edita directamente"); ver `DECISIONS.md`. Añade un bloque de "Duración calculada" que sustituye a la vista previa junto a los campos, y separa "Eliminar sesión" del resto de botones con una línea divisoria.
 
 ### 7.4 Confirmación de borrado de tarea completa
 
@@ -232,7 +232,7 @@ Ficheros: `src/main.ts` y `src/ui/TimeLogView.ts`. `src/core/` y `src/export/` c
 1. ✅ Fix de redacción del mensaje `export.emailInvalidNotice` en español (apartado 5) — aplicado, junto con su traducción al inglés.
 2. ✅ Unificación de la clave `log.title` — decisión cerrada ("Time Tracker" en ambos idiomas). Pendiente solo de implementación (apartado 7.1).
 3. ✅ `aria-label` de las flechas de navegación anterior/siguiente del Historial — implementado, dinámico según Día/Semana (apartado 7.5).
-4. ✅ `estado-fase-5.md` y `DECISIONES.md` — entrada retroactiva de "Exportar todo" ya añadida a `DECISIONES.md`, sin tocar `estado-fase-5.md` (ya la tenía).
+4. ✅ `estado-fase-5.md` y `DECISIONS.md` — entrada retroactiva de "Exportar todo" ya añadida a `DECISIONS.md`, sin tocar `estado-fase-5.md` (ya la tenía).
 5. ⏳ `name`/`description` del `manifest.json` — pendiente de que el usuario lo pase para revisarlo. Queda fijo en inglés, no entra en el sistema de i18n.
 6. ✅ Decisión de fechas del Historial (`toLocaleDateString`/`toLocaleTimeString`) — se quedan dependiendo del sistema operativo, sin forzar el idioma de Obsidian. Cerrado, sin cambio de código.
 

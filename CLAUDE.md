@@ -96,7 +96,7 @@ manual y por lotes a plataformas externas (Toggl y otras a futuro).
 Fases 0 a 7 completadas. Plugin publicado en el listado de Community Plugins
 de Obsidian, release `0.0.26` (primer y unico release hasta la fecha).
 README con contenido e ilustraciones completos, licencia MIT, verificado en
-movil, bug del doble panel corregido. Ver docs/DECISIONES.md para el detalle
+movil, bug del doble panel corregido. Ver docs/DECISIONS.md para el detalle
 fase a fase.
 
 **Trabajo en curso — "Proyectos" (funcionalidad de producto nueva, no

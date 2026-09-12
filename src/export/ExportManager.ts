@@ -8,7 +8,7 @@
 //
 // La idempotencia vía externalId no aplica a ningun adapter de este
 // archivo: cada exportacion genera un archivo nuevo, sin comprobar
-// duplicados contra exportaciones anteriores (ver docs/DECISIONES.md).
+// duplicados contra exportaciones anteriores (ver docs/DECISIONS.md).
 // Ningun adapter llama a una API externa — Fase 4 se redefinio para
 // generar archivos compatibles con el importador nativo de cada
 // plataforma en vez de hacer push contra su API.

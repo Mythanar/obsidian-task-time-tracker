@@ -26,7 +26,7 @@ const CHECKBOX_STATE_REGEX = new RegExp(`^${BLOCKQUOTE_PREFIX}\\s*(?:[-*+]|\\d+\
 const NANOID_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const NANOID_LENGTH = 8;
 
-// Bug conocido de Tasks (issue #1505, ver docs/DECISIONES.md y la nota de
+// Bug conocido de Tasks (issue #1505, ver docs/DECISIONS.md y la nota de
 // bug en el vault): Tasks solo reconoce sus propios campos si quedan
 // DESPUES del tt-id en la linea; si el tt-id queda detras de ellos, Tasks
 // deja de reconocerlos todos por igual. La unica solucion fiable (no
@@ -320,7 +320,7 @@ export class TaskIdentifier {
 	// Devuelve TODOS los contenidos en vivo por ruta, no uno solo: si la
 	// misma nota esta abierta en mas de un leaf, cada uno puede tener un
 	// estado distinto en un instante dado (ver bug documentado en
-	// DECISIONES.md, "paneles duplicados").
+	// DECISIONS.md, "paneles duplicados").
 	private getLiveEditorContents(): Map<string, string[]> {
 		const contents = new Map<string, string[]>();
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
