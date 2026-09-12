@@ -25,28 +25,24 @@ import { t } from "./i18n";
 /**
  * Task Time Tracker
  *
- * FASE 1 — MVP de tracking local.
- * FASE 2 — vinculacion robusta a tareas via tt-id:: inline.
- * FASE 3 — exportacion manual a CSV.
- * FASE 4 — exportacion CSV para el importador nativo de Toggl.
- * FASE 5 — una tarea cerrada ([x] o [-]) no se puede trackear; si se
- * cierra mientras esta activa, el tracking se detiene solo. Badge
- * play/stop junto al checkbox (solo modo Edicion) para iniciar y
- * detener el tracking sin usar el comando.
- * Local-first: start/stop y persistencia no dependen de red; la
- * exportacion es siempre push manual, nunca sync en tiempo real; ningun
- * adapter de exportacion llama a una API externa.
+ * A closed task ([x] or [-]) can't be tracked; if it closes while
+ * active, tracking stops on its own. Play/stop badge next to the
+ * checkbox (Edit mode only) to start and stop tracking without using
+ * the command.
+ * Local-first: start/stop and persistence don't depend on network;
+ * export is always a manual push, never real-time sync; no export
+ * adapter calls an external API.
  */
 
-// Al marcar el checkbox en modo Edicion, Obsidian guarda el cambio a
-// disco (y dispara vault.on("modify")) con un debounce de ~2s propio del
-// editor. Para no depender de ese retraso, tambien se escucha
-// workspace.on("editor-change") leyendo el contenido en vivo del editor;
-// este debounce propio (mucho mas corto) evita reaccionar a un estado
-// transitorio de la linea mientras el usuario sigue editando.
+// When the checkbox is checked in Edit mode, Obsidian saves the change
+// to disk (and fires vault.on("modify")) with the editor's own ~2s
+// debounce. To not depend on that delay, workspace.on("editor-change")
+// is also listened to, reading the editor's live content; this own
+// (much shorter) debounce avoids reacting to a transient line state
+// while the user is still editing.
 const EDITOR_CHANGE_DEBOUNCE_MS = 300;
 
-// Fase 7 — ver applyTaskIdFormatClass().
+// See applyTaskIdFormatClass().
 const TASKID_FORMAT_BODY_CLASSES = ["task-time-tracker-taskid-reduced", "task-time-tracker-taskid-hidden"];
 
 export default class TaskTimeTrackerPlugin extends Plugin {
@@ -112,11 +108,11 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 				}),
 		);
 
-		// QA 0.0.30 fix 3 — "Informe de rendimiento" no esta construido ni
-		// asignado a esta version; se retira del menu hasta que se construya
-		// (ver CLAUDE.md, "Trabajo en curso"). El menu se conserva (en vez de
-		// abrir el Dashboard directo al click) para poder añadir esa entrada
-		// de vuelta sin otro cambio estructural.
+		// "Informe de rendimiento" isn't built or scheduled for this
+		// version; it's left out of the menu until it's built (see
+		// CLAUDE.md, "Trabajo en curso"). The menu is kept (instead of
+		// opening the Dashboard directly on click) so that entry can be
+		// added back without another structural change.
 		this.addRibbonIcon("bar-chart-3", t("ribbon.tooltip"), (evt: MouseEvent) => {
 			const menu = new Menu();
 			menu.addItem((item) =>
@@ -128,17 +124,17 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			menu.showAtMouseEvent(evt);
 		});
 
-		// Respaldo: cubre ediciones que no pasan por un editor abierto en
-		// Obsidian (edicion externa al vault, sync entre dispositivos, o
-		// el propio guardado a disco del editor tras su debounce interno).
+		// Fallback: covers edits that don't go through an editor open in
+		// Obsidian (external edits to the vault, sync between devices, or
+		// the editor's own save to disk after its internal debounce).
 		this.registerEvent(
 			this.app.vault.on("modify", (file) => {
 				void this.handleFileModified(file);
 			}),
 		);
 
-		// Camino rapido: reacciona al contenido en vivo del editor sin
-		// esperar al guardado a disco (ver EDITOR_CHANGE_DEBOUNCE_MS).
+		// Fast path: reacts to the editor's live content without waiting
+		// for the save to disk (see EDITOR_CHANGE_DEBOUNCE_MS).
 		this.registerEvent(
 			this.app.workspace.on("editor-change", (editor) => {
 				this.scheduleEditorChangeCheck(editor);
@@ -150,10 +146,9 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			}
 		});
 
-		// Badge play/stop junto al checkbox (Fase 5 UX), solo en modo
-		// Edicion (CodeMirror). El tick cada segundo solo se dispara si hay
-		// una sesion activa, para no hacer trabajo de balde cuando no hay
-		// nada corriendo.
+		// Play/stop badge next to the checkbox, Edit mode only
+		// (CodeMirror). The per-second tick only fires if there's an
+		// active session, to avoid wasted work when nothing is running.
 		const inlineControlDeps = {
 			getActiveEntry: () => this.trackingEngine.getActiveEntry(),
 			getAccumulatedMs: (taskId: string) => this.trackingEngine.getAccumulatedMs(taskId),
@@ -301,9 +296,9 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		this.notifyTrackingChanged();
 	}
 
-	// Respaldo para archivos que no estan abiertos en ningun editor:
-	// vault.on("modify") se dispara igual (Obsidian ya escribio el
-	// archivo a disco), asi que basta con leerlo del vault.
+	// Fallback for files not open in any editor: vault.on("modify") fires
+	// just the same (Obsidian already wrote the file to disk), so
+	// reading it from the vault is enough.
 	private async handleFileModified(file: TAbstractFile): Promise<void> {
 		if (!(file instanceof TFile)) return;
 		if (!this.trackingEngine.getActiveEntry()) return;
@@ -312,11 +307,11 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		await this.stopIfActiveTaskClosedIn(content);
 	}
 
-	// Debounce corto: cada tecla reprograma el chequeo, asi que solo se
-	// evalua el contenido una vez que el usuario deja de escribir esa
-	// linea durante EDITOR_CHANGE_DEBOUNCE_MS. Un estado "[x]"/"[-]"
-	// transitorio a mitad de una edicion nunca llega a evaluarse si se
-	// corrige antes de que venza el plazo.
+	// Short debounce: every keystroke reschedules the check, so the
+	// content is only evaluated once the user stops typing on that line
+	// for EDITOR_CHANGE_DEBOUNCE_MS. A transient "[x]"/"[-]" state
+	// mid-edit never gets evaluated if it's corrected before the delay
+	// expires.
 	private scheduleEditorChangeCheck(editor: Editor): void {
 		if (!this.trackingEngine.getActiveEntry()) return;
 
@@ -329,10 +324,10 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		}, EDITOR_CHANGE_DEBOUNCE_MS);
 	}
 
-	// Busca la linea de la sesion activa por su tt-id en el contenido
-	// dado (de un editor en vivo o de un archivo leido del vault) y, si
-	// su checkbox esta cerrado, detiene el tracking igual que un "Stop
-	// tracking" manual.
+	// Looks for the active session's line by its tt-id in the given
+	// content (from a live editor or a file read from the vault) and, if
+	// its checkbox is closed, stops tracking the same as a manual "Stop
+	// tracking".
 	private async stopIfActiveTaskClosedIn(content: string): Promise<void> {
 		const active = this.trackingEngine.getActiveEntry();
 		if (!active) return;
@@ -349,11 +344,11 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		}
 	}
 
-	// Fase 5 UX — control inline: inicia/detiene el tracking desde el
-	// badge play/stop junto al checkbox (modo Edicion). El propio control
-	// (InlineTaskControlExtension) ya se aseguro de que la linea tenga
-	// tt-id antes de llamar aqui; esta funcion solo mueve el estado del
-	// TrackingEngine, igual que el comando.
+	// Inline control: starts/stops tracking from the play/stop badge
+	// next to the checkbox (Edit mode). The control itself
+	// (InlineTaskControlExtension) already made sure the line has a
+	// tt-id before calling here; this function only moves
+	// TrackingEngine's state, same as the command.
 	private async handleInlineStart(taskId: string, taskText: string, filePath: string): Promise<void> {
 		const result = await this.trackingEngine.start(taskId, taskText, filePath);
 		if (result !== "started") return;
@@ -370,14 +365,14 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		this.notifyTrackingChanged();
 	}
 
-	// "Retomar tracking de una tarea ya registrada" (0.0.32) — arranca una
-	// sesion nueva para un tt-id que ya tiene historico, desde el boton de
-	// play de su tarjeta en el Historial. No lee ni escribe la nota de
-	// origen (a diferencia de startTrackingFromCursor/handleInlineStart):
-	// taskText/filePath del nuevo TimeEntry son el snapshot de la sesion
-	// mas reciente ya guardada de esa tarea, asi que funciona igual si la
-	// nota fue editada o borrada desde entonces. Nunca reabre la sesion
-	// anterior — trackingEngine.start() siempre crea una entry nueva.
+	// "Retomar tracking de una tarea ya registrada" — starts a new
+	// session for a tt-id that already has history, from its card's play
+	// button in the Historial. Doesn't read or write the source note
+	// (unlike startTrackingFromCursor/handleInlineStart): the new
+	// TimeEntry's taskText/filePath are the snapshot of that task's most
+	// recently saved session, so it works the same whether the note was
+	// edited or deleted since. Never reopens the previous session —
+	// trackingEngine.start() always creates a new entry.
 	private async resumeTracking(taskId: string): Promise<void> {
 		const taskEntries = this.trackingEngine.getEntries().filter((entry) => entry.taskId === taskId);
 		if (taskEntries.length === 0) return;
@@ -391,17 +386,15 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		this.notifyTrackingChanged();
 	}
 
-	// Fix pendiente de la pieza 1 (bug del tt-id vs metadatos de Tasks) —
-	// punto unico donde se cierra la sesion activa y se guarda el
-	// TimeEntry: todos los flujos de stop (comando, RecoveryModal, control
-	// inline, auto-stop al cerrar el checkbox en stopIfActiveTaskClosedIn)
-	// pasan por aqui en vez de llamar a trackingEngine.stop() por su
-	// cuenta, para que la recolocacion del tt-id (ensureTaskId() ya
-	// verificado en la pieza 1, ver repositionTaskId() en
-	// TaskIdentifier.ts) se aplique siempre en el mismo sitio. Cubre el
-	// caso de que la tarea se haya editado a mano mientras estaba en
-	// marcha y el tt-id haya quedado mal colocado — la correccion al
-	// empezar a trackear no alcanza a una edicion posterior en marcha.
+	// Single point where the active session closes and the TimeEntry is
+	// saved: every stop flow (command, RecoveryModal, inline control,
+	// auto-stop on closing the checkbox in stopIfActiveTaskClosedIn)
+	// goes through here instead of calling trackingEngine.stop() on its
+	// own, so the tt-id's repositioning (see repositionTaskId() in
+	// TaskIdentifier.ts) is always applied in the same place. Covers the
+	// case where the task was hand-edited while running and the tt-id
+	// ended up misplaced — the fix applied when tracking starts doesn't
+	// reach a later edit made while it's running.
 	private async stopActiveTracking(): Promise<TimeEntry | null> {
 		const stopped = await this.trackingEngine.stop();
 		if (stopped) {
@@ -410,11 +403,12 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		return stopped;
 	}
 
-	// Avisa a los controles inline ya montados (icono junto al checkbox)
-	// de que el estado de tracking cambio, para que actualicen icono/badge
-	// sin esperar al tick de 1s. No hace falta forzar una reconstruccion de
-	// decoraciones en CodeMirror: cada widget ya montado esta suscrito a
-	// este bus y se redibuja solo (ver InlineTaskControlExtension.ts).
+	// Notifies the already-mounted inline controls (icon next to the
+	// checkbox) that the tracking state changed, so they update
+	// icon/badge without waiting for the 1s tick. No need to force a
+	// rebuild of CodeMirror's decorations: every already-mounted widget
+	// is subscribed to this bus and redraws itself (see
+	// InlineTaskControlExtension.ts).
 	private notifyTrackingChanged(): void {
 		this.inlineControlsBus.notify();
 	}
@@ -452,14 +446,14 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		}
 	}
 
-	// Fase 5 — boton "Exportar todo" en Settings: salvaguarda ante una
-	// desinstalacion, ya que la API de Obsidian no permite interceptar el
-	// momento exacto en que el usuario desinstala un plugin (no hay forma
-	// tecnica de avisar "justo antes"). Mismo camino que runExport() con
-	// formato CSV generico y el rango completo precalculado (desde la
-	// primera sesion hasta ahora) — sin modal, sin seleccion de rango ni
-	// de formato, un solo clic. La sesion activa (si hay una) queda fuera
-	// igual que en cualquier otra exportacion: exportToCsv() ya filtra por
+	// Settings' "Export all" button: general good practice before an
+	// uninstall, since the Obsidian API doesn't let you intercept the
+	// exact moment a user uninstalls a plugin (there's no technical way
+	// to be warned "just before"). Same path as runExport() with the
+	// generic CSV format and the full range precomputed (from the first
+	// session to now) — no modal, no range or format selection, one
+	// click. The active session (if there is one) is left out just like
+	// in any other export: exportToCsv() already filters by
 	// entry.end !== null.
 	async exportAllEntriesToCsv(): Promise<void> {
 		const entries = this.trackingEngine.getEntries();
@@ -485,62 +479,60 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		}
 	}
 
-	// Boton "Actualizar tareas" en Settings > Compatibilidad con Tasks —
-	// recorre el vault una vez, bajo demanda, corrigiendo tareas trackeadas
-	// con una version anterior que dejaron el tt-id detras de los
-	// metadatos de Tasks (ver appendTaskId() y fixMisplacedTaskIds() en
-	// TaskIdentifier.ts, que hacen todo el trabajo real).
+	// "Update tasks" button in Settings > Tasks compatibility — walks the
+	// vault once, on demand, fixing tasks tracked with an older version
+	// that left the tt-id behind Tasks' metadata (see appendTaskId() and
+	// fixMisplacedTaskIds() in TaskIdentifier.ts, which do all the real
+	// work).
 	async fixMisplacedTaskIds(): Promise<void> {
 		const { reviewed, fixed } = await this.taskIdentifier.fixMisplacedTaskIds();
 		const params = { reviewed: String(reviewed), fixed: String(fixed) };
 		new Notice(fixed > 0 ? t("notice.tasksCompatResult", params) : t("notice.tasksCompatResultNone", params));
 	}
 
-	// Fase 5 — el modal de exportacion permite completar el email de Toggl
-	// ahi mismo si falta; al confirmar, se persiste aqui como el mismo
-	// ajuste de Settings > Toggl > Email (unica fuente de verdad), nunca
-	// como un valor exclusivo de esa exportacion.
+	// The export modal lets the Toggl email be filled in right there if
+	// missing; on confirm, it's persisted here as the same Settings >
+	// Toggl > Email setting (single source of truth), never as a value
+	// exclusive to that export.
 	private async saveTogglEmail(email: string): Promise<void> {
 		await this.updateSettings((settings) => {
 			settings.toggl.email = email;
 		});
 	}
 
-	// Fase 8 — casilla "Incluir Proyecto y Cliente" del modal de exportacion:
-	// misma fuente de verdad que Settings > Toggl (ver SettingsTab.ts), se
-	// persiste al instante al marcarla/desmarcarla, no al confirmar la
-	// exportacion (a diferencia del email, no tiene un estado intermedio
-	// invalido que proteger).
+	// Export modal's "Include Project and Client" checkbox: same source
+	// of truth as Settings > Toggl (see SettingsTab.ts), persisted
+	// instantly on check/uncheck, not on confirming the export (unlike
+	// the email, it has no invalid intermediate state to protect).
 	private async saveTogglIncludeProjectClient(value: boolean): Promise<void> {
 		await this.updateSettings((settings) => {
 			settings.toggl.includeProjectClient = value;
 		});
 	}
 
-	// Fase 9 — mismo patron que saveTogglEmail: el modal de exportacion
-	// persiste aqui el email de Clockify tecleado ahi mismo, como el mismo
-	// ajuste de Settings > Clockify > Email (unica fuente de verdad).
+	// Same pattern as saveTogglEmail: the export modal persists the
+	// Clockify email typed right there, as the same Settings > Clockify
+	// > Email setting (single source of truth).
 	private async saveClockifyEmail(email: string): Promise<void> {
 		await this.updateSettings((settings) => {
 			settings.clockify.email = email;
 		});
 	}
 
-	// Fase 9 — mismo patron que saveTogglIncludeProjectClient: casilla
-	// "Include Project" del modal de exportacion, misma fuente de verdad
-	// que Settings > Clockify, se persiste al instante. Independiente de
-	// "Include Client" (ver saveClockifyIncludeClient) — rectificado el 22
-	// de agosto de 2026, ver docs/Vault/Tareas/Clockify.md: Project no es
-	// obligatorio para el importador de CSV de Clockify.
+	// Same pattern as saveTogglIncludeProjectClient: export modal's
+	// "Include Project" checkbox, same source of truth as Settings >
+	// Clockify, persisted instantly. Independent of "Include Client"
+	// (see saveClockifyIncludeClient) — Project isn't actually required
+	// by Clockify's CSV importer (see docs/DECISIONS.md).
 	private async saveClockifyIncludeProject(value: boolean): Promise<void> {
 		await this.updateSettings((settings) => {
 			settings.clockify.includeProject = value;
 		});
 	}
 
-	// Fase 9 — mismo patron que saveTogglIncludeProjectClient: casilla
-	// "Include Client" del modal de exportacion, misma fuente de verdad que
-	// Settings > Clockify, se persiste al instante.
+	// Same pattern as saveTogglIncludeProjectClient: export modal's
+	// "Include Client" checkbox, same source of truth as Settings >
+	// Clockify, persisted instantly.
 	private async saveClockifyIncludeClient(value: boolean): Promise<void> {
 		await this.updateSettings((settings) => {
 			settings.clockify.includeClient = value;
@@ -554,10 +546,10 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		await this.store.updateSettings(fn);
 	}
 
-	// Fase 5 UX — panel de Historial: edicion inline de inicio/fin de una
-	// sesion ya cerrada. El aviso de solapamiento con otra sesion se
-	// calcula en vivo del lado de TimeLogView mientras se edita, no aqui —
-	// el guardado nunca se bloquea por eso.
+	// Historial panel: inline editing of a closed session's start/end.
+	// The overlap warning with another session is computed live on
+	// TimeLogView's side while editing, not here — saving is never
+	// blocked by it.
 	//
 	// Handled here, via StateStore, instead of adding methods to
 	// TrackingEngine — its responsibility is still only the active timer.
@@ -583,8 +575,8 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		return result;
 	}
 
-	// Fase 5 UX — panel de Historial: borrado definitivo de una sesion
-	// cerrada (la confirmacion vive en la UI, aqui ya se asume confirmado).
+	// Historial panel: permanent deletion of a closed session (the
+	// confirmation lives in the UI, here it's already assumed confirmed).
 	async deleteEntry(entryId: string): Promise<void> {
 		const deleted = await this.store.deleteEntry(entryId);
 		if (!deleted) return;
@@ -592,15 +584,15 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		this.notifyTrackingChanged();
 	}
 
-	// Fase 5 UX — panel de Historial: borrado de una tarea completa, todo
-	// su historico por tt-id (incluidas sesiones de otras notas si el id
-	// esta duplicado — mismo criterio de Fase 2 de tratar duplicados como
-	// la misma tarea). Nunca toca la nota: el [tt-id:: ...] que quede en
-	// la linea de la tarea se deja intacto y huerfano a proposito; si el
-	// usuario vuelve a trackear esa linea, simplemente arranca un
-	// historico nuevo bajo el mismo id. Bloqueado mientras esa tarea
-	// tenga la sesion activa (la confirmacion vive en la UI, aqui ya se
-	// asume confirmado salvo por este bloqueo).
+	// Historial panel: deleting a whole task, its entire history by
+	// tt-id (including sessions from other notes if the id is
+	// duplicated — same criterion of treating duplicates as the same
+	// task). Never touches the note: whatever [tt-id:: ...] is left on
+	// the task's line is left intact and orphaned on purpose; if the
+	// user tracks that line again, it simply starts a new history under
+	// the same id. Blocked while that task has the active session (the
+	// confirmation lives in the UI, here it's already assumed confirmed
+	// except for this block).
 	async deleteTask(taskId: string): Promise<DeleteTaskResult> {
 		// The active-session guard is re-evaluated against the latest state
 		// from disk: the task may be running on another device.
@@ -625,10 +617,10 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		return result;
 	}
 
-	// Publico: tambien lo llama ProjectsSection.ts (via SettingsTab.ts) tras
-	// borrar un proyecto, para que las tarjetas del Historial que lo tenian
-	// asignado pierdan la fila de Proyecto/Cliente sin esperar a un refresco
-	// externo del panel.
+	// Public: also called by ProjectsSection.ts (via SettingsTab.ts)
+	// after deleting a project, so the Historial cards that had it
+	// assigned drop the Project/Client row without waiting for an
+	// external panel refresh.
 	refreshLogViews(): void {
 		for (const leaf of this.app.workspace.getLeavesOfType(TIME_LOG_VIEW_TYPE)) {
 			if (leaf.view instanceof TimeLogView) leaf.view.refresh();
@@ -638,9 +630,9 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		}
 	}
 
-	// Bloque 2 — la ubicacion (sidebar/tab) solo se decide al crear un leaf
-	// nuevo; un panel ya abierto se revela donde ya estaba, sin moverlo (ver
-	// SettingsTab.ts).
+	// The location (sidebar/tab) is only decided when creating a new
+	// leaf; an already-open panel is revealed where it already was,
+	// without moving it (see SettingsTab.ts).
 	private async activateLogView(): Promise<void> {
 		const existing = this.app.workspace.getLeavesOfType(TIME_LOG_VIEW_TYPE);
 		if (existing[0]) {
@@ -657,10 +649,10 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		await this.app.workspace.revealLeaf(leaf);
 	}
 
-	// Dashboard — siempre en pestana del workspace principal, sin ajuste
-	// de ubicacion (a diferencia del Historial): no es un panel de
-	// consulta rapida tipo sidebar, es una vista de una sola pantalla
-	// completa (ver brief "Dashboard").
+	// Dashboard — always in a tab of the main workspace, no location
+	// setting (unlike the Historial): it isn't a sidebar-style quick
+	// lookup panel, it's a single full-screen view (see the "Dashboard"
+	// brief).
 	private async activateDashboardView(): Promise<void> {
 		const existing = this.app.workspace.getLeavesOfType(DASHBOARD_VIEW_TYPE);
 		if (existing[0]) {
