@@ -168,6 +168,7 @@ export const es: Record<TranslationKey, string> = {
 	"log.deleteTaskYes": "Sí, eliminar",
 	"log.deleteBlockedActive": "No se puede eliminar: esta tarea tiene una sesión activa. Detén el tracking primero.",
 	"log.stopTrackingAriaLabel": "Detener tracking",
+	"log.resumeTrackingAriaLabel": "Retomar tracking",
 	"log.openNoteAriaLabel": "Abrir nota de la tarea",
 	"log.noteNotFoundAriaLabel": "Nota de origen no encontrada",
 	"log.viewDay": "Día",

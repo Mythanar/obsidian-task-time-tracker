@@ -94,6 +94,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 					deleteEntry: (entryId) => this.deleteEntry(entryId),
 					deleteTask: (taskId) => this.deleteTask(taskId),
 					stopTracking: () => this.handleInlineStop(),
+					resumeTracking: (taskId) => this.resumeTracking(taskId),
 					getEntriesForTask: (taskId) => this.trackingEngine.getEntries().filter((e) => e.taskId === taskId),
 					getProjects: () => this.projectManager.getProjects(),
 					getProjectForTask: (taskId) => this.projectManager.getProjectForTask(taskId),
@@ -364,6 +365,27 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	private async handleInlineStop(): Promise<void> {
 		const stopped = await this.stopActiveTracking();
 		if (!stopped) return;
+		this.statusBarWidget.refresh();
+		this.refreshLogViews();
+		this.notifyTrackingChanged();
+	}
+
+	// "Retomar tracking de una tarea ya registrada" (0.0.32) — arranca una
+	// sesion nueva para un tt-id que ya tiene historico, desde el boton de
+	// play de su tarjeta en el Historial. No lee ni escribe la nota de
+	// origen (a diferencia de startTrackingFromCursor/handleInlineStart):
+	// taskText/filePath del nuevo TimeEntry son el snapshot de la sesion
+	// mas reciente ya guardada de esa tarea, asi que funciona igual si la
+	// nota fue editada o borrada desde entonces. Nunca reabre la sesion
+	// anterior — trackingEngine.start() siempre crea una entry nueva.
+	private async resumeTracking(taskId: string): Promise<void> {
+		const taskEntries = this.trackingEngine.getEntries().filter((entry) => entry.taskId === taskId);
+		if (taskEntries.length === 0) return;
+		const mostRecent = taskEntries.reduce((latest, entry) => (entry.start > latest.start ? entry : latest));
+
+		const result = await this.trackingEngine.start(taskId, mostRecent.taskText, mostRecent.filePath);
+		if (result !== "started") return;
+
 		this.statusBarWidget.refresh();
 		this.refreshLogViews();
 		this.notifyTrackingChanged();

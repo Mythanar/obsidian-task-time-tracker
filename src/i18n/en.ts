@@ -172,6 +172,7 @@ export const en = {
 	"log.deleteTaskYes": "Yes, delete",
 	"log.deleteBlockedActive": "Can't delete: this task has an active session. Stop tracking first.",
 	"log.stopTrackingAriaLabel": "Stop tracking",
+	"log.resumeTrackingAriaLabel": "Resume tracking",
 	"log.openNoteAriaLabel": "Open task note",
 	"log.noteNotFoundAriaLabel": "Source note not found",
 	"log.viewDay": "Day",

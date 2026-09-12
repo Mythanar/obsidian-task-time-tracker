@@ -122,6 +122,13 @@ queda pausado hasta decidir como tratar ese muro de pago. Harvest, Everhour
 y Timely siguen sin investigar.
 
 ## Como trabajar
+- Idioma de comentarios y mensajes de consola: a partir de ahora, todo
+  comentario de codigo y mensaje de consola (console.log/warn/error) NUEVO
+  se escribe en ingles, no en espanol. No aplica en retroactivo: el
+  espanol ya existente en el codigo no se reescribe solo por tocar el
+  archivo, unicamente los comentarios/mensajes que se añadan o reemplacen
+  de aqui en adelante. No afecta a los mensajes de cara al usuario (Notice,
+  UI), que siguen pasando por i18n (en.ts/es.ts) como siempre.
 - Construye por fases segun el roadmap, no todo de una vez.
 - Antes de construir el adapter de exportacion de cada plataforma (Toggl,
   Clockify, etc.), confirma con el usuario el formato exacto que espera su

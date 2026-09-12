@@ -28,6 +28,16 @@ export interface TimeLogViewActions {
 	deleteEntry(entryId: string): Promise<void>;
 	deleteTask(taskId: string): Promise<DeleteTaskResult>;
 	stopTracking(): Promise<void>;
+	// "Retomar tracking de una tarea ya registrada" (0.0.32) — arranca una
+	// sesion NUEVA para un tt-id que ya tiene historico, sin leer ni
+	// escribir la nota de origen (da igual si fue editada o borrada desde
+	// la ultima sesion): taskText/filePath del nuevo TimeEntry se toman de
+	// la sesion mas reciente ya guardada de esa tarea, igual que
+	// handleInlineStart() los toma del editor cuando la tarea se trackea
+	// desde la nota. Nunca reabre/continua la sesion anterior. No-op si esa
+	// tarea ya es la que tiene tracking activo (no deberia ocurrir: el
+	// boton de la tarjeta ya muestra stop en ese caso).
+	resumeTracking(taskId: string): Promise<void>;
 	// Historico completo de una tarea (todas sus sesiones, sin acotar por
 	// dia/semana visible) — alimenta el modal de Editar, que gestiona
 	// todo el historico y no solo lo que la tarjeta muestra ahora mismo.
@@ -440,6 +450,53 @@ export class TimeLogView extends ItemView {
 			this.renderProjectRow(infoBlock, project);
 		}
 
+		// Time Tracker Tab v2 redesign — ghost play / filled stop button, in
+		// a fixed horizontal slot between the title and the time/sessions
+		// column (no longer after the kebab): the slot never moves, whether
+		// idle or active. The slot collapses to width:0 at rest (see
+		// .task-time-tracker-log-card-control-slot in styles.css) and only
+		// reveals the ghost play on hover/focus of the row (desktop) or
+		// always on touch — CSS-only, no JS needed for that part. The
+		// active row's stop lives in the same slot but never collapses,
+		// since there is at most one active row at a time. No duration
+		// counter and no pulsing bullet inside either state — the total in
+		// the next column already carries both (see the bullet pushed into
+		// totalGroup above).
+		//
+		// A span, not a <button> (style QA fix — mirrors the inline play/
+		// stop control next to the task in the note, see
+		// InlineTaskControlView in InlineTaskControl.ts): a real <button>
+		// carries Obsidian's/the browser's own default appearance (most
+		// visibly a hover box-shadow) that this tightly-fitted 28px circle
+		// has no room for without clipping it. A span has none of that
+		// baggage, but doesn't get keyboard behavior for free either, so
+		// role="button" + tabIndex + an explicit Enter/Space handler
+		// replace what a native button would have given us automatically.
+		const controlSlot = outerRow.createDiv({ cls: "task-time-tracker-log-card-control-slot" });
+		controlSlot.toggleClass("is-active", activeEntry !== null);
+		const controlBtn = controlSlot.createSpan({ cls: "task-time-tracker-log-card-control" });
+		controlBtn.toggleClass("is-active", activeEntry !== null);
+		controlBtn.setAttribute("role", "button");
+		controlBtn.tabIndex = 0;
+		const controlLabel = activeEntry ? t("log.stopTrackingAriaLabel") : t("log.resumeTrackingAriaLabel");
+		controlBtn.setAttribute("aria-label", controlLabel);
+		setTooltip(controlBtn, controlLabel);
+		setIcon(controlBtn, activeEntry ? "square" : "play");
+		const triggerControl = (evt: Event) => {
+			evt.stopPropagation();
+			if (activeEntry) {
+				void this.actions.stopTracking();
+			} else {
+				void this.actions.resumeTracking(taskId);
+			}
+		};
+		controlBtn.addEventListener("click", triggerControl);
+		controlBtn.addEventListener("keydown", (evt) => {
+			if (evt.key !== "Enter" && evt.key !== " ") return;
+			evt.preventDefault();
+			triggerControl(evt);
+		});
+
 		// Columna derecha (3a pasada de QA visual; "N sessions" bajado
 		// debajo del total en la 4a; ahora hermana de infoBlock, no de
 		// titleLine, en la 6a — ver Time Tracker Tab.dc.html actualizado en
@@ -452,12 +509,19 @@ export class TimeLogView extends ItemView {
 		// de pintarse aqui.
 		const rightCol = outerRow.createDiv({ cls: "task-time-tracker-log-card-right-col" });
 		// Total agregado (varias sesiones sumadas): formato compacto, no
-		// HH:MM:SS — ver formatDurationCompact(). Icono de cronometro solo
-		// si hay tracking activo (ver mismo criterio en renderViewTotal() y
-		// renderDayHeading()).
+		// HH:MM:SS — ver formatDurationCompact(). Bullet pulsante solo si
+		// hay tracking activo (ver mas abajo).
 		const totalGroup = rightCol.createSpan({ cls: "task-time-tracker-totals-duration-group" });
+		// "Retomar tracking" (0.0.32) — el bullet pulsante en accent color
+		// (misma clase/animacion que el badge inline junto al checkbox, ver
+		// .task-time-tracker-inline-dot) sustituye aqui al icono de
+		// cronometro de antes: indica que el numero de al lado se actualiza
+		// en vivo sin sugerir una accion sobre si mismo (a diferencia del
+		// icono dentro de un boton). Vive junto al TOTAL, nunca dentro del
+		// boton de play/stop — ver el control mas arriba, entre el titulo y
+		// esta columna.
 		if (activeEntry) {
-			setIcon(totalGroup.createSpan({ cls: "task-time-tracker-totals-duration-icon" }), "timer");
+			totalGroup.createSpan({ cls: "task-time-tracker-inline-dot task-time-tracker-log-card-total-dot" });
 		}
 		const totalDuration = totalGroup.createSpan({
 			text: formatDurationCompact(totalMs),
@@ -468,11 +532,29 @@ export class TimeLogView extends ItemView {
 			cls: "task-time-tracker-log-session-count",
 		});
 
-		// Zona 2 — menu kebab: siempre visible (decision QA — se mantiene
-		// como zona independiente del boton de stop de abajo, en vez de
-		// fundirse en una unica posicion contextual), no depende de expandir
-		// la tarjeta ni de hover de fila. Hermano de infoBlock/rightCol en la
-		// fila exterior.
+		if (activeEntry) {
+			// Sumatorio de la cabecera ("N sessions · Xh Ym"): completedMs es la
+			// suma de las sesiones YA cerradas de esta tarjeta; el tick de cada
+			// segundo (via el bus) le suma el tiempo transcurrido desde
+			// activeEntry.start. Formato compacto, sin redibujar cada segundo
+			// (ver tickActiveCard) — bug reportado por el usuario: antes solo
+			// se actualizaba con un refresh externo del panel.
+			const completedMs = taskEntries
+				.filter((entry) => entry.id !== activeEntry.id)
+				.reduce((sum, entry) => sum + ((entry.end as number) - entry.start), 0);
+			this.activeCardTicks.push({
+				kind: "total",
+				el: totalDuration,
+				completedMs,
+				start: activeEntry.start,
+				lastMinute: Math.floor(totalMs / 60000),
+			});
+		}
+
+		// Zona 2 — menu kebab: siempre visible, no depende de expandir la
+		// tarjeta ni de hover de fila. Ultimo hijo de la fila exterior — fijo
+		// al final tanto en reposo como en activo (ver control de play/stop
+		// mas arriba, entre el titulo y la columna de totales).
 		const menuBtn = outerRow.createEl("button", {
 			cls: "task-time-tracker-log-card-menu task-time-tracker-icon-btn clickable-icon",
 		});
@@ -483,47 +565,6 @@ export class TimeLogView extends ItemView {
 			evt.stopPropagation();
 			this.openTaskMenu(menuBtn, taskId, titleText, isMissing);
 		});
-
-		if (activeEntry) {
-			// Boton de stop con contador en vivo, mismo patron de pill que el
-			// badge junto al checkbox (icono relleno + numero en
-			// monoespaciada). completedMs es la suma de las sesiones YA
-			// cerradas de esta tarjeta; el tick de cada segundo (via el bus)
-			// le suma el tiempo transcurrido desde activeEntry.start. Vive en
-			// la misma fila exterior que el kebab (decision QA — elemento
-			// adicional, no lo sustituye), tras el, como ultimo elemento.
-			const stopBtn = outerRow.createEl("button", { cls: "task-time-tracker-log-card-stop" });
-			stopBtn.setAttribute("aria-label", t("log.stopTrackingAriaLabel"));
-			const stopIcon = stopBtn.createSpan({ cls: "task-time-tracker-log-card-stop-icon" });
-			setIcon(stopIcon, "square");
-			// Mismo punto pulsante que el badge junto al checkbox (comparten
-			// clase y animacion): aqui siempre "en ejecucion", sin necesidad
-			// de una clase is-active propia.
-			stopBtn.createSpan({ cls: "task-time-tracker-inline-dot" });
-			const stopDuration = stopBtn.createSpan({ cls: "task-time-tracker-log-card-stop-duration" });
-
-			const completedMs = taskEntries
-				.filter((entry) => entry.id !== activeEntry.id)
-				.reduce((sum, entry) => sum + ((entry.end as number) - entry.start), 0);
-			stopDuration.setText(formatDuration(completedMs + (Date.now() - activeEntry.start)));
-			this.activeCardTicks.push({ kind: "duration", el: stopDuration, completedMs, start: activeEntry.start });
-			// Sumatorio de la cabecera ("N sessions · Xh Ym"): mismo completedMs/
-			// start que el contador de arriba, pero en formato compacto y sin
-			// redibujar cada segundo (ver tickActiveCard) — bug reportado por el
-			// usuario: antes solo se actualizaba con un refresh externo del panel.
-			this.activeCardTicks.push({
-				kind: "total",
-				el: totalDuration,
-				completedMs,
-				start: activeEntry.start,
-				lastMinute: Math.floor(totalMs / 60000),
-			});
-
-			stopBtn.addEventListener("click", (evt) => {
-				evt.stopPropagation();
-				void this.actions.stopTracking();
-			});
-		}
 
 		// Medir DESPUES de que titleLine y el resto de hermanos de la fila
 		// exterior (proyecto/cliente, columna derecha, kebab, stop si lo
@@ -618,20 +659,17 @@ export class TimeLogView extends ItemView {
 	// desde antes de este punto), asi que el layout ya esta resuelto al
 	// leer estas propiedades — no hace falta esperar (leer clientWidth/
 	// scrollWidth fuerza un reflow sincrono si hiciera falta). El requisito
-	// real es que `el` mismo tenga una caja con overflow:hidden (mas
-	// text-overflow:ellipsis para una linea, o -webkit-line-clamp para
-	// varias — ver .task-time-tracker-log-card-project-name y el titulo de
-	// la tarjeta respectivamente en styles.css): un <span> sin esas reglas
-	// propias (display:inline puro) siempre da clientWidth/clientHeight 0,
-	// asi que la comparacion nunca detecta truncamiento — bug de QA
-	// corregido aplicando esas reglas al span de texto mismo, no a un
-	// contenedor distinto. scrollHeight > clientHeight (ademas del ancho,
-	// ya comprobado antes) detecta el caso del titulo de 2 lineas — el
-	// recorte de -webkit-line-clamp trunca por alto, no por ancho, asi que
-	// scrollWidth > clientWidth solo no basta ahi.
+	// real es que `el` mismo tenga una caja con overflow:hidden +
+	// text-overflow:ellipsis en una sola linea (ver
+	// .task-time-tracker-log-card-project-name y el titulo de la tarjeta en
+	// styles.css, ambos single-line desde el rediseno Time Tracker Tab v2):
+	// un <span> sin esas reglas propias (display:inline puro) siempre da
+	// clientWidth 0, asi que la comparacion nunca detecta truncamiento —
+	// bug de QA corregido aplicando esas reglas al span de texto mismo, no
+	// a un contenedor distinto.
 	private applyTruncationTooltip(el: HTMLElement, fullText: string): void {
 		if (Platform.isMobile) return;
-		if (el.scrollWidth > el.clientWidth || el.scrollHeight > el.clientHeight) setTooltip(el, fullText);
+		if (el.scrollWidth > el.clientWidth) setTooltip(el, fullText);
 	}
 
 	// Zona 2 — menu kebab: Editar (abre EditTaskModal con el historico

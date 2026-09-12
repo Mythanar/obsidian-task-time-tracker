@@ -121,7 +121,7 @@
    del contenedor (.task-time-tracker-totals-duration-group) entonces
    centra esa caja con hueco extra, no el icono visible, y el icono queda
    corrido hacia arriba respecto al valor grande (22px) que tiene al lado.
-   Mismo patron ya aplicado en .task-time-tracker-log-card-stop-icon svg y
+   Mismo patron ya aplicado en .task-time-tracker-log-card-control svg y
    .task-time-tracker-inline-icon svg. */
 .task-time-tracker-totals-duration-icon svg {
 	width: 0.9em;
@@ -310,30 +310,32 @@
 	min-width: 0;
 }
 
-/* Titulo: hasta 2 lineas antes de truncar con elipsis (4a pasada de QA
-   visual — antes 1 sola linea, sin dejar hueco suficiente al titulo una
-   vez "N sessions" bajo debajo del total, ver Time Tracker Tab.dc.html
-   actualizado en docs/Prototype, linea 105: tt-clamp2/line-height:1.35).
-   -webkit-line-clamp: soportado en Chromium/Electron (base de Obsidian),
-   mismo criterio que el resto del archivo de no perseguir compatibilidad
-   con navegadores fuera de ese motor. min-width: 0 sigue haciendo falta
-   porque es un item flex dentro de title-line (sin esto, un flex item no
-   se encoge por debajo de su contenido intrinseco). Sin cursor/hover
-   propios (ver rediseno: el titulo ya no es un area clicable, ver
-   TimeLogView.ts#applyTruncationTooltip para el tooltip nativo cuando el
-   texto no cabe — ahora compara tambien scrollHeight/clientHeight, ver
-   ese metodo). Tamaño/peso/color: escala del prototipo (13.5px/500/
-   text-normal) — a diferencia del titulo suelto de la confirmacion de
-   borrado, que se queda en el peso 600 de .task-time-tracker-log-task sin
-   este override. */
+/* Title: single line, ellipsis-truncated (Time Tracker Tab v2 redesign —
+   reverts the earlier 2-line clamp). The row's action slot now animates
+   its width between 0 and 28px on hover/focus (see
+   .task-time-tracker-log-card-control-slot above), and the title (its
+   flex:1 1 auto sibling) is what claims that freed width while idle — a
+   title that could still wrap to 2 lines would re-wrap mid-transition,
+   causing visible reflow/jitter and possibly pushing the right-hand
+   column. Single-line ellipsis sidesteps that entirely: the title's
+   height never depends on how much width it currently has, so the 150ms
+   width transition only ever moves the ellipsis cutoff point, never the
+   row's layout. min-width: 0 still needed — it's a flex item inside
+   title-line, and a flex item never shrinks below its intrinsic content
+   width without it. No cursor/
+   hover of its own (the title isn't a clickable area — see
+   TimeLogView.ts#applyTruncationTooltip for the native tooltip shown when
+   the text doesn't fit). Size/weight/color unchanged from the previous
+   design (13.5px/500/text-normal) — differs from the standalone title in
+   the delete confirmation, which stays at .task-time-tracker-log-task's
+   own 600 weight without this override. */
 .task-time-tracker-log-card-title-line .task-time-tracker-log-task {
 	flex: 1 1 auto;
 	min-width: 0;
 	margin-bottom: 0;
 	overflow: hidden;
-	display: -webkit-box;
-	-webkit-line-clamp: 2;
-	-webkit-box-orient: vertical;
+	white-space: nowrap;
+	text-overflow: ellipsis;
 	line-height: 1.3;
 	font-size: 0.84em;
 	font-weight: 500;
@@ -354,6 +356,7 @@
 	flex-shrink: 0;
 	border-radius: var(--radius-s);
 	color: var(--text-faint);
+	cursor: pointer;
 }
 
 .task-time-tracker-log-card-menu:hover {
@@ -555,65 +558,162 @@
 	color: var(--text-faint);
 }
 
-/* Boton de stop + contador en vivo, en el lugar de la papelera mientras
-   la tarjeta esta activa. Mismo patron de pill que el badge junto al
-   checkbox (.task-time-tracker-inline-control.is-active): tinte de
-   --interactive-accent via color-mix() (nunca un color fijo), icono
-   relleno, numero en monoespaciada, punto pulsante. Integrado en el
-   mismo flex-wrap que el resto de .task-time-tracker-log-meta (sin
-   position: absolute ni float): flex-shrink: 0 para que nunca se
-   comprima su contenido interno, bajando de linea entero si no cabe. */
-.task-time-tracker-log-card-stop {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.35em;
+/* "Retomar tracking de una tarea ya registrada" — Time Tracker Tab v2
+   redesign. The slot collapses its width to 0 at rest and back to 28px
+   on reveal, between the title and the time/sessions column (never after
+   it like the earlier iteration) — see renderTaskCard() in
+   TimeLogView.ts. That collapse is also what lets the title (flex:1 1
+   auto on .task-time-tracker-log-card-info, its flex sibling here) claim
+   the freed width automatically while the row is idle: no extra CSS
+   needed for that, it falls out of the existing flex layout once this
+   slot's own width goes to 0. Reveal triggers are hover/focus of the
+   WHOLE row (:hover and :focus-within both — a keyboard user tabbing
+   into a width:0 button still needs to see it appear, which :hover alone
+   would never trigger) or always on touch devices, where hover doesn't
+   exist (see the (hover: none) block below). The active row's stop never
+   collapses (.is-active): there is at most one at a time, since the
+   plugin has a single active timer, so there is nothing to hide.
+   overflow-x only (not the overflow shorthand) — this is the axis that
+   actually animates; clipping the Y axis too cut off the button's own
+   bottom edge in an earlier pass of this design (style QA). */
+.task-time-tracker-log-card-control-slot {
+	width: 0;
+	overflow-x: hidden;
+	overflow-y: visible;
 	flex-shrink: 0;
-	margin-left: auto;
-	padding: 0.2em 0.6em;
-	border: 1px solid color-mix(in srgb, var(--interactive-accent) 55%, transparent);
-	border-radius: 100px;
-	background-color: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
-	color: var(--interactive-accent);
+	transition: width 0.15s ease;
+}
+
+.task-time-tracker-log-row:hover .task-time-tracker-log-card-control-slot,
+.task-time-tracker-log-row:focus-within .task-time-tracker-log-card-control-slot,
+.task-time-tracker-log-card-control-slot.is-active {
+	width: 28px;
+}
+
+@media (hover: none) {
+	.task-time-tracker-log-card-control-slot {
+		width: 28px;
+	}
+}
+
+/* A <span> (role="button" + tabIndex set in TimeLogView.ts), not a real
+   <button> — style QA fix, same reasoning as the inline play/stop
+   control next to the task in the note (see
+   .task-time-tracker-inline-control above): a native <button> carries
+   Obsidian's/the browser's own default appearance, most visibly a hover
+   box-shadow, that this tightly-fitted 28px circle has no room for
+   without clipping it against the slot above. A span has none of that
+   baggage to fight, so every visual rule below is the complete story —
+   nothing implicit left to override. box-sizing: border-box so the 1px
+   border stays inside the declared 28x28 box instead of adding on top of
+   it.
+
+   Idle palette (style QA fix) is grayscale on purpose — icon in
+   --text-muted (visibly lighter than the fill for real contrast, a step
+   up from --text-faint, which read as too washed-out against the fill in
+   an earlier pass) over a solid --background-modifier-border fill/border
+   — plain neutral tokens, no color-mix needed since nothing here is
+   accent-tinted. --interactive-accent is reserved entirely for hover/
+   focus (below) and for the row's OWN "running" fill (.is-active,
+   further below, unchanged solid accent): accent only ever means
+   "interactive right now" or "this is the active row", never the resting
+   look, so hovering an idle play can't be confused with a row that is
+   actually tracking. */
+.task-time-tracker-log-card-control {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-sizing: border-box;
+	width: 28px;
+	height: 28px;
+	flex-shrink: 0;
+	border-radius: 100%;
 	cursor: pointer;
+	user-select: none;
+	color: var(--text-muted);
+	background-color: var(--background-modifier-border);
+	border: 1px solid var(--background-modifier-border);
+}
+
+.task-time-tracker-log-card-control:hover {
+	color: var(--interactive-accent);
+	background-color: color-mix(in srgb, var(--interactive-accent) 18%, var(--background-modifier-border));
+	border-color: color-mix(in srgb, var(--interactive-accent) 50%, transparent);
 }
 
 @supports not (color: color-mix(in srgb, red 50%, blue)) {
-	.task-time-tracker-log-card-stop {
-		border: 1px solid var(--interactive-accent);
-		background-color: var(--interactive-accent);
+	.task-time-tracker-log-card-control:hover {
+		background-color: var(--background-modifier-hover);
 	}
 }
 
-.task-time-tracker-log-card-stop:hover {
-	background-color: color-mix(in srgb, var(--interactive-accent) 24%, transparent);
-	border-color: color-mix(in srgb, var(--interactive-accent) 65%, transparent);
-}
-
-@supports not (color: color-mix(in srgb, red 50%, blue)) {
-	.task-time-tracker-log-card-stop:hover {
-		background-color: var(--interactive-accent);
-		border-color: var(--interactive-accent);
-	}
-}
-
-.task-time-tracker-log-card-stop:focus-visible {
+.task-time-tracker-log-card-control:focus-visible {
+	color: var(--interactive-accent);
+	background-color: color-mix(in srgb, var(--interactive-accent) 18%, var(--background-modifier-border));
+	border-color: color-mix(in srgb, var(--interactive-accent) 50%, transparent);
 	outline: 2px solid var(--interactive-accent);
 	outline-offset: 2px;
 }
 
-.task-time-tracker-log-card-stop-icon svg {
-	width: 0.85em;
-	height: 0.85em;
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+	.task-time-tracker-log-card-control:focus-visible {
+		background-color: var(--background-modifier-hover);
+	}
+}
+
+.task-time-tracker-log-card-control svg {
+	width: 13px;
+	height: 13px;
 	display: block;
 	fill: currentColor;
 	stroke: none;
 }
 
-.task-time-tracker-log-card-stop-duration {
-	font-size: 0.85em;
-	font-family: var(--font-monospace);
-	line-height: 1;
-	white-space: nowrap;
+/* Active row's stop (style QA fix — darker, matches the same colors as
+   the inline stop next to the task in the note, see
+   .task-time-tracker-inline-control.is-active above; the note's version
+   is a pill and this one stays a circle, only the color recipe is
+   shared): a translucent accent tint instead of a solid fill, mixed onto
+   transparent exactly like the note does — never a solid fill (never
+   collapsed either, see .task-time-tracker-log-card-control-slot.is-active
+   above). color stays --interactive-accent, never --text-on-accent: with
+   a translucent background instead of a solid one, --text-on-accent would
+   lose contrast against it. */
+.task-time-tracker-log-card-control.is-active {
+	color: var(--interactive-accent);
+	background-color: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
+	border-color: color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+}
+
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+	.task-time-tracker-log-card-control.is-active {
+		background-color: var(--interactive-accent);
+		border-color: var(--interactive-accent);
+	}
+}
+
+.task-time-tracker-log-card-control.is-active:hover {
+	color: var(--interactive-accent);
+	background-color: color-mix(in srgb, var(--interactive-accent) 24%, transparent);
+	border-color: color-mix(in srgb, var(--interactive-accent) 65%, transparent);
+}
+
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+	.task-time-tracker-log-card-control.is-active:hover {
+		background-color: var(--interactive-accent);
+		border-color: var(--interactive-accent);
+	}
+}
+
+/* Bullet pulsante junto al TOTAL (no dentro del boton de arriba, ver
+   comentario de renderTaskCard() en TimeLogView.ts) mientras esa tarea
+   esta en tracking activo: reusa .task-time-tracker-inline-dot (mismo
+   tamaño/animacion que el badge inline y el resto del panel, ver la regla
+   compartida mas abajo), con su propio color explicito en accent — sin
+   esto heredaria el color del valor del total (--text-normal, ver
+   .task-time-tracker-totals-duration), no el accent que pide el croquis. */
+.task-time-tracker-log-card-total-dot {
+	color: var(--interactive-accent);
 }
 
 .task-time-tracker-log-card-detail {
@@ -1857,11 +1957,15 @@
 }
 
 /* Punto pulsante junto al icono, solo mientras hay tracking activo:
-   compartido por el badge inline (.is-active), por el boton de stop del
-   Historial (.task-time-tracker-log-card-stop, siempre "en ejecucion"
-   por definicion) y por la fila de sesion en curso dentro del detalle
-   expandido de una tarjeta (.task-time-tracker-log-session-live) —
-   mismo tamaño/color/animacion en los tres sitios. */
+   compartido por el badge inline (.is-active), por el bullet junto al
+   total de cada tarjeta del Historial
+   (.task-time-tracker-log-card-total-dot, siempre "en ejecucion" por
+   definicion — solo se inserta en el DOM en ese caso, ver
+   renderTaskCard() en TimeLogView.ts) y por la fila de sesion en curso
+   dentro del detalle expandido de una tarjeta
+   (.task-time-tracker-log-session-live) — mismo tamaño/animacion en los
+   tres sitios (el color puede variar, ver
+   .task-time-tracker-log-card-total-dot mas arriba). */
 .task-time-tracker-inline-dot {
 	display: none;
 	width: 6px;
@@ -1872,7 +1976,7 @@
 }
 
 .task-time-tracker-inline-control.is-active .task-time-tracker-inline-dot,
-.task-time-tracker-log-card-stop .task-time-tracker-inline-dot,
+.task-time-tracker-log-card-total-dot,
 .task-time-tracker-log-session-live .task-time-tracker-inline-dot {
 	display: inline-block;
 	animation: task-time-tracker-pulse 1.8s ease-in-out infinite;
