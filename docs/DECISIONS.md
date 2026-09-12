@@ -1342,6 +1342,30 @@ resultado final.
   ida y vuelta por JSON en cada `load`/`save`, así que memoria y disco
   nunca comparten referencias y una prueba no puede pasar por accidente.
 
+## Historial header — v2 redesign (full-width stepper)
+
+- **Replaces the earlier 400px container-query header redesign** (see
+  the "Fase 5 — fix responsive de la cabecera del Historial" entry
+  above) after several rounds of patches on that approach, using specs
+  and prototypes the user provided ("Cabecera Time Tracker.dc.html" and
+  "Header Responsive Wireframes.dc.html", the "1c — full-width
+  stepper" strategy).
+- **Single 480px container breakpoint, shared by all three view modes
+  (Day/Week/Resultados).** Wide format (>=480px): a single-row
+  "auto 1fr auto" grid — toggle/Volver on the left, arrows+date (or the
+  Resultados range box) in the center, calendar+Filter anchored right.
+  Compact format (<480px): two rows — toggle/Volver + calendar+Filter
+  on row 1, a full-width framed control on row 2 (a real stepper in
+  Day/Week, a non-interactive centered box in Resultados).
+- **The "Hoy" button is removed from this bar entirely, in every
+  format.** The date-picker's footer (see
+  DatePickerPopover.ts#goToToday) becomes the single entry point to
+  "today", replacing the standalone button the previous header
+  redesign had added.
+- **Resultados range gets its own framed box** (border + background,
+  `.task-time-tracker-log-results-rangebox`) instead of plain text, to
+  match "Volver" and calendar+Filter, which are also framed controls.
+
 ## Historial — retomar tracking de una tarea ya registrada
 
 - **Nuevo control en la tarjeta del Historial para retomar el tracking de

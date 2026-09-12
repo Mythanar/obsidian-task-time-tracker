@@ -1,14 +1,13 @@
 // ui/TimeLogView.ts
-// Fase 1 — MVP de tracking local (panel de historial basico).
-// Fase 2 — cada entrada se resuelve por su tt-id::; si la linea ya no
-// existe en ninguna nota, se muestra como "Tarea no encontrada" sin
-// descartar el historico.
-// Rediseno "Editar tarea desde el Historial" (agosto 2026) — la tarjeta
-// pasa a ser de solo lectura con tres zonas clicables independientes
-// (icono de nota, menu kebab, linea de sesiones que expande/colapsa un
-// detalle de solo lectura); toda la gestion (reasignar Proyecto/Cliente,
-// editar sesiones, borrar sesion) vive en EditTaskModal.ts. El borrado de
-// tarea completa se dispara solo desde el kebab.
+// Each entry is resolved by its tt-id::; if the line no longer exists in
+// any note, it's shown as "Tarea no encontrada" without discarding the
+// history.
+// Since "Editar tarea desde el Historial", the card is read-only with
+// three independent clickable zones (note icon, kebab menu, session row
+// that expands/collapses a read-only detail); all management
+// (reassigning Project/Client, editing sessions, deleting a session)
+// lives in EditTaskModal.ts. Deleting the whole task only fires from the
+// kebab.
 
 import { ItemView, Menu, MarkdownView, Notice, Platform, TFile, WorkspaceLeaf, setIcon, setTooltip } from "obsidian";
 import { formatDuration, formatDurationCompact } from "../core/TrackingEngine";
@@ -28,28 +27,29 @@ export interface TimeLogViewActions {
 	deleteEntry(entryId: string): Promise<void>;
 	deleteTask(taskId: string): Promise<DeleteTaskResult>;
 	stopTracking(): Promise<void>;
-	// "Retomar tracking de una tarea ya registrada" (0.0.32) — arranca una
-	// sesion NUEVA para un tt-id que ya tiene historico, sin leer ni
-	// escribir la nota de origen (da igual si fue editada o borrada desde
-	// la ultima sesion): taskText/filePath del nuevo TimeEntry se toman de
-	// la sesion mas reciente ya guardada de esa tarea, igual que
-	// handleInlineStart() los toma del editor cuando la tarea se trackea
-	// desde la nota. Nunca reabre/continua la sesion anterior. No-op si esa
-	// tarea ya es la que tiene tracking activo (no deberia ocurrir: el
-	// boton de la tarjeta ya muestra stop en ese caso).
+	// "Retomar tracking de una tarea ya registrada" — starts a NEW
+	// session for a tt-id that already has history, without reading or
+	// writing the source note (doesn't matter if it was edited or
+	// deleted since the last session): the new TimeEntry's taskText/
+	// filePath are taken from that task's most recently saved session,
+	// same as handleInlineStart() takes them from the editor when the
+	// task is tracked from the note. Never reopens/continues the
+	// previous session. A no-op if that task already has the active
+	// session (shouldn't happen: the card's button already shows stop in
+	// that case).
 	resumeTracking(taskId: string): Promise<void>;
-	// Historico completo de una tarea (todas sus sesiones, sin acotar por
-	// dia/semana visible) — alimenta el modal de Editar, que gestiona
-	// todo el historico y no solo lo que la tarjeta muestra ahora mismo.
+	// A task's entire history (all its sessions, not scoped to the
+	// visible day/week) — feeds the Edit modal, which manages the whole
+	// history and not just what the card currently shows.
 	getEntriesForTask(taskId: string): TimeEntry[];
 	getProjects(): Project[];
 	getProjectForTask(taskId: string): Project | null;
 	assignProject(taskId: string, projectId: string | null): Promise<void>;
-	// Mismo bus que ya usa el badge junto al checkbox (ver
-	// InlineTaskControlExtension.ts): notifica cada segundo mientras haya
-	// una sesion activa, para que la tarjeta de esa tarea (si esta en el
-	// rango de fecha visible) actualice su contador en vivo sin necesidad
-	// de un render() completo del panel.
+	// Same bus the badge next to the checkbox already uses (see
+	// InlineTaskControlExtension.ts): notifies every second while there's
+	// an active session, so that task's card (if it's in the visible
+	// date range) updates its live counter without needing a full
+	// render() of the panel.
 	bus: InlineTrackingBus;
 }
 
@@ -58,19 +58,18 @@ function addDays(dateAtMidnightMs: number, days: number): number {
 	return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days, 0, 0, 0, 0).getTime();
 }
 
-// Bloque 2 — navegacion por fecha del Historial (dia/semana). Todo el
-// filtrado usa el dia calendario LOCAL de entry.start (no de entry.end):
-// una sesion se cuenta en el dia en que empezo, aunque cruce medianoche.
+// Historial date navigation (day/week). All filtering uses entry.start's
+// LOCAL calendar day (never entry.end): a session counts on the day it
+// started, even if it crosses midnight.
 function startOfDay(ms: number): number {
 	const d = new Date(ms);
 	return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).getTime();
 }
 
-// Semana de lunes a domingo (convencion ISO), a partir de cualquier
-// fecha dentro de ella.
+// Monday-to-Sunday week (ISO convention), from any date within it.
 function startOfWeek(ms: number): number {
 	const dayStart = startOfDay(ms);
-	const weekday = new Date(dayStart).getDay(); // 0 = domingo ... 6 = sabado
+	const weekday = new Date(dayStart).getDay(); // 0 = Sunday ... 6 = Saturday
 	const diffToMonday = weekday === 0 ? -6 : 1 - weekday;
 	return addDays(dayStart, diffToMonday);
 }
@@ -79,20 +78,19 @@ function isSameLocalDay(ms: number, dayStartMs: number): boolean {
 	return startOfDay(ms) === dayStartMs;
 }
 
-// Formato corto de fecha para el estado vacio de Resultados ("17 y 23
-// ago"): dia + mes abreviado, resuelto via Intl para seguir el idioma de
-// Obsidian.
+// Short date format for the Resultados empty state ("17 y 23 ago"): day
+// + abbreviated month, resolved via Intl to follow Obsidian's language.
 function formatShortDate(ms: number): string {
 	return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
-// Titulo del rango en la cabecera de Resultados (mejora agosto 2026, release
-// 0.0.29 — ver renderDateNav): mismo guion "-" que el resto del panel, pero
-// mas compacto que el date-picker o el estado vacio de Resultados (que
-// siempre muestran el mes completo en ambos lados, ver
-// renderResultsEmptyState) — aqui se omite mes/año en el extremo izquierdo
-// cuando coincide con el derecho, ya que es un titulo de una sola linea
-// pensado para caber junto a "Volver" y calendario+Filter en la misma fila.
+// Range title in the Resultados header (see renderDateNav): same "-"
+// dash as the rest of the panel, but more compact than the date-picker
+// or the Resultados empty state (which always show the full month on
+// both sides, see renderResultsEmptyState) — here month/year is omitted
+// on the left end when it matches the right one, since it's a
+// single-line title meant to fit next to "Volver" and calendar+Filter
+// on the same row.
 function formatResultsRangeTitle(startMs: number, endMs: number): string {
 	const start = new Date(startMs);
 	const end = new Date(endMs);
@@ -109,102 +107,99 @@ function formatResultsRangeTitle(startMs: number, endMs: number): string {
 	return `${withYear(startMs)} - ${withYear(endMs)}`;
 }
 
-// Metadato "· N dias" de la caja del rango en Resultados (Cambio 4,
-// rediseno de cabecera agosto 2026): dias naturales del rango, ambos
-// extremos incluidos — no solo los dias con actividad (eso ya lo cubre el
-// subtitulo "N tareas · M dias con actividad", ver renderSubtitle). Math.
-// round (no division exacta) por el mismo motivo que renderResultsSection#
-// totalDays: un rango puede cruzar un cambio de horario de verano, donde
-// el dia civil real no mide exactamente 86400000ms.
+// "· N dias" metadata on the Resultados range box: calendar days in the
+// range, both ends included — not just days with activity (that's
+// already covered by the "N tareas · M dias con actividad" subtitle, see
+// renderSubtitle). Math.round (not exact division) for the same reason
+// as renderResultsSection#totalDays: a range can cross a daylight saving
+// change, where the real calendar day doesn't measure exactly 86400000ms.
 function formatResultsRangeDays(startMs: number, endMs: number): string {
 	const days = Math.round((endMs - startMs) / 86400000) + 1;
 	const word = days === 1 ? t("log.day.singular") : t("log.day.plural");
 	return `${days} ${word}`;
 }
 
-// Vista de resultados por rango — numero maximo de dias de calendario que
-// se resuelven/renderizan por pagina (ver renderResultsSection()): un
-// rango mayor no tiene limite de seleccion, pero la lista se corta aqui y
-// un boton "Cargar mas" añade la siguiente pagina, para no intentar
-// resolver de golpe cientos/miles de dias (la inmensa mayoria vacios) de
-// un rango muy amplio (p. ej. un año).
+// Range results view — maximum number of calendar days resolved/
+// rendered per page (see renderResultsSection()): a larger range has no
+// selection limit, but the list is cut here and a "Cargar mas" button
+// adds the next page, to avoid trying to resolve hundreds/thousands of
+// days (the vast majority empty) of a very wide range (e.g. a year) all
+// at once.
 const RESULTS_PAGE_DAYS = 180;
 
 type LogViewMode = "day" | "week" | "results";
 
 export class TimeLogView extends ItemView {
-	// Claves de expandedTaskIds son "<dia>|<taskId>" (no solo taskId): en
-	// vista semanal la misma tarea puede tener sesiones en varios dias, cada
-	// uno con su propia tarjeta, y deben poder expandirse de forma
-	// independiente.
+	// expandedTaskIds keys are "<day>|<taskId>" (not just taskId): in
+	// week view the same task can have sessions on several days, each
+	// with its own card, and they must be able to expand independently.
 	private expandedTaskIds = new Set<string>();
-	// QA — expandKey de la tarjeta que se acaba de expandir en este mismo
-	// gesto (no de una ya expandida de antes): dispara el scroll automatico
-	// hasta el final del detalle (sesion mas reciente) una sola vez, no en
-	// cada render() posterior mientras la tarjeta siga expandida.
+	// expandKey of the card that was just expanded in this very gesture
+	// (not one already expanded from before): triggers the automatic
+	// scroll to the end of the detail (most recent session) once, not on
+	// every subsequent render() while the card stays expanded.
 	private pendingScrollKey: string | null = null;
-	// Backlog Fase 5 — borrado de tarea completa (todo su historico por
-	// tt-id): confirmacion pendiente, si hay alguna. Se guarda por taskId,
-	// no por tarjeta/dia: si la misma tarea aparece en varias tarjetas
-	// (vista semanal), la confirmacion se refleja en todas a la vez, ya
-	// que la accion afecta al historico completo, no a una sola tarjeta.
+	// Deleting a whole task (its entire history by tt-id): pending
+	// confirmation, if any. Stored by taskId, not by card/day: if the
+	// same task appears in several cards (week view), the confirmation
+	// is reflected in all of them at once, since the action affects the
+	// entire history, not a single card.
 	private taskDeleteConfirmId: string | null = null;
-	// Bloque 2 — cada apertura del panel (instancia nueva de la vista, ver
-	// registerView en main.ts) arranca siempre en "hoy" y en vista diaria;
-	// no hay memoria de la ultima fecha/modo vistos en una apertura anterior.
+	// Every time the panel opens (a new view instance, see registerView
+	// in main.ts) it always starts on "today" in day view; there's no
+	// memory of the last date/mode seen in a previous open.
 	private viewMode: LogViewMode = "day";
 	private anchorDate: number = startOfDay(Date.now());
-	// Filtro por proyecto del header (ver renderProjectFilter()): en
-	// memoria del componente, nunca persistido en data.json — cada
-	// apertura del panel arranca sin filtro, igual que arranca siempre en
-	// "hoy"/vista diaria (ver comentario de viewMode arriba).
+	// Header's project filter (see renderProjectFilter()): kept in the
+	// component's memory, never persisted to data.json — every time the
+	// panel opens it starts with no filter, same as it always starts on
+	// "today"/day view (see the viewMode comment above).
 	private projectFilterId: string | null = null;
-	// Filtro "No project" (ver renderProjectFilter()): estado aparte de
-	// projectFilterId porque null en projectFilterId ya significa "sin
-	// filtro" — este filtro necesita un tercer estado (proyecto concreto /
-	// sin filtro / sin proyecto) que projectFilterId solo no puede
-	// representar. Mutuamente excluyente con projectFilterId: nunca los
-	// dos activos a la vez.
+	// "No project" filter (see renderProjectFilter()): separate from
+	// projectFilterId because null in projectFilterId already means "no
+	// filter" — this filter needs a third state (specific project / no
+	// filter / no project) that projectFilterId alone can't represent.
+	// Mutually exclusive with projectFilterId: never both active at once.
 	private projectFilterNoProject = false;
-	// Vista de resultados por rango (ver renderResultsSection()): solo
-	// tienen sentido cuando viewMode === "results" — un rango de dos dias
-	// distintos aplicado en el date-picker (ver renderDateNav()) los
-	// establece; "Volver"/"Limpiar" no los borra, solo cambia viewMode a
-	// "day" (se sobrescriben en el proximo rango aplicado, no hace falta
-	// limpiarlos antes).
+	// Range results view (see renderResultsSection()): only make sense
+	// when viewMode === "results" — a range of two different days
+	// applied in the date-picker (see renderDateNav()) sets them;
+	// "Volver"/"Limpiar" doesn't clear them, it only changes viewMode to
+	// "day" (they're overwritten by the next applied range, no need to
+	// clear them first).
 	private resultsRangeStart: number | null = null;
 	private resultsRangeEnd: number | null = null;
-	// Cuantas paginas de RESULTS_PAGE_DAYS dias ya se han "cargado" (boton
-	// "Cargar mas") para el rango actual — se reinicia a 1 cada vez que se
-	// aplica un rango nuevo desde el date-picker.
+	// How many pages of RESULTS_PAGE_DAYS days have already been
+	// "loaded" (the "Cargar mas" button) for the current range — resets
+	// to 1 every time a new range is applied from the date-picker.
 	private resultsLoadedPages = 1;
-	// Elementos con contador en vivo de la tarea activa (si esta en el
-	// rango de fecha visible tras el ultimo render()): se recalculan cada
-	// segundo via el bus, sin reconstruir el panel entero. Puede haber mas
-	// de uno a la vez — el boton de stop de la cabecera y, si la tarjeta
-	// esta expandida, la fila de su sesion en curso dentro del detalle.
-	// Vacio si la tarea con tracking activo no aparece en ningun elemento
-	// actualmente renderizado.
-	// kind "duration": formatDuration (HH:MM:SS), se redibuja cada tick.
-	// kind "total": formatDurationCompact (Xh Ym) del sumatorio de la
-	// tarjeta — mismo tick de cada segundo, pero solo toca el DOM cuando
-	// el minuto mostrado cambia (lastMinute), ya que el formato compacto
-	// no tiene segundos y redibujar cada segundo seria trabajo de sobra.
+	// Elements with a live counter for the active task (if it's in the
+	// visible date range after the last render()): recalculated every
+	// second via the bus, without rebuilding the whole panel. There can
+	// be more than one at a time — the header's stop button and, if the
+	// card is expanded, its ongoing session's row inside the detail.
+	// Empty if the actively tracked task doesn't appear in any currently
+	// rendered element.
+	// kind "duration": formatDuration (HH:MM:SS), redrawn every tick.
+	// kind "total": formatDurationCompact (Xh Ym) of the card's sum —
+	// same per-second tick, but only touches the DOM when the shown
+	// minute changes (lastMinute), since the compact format has no
+	// seconds and redrawing every second would be wasted work.
 	private activeCardTicks: Array<
 		| { kind: "duration"; el: HTMLElement; completedMs: number; start: number }
 		| { kind: "total"; el: HTMLElement; completedMs: number; start: number; lastMinute: number }
 	> = [];
 	private busUnsubscribe: (() => void) | null = null;
-	// render() es async (resolveTaskIds lee el vault) y puede dispararse
-	// mas de una vez para la misma accion del usuario (p.ej. al guardar
-	// una edicion: saveEditDraft() llama a render() explicitamente, y
-	// main.ts ya dispara refreshLogViews() -> render() desde dentro de
-	// updateEntryTimes()). Sin este guard, una llamada mas antigua que
-	// se reanuda tras su propio await puede seguir aniadiendo tarjetas al
-	// contenedor que una llamada mas reciente ya vacio y reconstruyo,
-	// duplicando el contenido. Cada render() se queda con su propio
-	// numero de turno al empezar; si al reanudar tras un await ese numero
-	// ya no coincide con el mas reciente, se aborta sin tocar el DOM.
+	// render() is async (resolveTaskIds reads the vault) and can fire
+	// more than once for the same user action (e.g. saving an edit:
+	// saveEditDraft() calls render() explicitly, and main.ts already
+	// fires refreshLogViews() -> render() from inside
+	// updateEntryTimes()). Without this guard, an older call resuming
+	// after its own await could keep adding cards to a container a more
+	// recent call already emptied and rebuilt, duplicating content. Each
+	// render() keeps its own turn number when it starts; if, on
+	// resuming after an await, that number no longer matches the latest
+	// one, it aborts without touching the DOM.
 	private renderToken = 0;
 
 	constructor(
@@ -249,13 +244,13 @@ export class TimeLogView extends ItemView {
 				entry.el.setText(formatDuration(elapsedMs));
 				continue;
 			}
-			// Por debajo del minuto, formatDurationCompact ya devuelve "Ns"
-			// (mismo criterio que el resto del panel para sesiones cortas):
-			// se redibuja cada tick, igual que el contador "duration" de al
-			// lado, para no dar sensacion de que el sumatorio esta clavado
-			// durante el primer minuto de una sesion activa. A partir del
-			// minuto (formato "Xh Ym"/"Ym"), vuelve a redibujarse solo si
-			// el minuto mostrado cambia.
+			// Under a minute, formatDurationCompact already returns "Ns"
+			// (same criterion as the rest of the panel for short
+			// sessions): it redraws every tick, same as the "duration"
+			// counter next to it, so the total doesn't look stuck during
+			// an active session's first minute. Past a minute (format
+			// "Xh Ym"/"Ym"), it only redraws again if the shown minute
+			// changes.
 			const minute = Math.floor(elapsedMs / 60000);
 			if (minute > 0 && minute === entry.lastMinute) continue;
 			entry.lastMinute = minute;
@@ -278,10 +273,9 @@ export class TimeLogView extends ItemView {
 		return parseCheckboxLine(resolved.lineText) ?? resolved.lineText;
 	}
 
-	// Agrupa por tt-id preservando el orden de aparicion en `entries` (ya
-	// viene ordenado por fecha de inicio ascendente desde renderDaySection()),
-	// asi que cada tarea queda ordenada por la fecha de su sesion mas
-	// antigua de ese dia.
+	// Groups by tt-id preserving the order of appearance in `entries`
+	// (already sorted by ascending start date from renderDaySection()),
+	// so each task ends up ordered by that day's oldest session's date.
 	private groupByTaskId(entries: TimeEntry[]): Map<string, TimeEntry[]> {
 		const grouped = new Map<string, TimeEntry[]>();
 		for (const entry of entries) {
@@ -292,10 +286,10 @@ export class TimeLogView extends ItemView {
 		return grouped;
 	}
 
-	// Bloque 2 — dayKey identifica el dia (calendario local) al que
-	// pertenecen estas tarjetas (ver renderDaySection()); solo se usa para
-	// dar a cada tarjeta una clave de expansion propia, no filtra nada aqui
-	// (las entries ya llegan acotadas al rango de fecha visible).
+	// dayKey identifies the (local calendar) day these cards belong to
+	// (see renderDaySection()); only used to give each card its own
+	// expansion key, it doesn't filter anything here (entries already
+	// arrive scoped to the visible date range).
 	private renderTaskList(
 		container: Element,
 		entries: TimeEntry[],
@@ -309,15 +303,15 @@ export class TimeLogView extends ItemView {
 		}
 	}
 
-	// Tarjeta de solo lectura con tres zonas clicables independientes (ver
-	// rediseno "Editar tarea desde el Historial"): icono abrir nota, menu
-	// kebab (Editar/Eliminar), y la linea de sesiones que expande/colapsa
-	// un detalle tambien de solo lectura. Nada mas de la tarjeta reacciona
-	// al clic — ni la cabecera completa ni el area en blanco.
-	// El total (totalMs) es el de taskEntries tal cual llega: acotado al
-	// rango de fecha visible (dia o semana), a proposito distinto del total
-	// historico completo que muestra el badge junto al checkbox (Fase 5) y
-	// del historico completo que gestiona el modal de Editar.
+	// Read-only card with three independent clickable zones (see
+	// "Editar tarea desde el Historial"): open-note icon, kebab menu
+	// (Edit/Delete), and the session row that expands/collapses a
+	// likewise read-only detail. Nothing else on the card reacts to a
+	// click — not the whole header, not the blank area.
+	// The total (totalMs) is taskEntries' as-is: scoped to the visible
+	// date range (day or week), deliberately different from the full
+	// historical total the badge next to the checkbox shows, and from
+	// the full history the Edit modal manages.
 	private renderTaskCard(
 		list: Element,
 		taskId: string,
@@ -327,10 +321,9 @@ export class TimeLogView extends ItemView {
 	): void {
 		const label = this.taskLabel(taskId, resolutions);
 
-		// Backlog Fase 5 — confirmacion de borrado de tarea completa: sale
-		// del flujo normal de la tarjeta (sin cabecera expandible ni
-		// detalle), igual que confirmingDelete lo hace para una sesion
-		// individual — ver renderTaskDeleteConfirm().
+		// Whole-task delete confirmation: steps out of the card's normal
+		// flow (no expandable header or detail), same as confirmingDelete
+		// does for an individual session — see renderTaskDeleteConfirm().
 		if (this.taskDeleteConfirmId === taskId) {
 			const card = list.createDiv({ cls: "task-time-tracker-log-row" });
 			this.renderTaskDeleteConfirm(card, taskId, label);
@@ -341,12 +334,12 @@ export class TimeLogView extends ItemView {
 		const totalMs = taskEntries.reduce((sum, entry) => sum + ((entry.end ?? Date.now()) - entry.start), 0);
 		const isMissing = resolutions.get(taskId) == null;
 		const expanded = this.expandedTaskIds.has(expandKey);
-		// La sesion activa, si es una de las entries de ESTA tarjeta (ya
-		// acotadas al rango de fecha visible por renderDaySection()): al
-		// haber un unico timer activo en todo el plugin, como mucho una
-		// tarjeta en toda la vista puede cumplir esto. Si la tarea activa no
-		// tiene ninguna sesion en el rango visible, activeEntry es null aqui
-		// y la tarjeta se comporta exactamente igual que cualquier otra.
+		// The active session, if it's one of THIS card's entries (already
+		// scoped to the visible date range by renderDaySection()): since
+		// there's only one active timer across the whole plugin, at most
+		// one card in the whole view can satisfy this. If the active task
+		// has no session in the visible range, activeEntry is null here
+		// and the card behaves exactly like any other.
 		const activeEntry = taskEntries.find((entry) => entry.end === null) ?? null;
 		const project = this.actions.getProjectForTask(taskId);
 
@@ -354,16 +347,14 @@ export class TimeLogView extends ItemView {
 		card.toggleClass("is-tracking-active", activeEntry !== null);
 
 		const header = card.createDiv({ cls: "task-time-tracker-log-card-header" });
-		// Cambio de comportamiento (3a pasada de QA visual del rediseno
-		// visual del Historial, revert parcial deliberado de la decision de
-		// Fase 5 "ningun control depende solo del hover"): toda la cabecera
-		// (icono/titulo/meta + fila de proyecto) expande o colapsa al clic;
-		// el hover en escritorio la resalta como añadido puramente visual
-		// sobre ese mismo gesto. El icono de nota y el kebab siguen siendo
-		// sus propias zonas independientes (evt.stopPropagation ya existente
-		// en ambos). `detail` (el desplegable) vive fuera de `header`, en
-		// `card` — clicar dentro de una sesion ya expandida no vuelve a
-		// colapsar la tarjeta.
+		// The whole header (icon/title/meta + project row) expands or
+		// collapses on click (see docs/DECISIONS.md); hover on desktop
+		// highlights it as a purely visual addition on top of that same
+		// gesture. The note icon and the kebab remain their own
+		// independent zones (evt.stopPropagation already in both).
+		// `detail` (the expanded content) lives outside `header`, in
+		// `card` — clicking inside an already-expanded session doesn't
+		// collapse the card again.
 		header.addEventListener("click", () => {
 			if (expanded) {
 				this.expandedTaskIds.delete(expandKey);
@@ -374,24 +365,24 @@ export class TimeLogView extends ItemView {
 			void this.render();
 		});
 
-		// Reestructuracion (6a pasada de QA visual — diff explicito contra el
-		// HTML exportado de Claude Design): la fila exterior tiene 3 hijos
-		// directos, no 5. icono+titulo+proyecto/cliente viven juntos dentro
-		// de `infoBlock` (flex:1 1 auto, columna) — SOLO ASI la columna
-		// derecha y el kebab, hermanos de `infoBlock` (no de `titleLine`),
-		// se pueden alinear contra el bloque completo (titulo + meta), no
-		// solo contra la primera fila. Sin chevron (5a pasada): la fila
-		// entera ya expande/colapsa al clic (ver header.addEventListener
-		// arriba).
+		// The outer row has 3 direct children, not 5. icon+title+project/
+		// client live together inside `infoBlock` (flex:1 1 auto,
+		// column) — ONLY THIS WAY can the right column and the kebab,
+		// siblings of `infoBlock` (not of `titleLine`), align against the
+		// whole block (title + meta), not just against the first row. No
+		// chevron (see docs/DECISIONS.md): the whole row already
+		// expands/collapses on click (see header.addEventListener
+		// above).
 		const outerRow = header.createDiv({ cls: "task-time-tracker-log-card-title-row" });
 		const infoBlock = outerRow.createDiv({ cls: "task-time-tracker-log-card-info" });
 
-		// Fila de titulo: icono + nombre, anidada dentro de infoBlock (antes
-		// vivian sueltos como hijos directos de la fila exterior).
+		// Title row: icon + name, nested inside infoBlock (previously
+		// lived loose as direct children of the outer row).
 		const titleLine = infoBlock.createDiv({ cls: "task-time-tracker-log-card-title-line" });
 		if (!isMissing) {
-			// Zona 1 — unico punto de navegacion hacia la nota; hit-area e
-			// hijos propios, no interfiere con el titulo ni con el kebab.
+			// Zone 1 — the only navigation point to the note; its own
+			// hit-area and children, doesn't interfere with the title or
+			// the kebab.
 			const noteBtn = titleLine.createEl("button", {
 				cls: "task-time-tracker-log-card-note task-time-tracker-icon-btn clickable-icon",
 			});
@@ -403,9 +394,9 @@ export class TimeLogView extends ItemView {
 				void this.openTaskNote(taskId, taskEntries);
 			});
 		} else {
-			// Tarea "no encontrada": misma clase que el icono de nota normal
-			// (mismo tamaño e hit-area) — solo cambia el icono y la accion al
-			// clic, que ya no puede abrir una nota que no existe.
+			// "Not found" task: same class as the normal note icon (same
+			// size and hit-area) — only the icon and the click action
+			// change, which can no longer open a note that doesn't exist.
 			const missingBtn = titleLine.createEl("button", {
 				cls: "task-time-tracker-log-card-note task-time-tracker-log-card-note-missing task-time-tracker-icon-btn clickable-icon",
 			});
@@ -417,16 +408,15 @@ export class TimeLogView extends ItemView {
 			});
 		}
 
-		// Titulo: sin hover ni accion de clic propia (la navegacion vive
-		// solo en el icono de arriba) — solo tooltip con el texto completo
-		// en desktop si esta truncado.
-		// Bug 0.0.32 — nota borrada: el titulo ya no muestra el generico
-		// "Task not found"/"Tarea no encontrada" (ese texto sigue vivo en
-		// taskLabel(), usado solo por la confirmacion de borrado, fuera de
-		// este bug); en su lugar usa taskText, el mismo snapshot inmutable
-		// que ya resuelve este mismo caso en el Dashboard (ver
-		// resolveTaskLabels() en DashboardView.ts), en cursiva y sin tocar
-		// el color del titulo.
+		// Title: no hover or click action of its own (navigation only
+		// lives in the icon above) — only a tooltip with the full text on
+		// desktop if it's truncated.
+		// Note deleted: the title no longer shows the generic "Task not
+		// found" (that text is still used by taskLabel(), used only by
+		// the delete confirmation); instead it uses taskText, the same
+		// immutable snapshot that already resolves this same case in the
+		// Dashboard (see resolveTaskLabels() in DashboardView.ts), in
+		// italics and without touching the title's color.
 		const mostRecent = isMissing
 			? taskEntries.reduce((latest, entry) => (entry.start > latest.start ? entry : latest))
 			: null;
@@ -440,12 +430,12 @@ export class TimeLogView extends ItemView {
 			infoBlock.createDiv({ text: t("log.noteNotFound"), cls: "task-time-tracker-log-task-snapshot" });
 		}
 
-		// Fila 2 — Proyecto/Cliente: solo si hay proyecto asignado (vinculo
-		// vivo por tt-id, ver ProjectManager#getProjectForTask). Dentro de
-		// infoBlock (ya no hermana suelta de la fila de titulo), indentada
-		// con padding-left bajo el TEXTO del titulo, no bajo el icono (ver
-		// renderProjectRow()). Sin hover ni accion de clic propia; reasignar
-		// sigue viviendo dentro del modal de Editar.
+		// Row 2 — Project/Client: only if a project is assigned (live
+		// link by tt-id, see ProjectManager#getProjectForTask). Inside
+		// infoBlock (no longer a loose sibling of the title row),
+		// indented with padding-left under the title's TEXT, not under
+		// the icon (see renderProjectRow()). No hover or click action of
+		// its own; reassigning still lives inside the Edit modal.
 		if (project) {
 			this.renderProjectRow(infoBlock, project);
 		}
@@ -497,29 +487,26 @@ export class TimeLogView extends ItemView {
 			triggerControl(evt);
 		});
 
-		// Columna derecha (3a pasada de QA visual; "N sessions" bajado
-		// debajo del total en la 4a; ahora hermana de infoBlock, no de
-		// titleLine, en la 6a — ver Time Tracker Tab.dc.html actualizado en
-		// docs/Prototype, lineas 124-127): duracion agregada arriba, nº de
-		// sesiones debajo, apiladas en su propia columna — kebab a
-		// continuacion, siempre en esa misma fila exterior. tt-id se retira
-		// de esta vista (decision QA): no aporta al usuario final y no tenia
-		// hueco en el diseno de columna derecha; sigue existiendo como
-		// concepto interno (ProjectManager, ver TaskIdentifier), solo deja
-		// de pintarse aqui.
+		// Right column: aggregate duration on top, session count below,
+		// stacked in its own column — kebab next, always in that same
+		// outer row. tt-id is removed from this view (see
+		// docs/DECISIONS.md): it doesn't help the end user and had no
+		// slot in the right-column design; it still exists as an
+		// internal concept (ProjectManager, see TaskIdentifier), it just
+		// stops being painted here.
 		const rightCol = outerRow.createDiv({ cls: "task-time-tracker-log-card-right-col" });
-		// Total agregado (varias sesiones sumadas): formato compacto, no
-		// HH:MM:SS — ver formatDurationCompact(). Bullet pulsante solo si
-		// hay tracking activo (ver mas abajo).
+		// Aggregate total (several sessions summed): compact format, not
+		// HH:MM:SS — see formatDurationCompact(). Pulsing bullet only if
+		// tracking is active (see below).
 		const totalGroup = rightCol.createSpan({ cls: "task-time-tracker-totals-duration-group" });
-		// "Retomar tracking" (0.0.32) — el bullet pulsante en accent color
-		// (misma clase/animacion que el badge inline junto al checkbox, ver
-		// .task-time-tracker-inline-dot) sustituye aqui al icono de
-		// cronometro de antes: indica que el numero de al lado se actualiza
-		// en vivo sin sugerir una accion sobre si mismo (a diferencia del
-		// icono dentro de un boton). Vive junto al TOTAL, nunca dentro del
-		// boton de play/stop — ver el control mas arriba, entre el titulo y
-		// esta columna.
+		// The pulsing bullet in accent color (same class/animation as the
+		// inline badge next to the checkbox, see
+		// .task-time-tracker-inline-dot) replaces the old stopwatch icon
+		// here: it signals the number next to it updates live without
+		// suggesting an action on itself (unlike an icon inside a
+		// button). It lives next to the TOTAL, never inside the
+		// play/stop button — see the control above, between the title
+		// and this column.
 		if (activeEntry) {
 			totalGroup.createSpan({ cls: "task-time-tracker-inline-dot task-time-tracker-log-card-total-dot" });
 		}
@@ -533,12 +520,12 @@ export class TimeLogView extends ItemView {
 		});
 
 		if (activeEntry) {
-			// Sumatorio de la cabecera ("N sessions · Xh Ym"): completedMs es la
-			// suma de las sesiones YA cerradas de esta tarjeta; el tick de cada
-			// segundo (via el bus) le suma el tiempo transcurrido desde
-			// activeEntry.start. Formato compacto, sin redibujar cada segundo
-			// (ver tickActiveCard) — bug reportado por el usuario: antes solo
-			// se actualizaba con un refresh externo del panel.
+			// Header total ("N sessions · Xh Ym"): completedMs is the sum
+			// of this card's ALREADY closed sessions; the per-second tick
+			// (via the bus) adds the elapsed time since activeEntry.start
+			// on top. Compact format, without redrawing every second (see
+			// tickActiveCard) — previously it only updated on an external
+			// refresh of the panel.
 			const completedMs = taskEntries
 				.filter((entry) => entry.id !== activeEntry.id)
 				.reduce((sum, entry) => sum + ((entry.end as number) - entry.start), 0);
@@ -551,10 +538,10 @@ export class TimeLogView extends ItemView {
 			});
 		}
 
-		// Zona 2 — menu kebab: siempre visible, no depende de expandir la
-		// tarjeta ni de hover de fila. Ultimo hijo de la fila exterior — fijo
-		// al final tanto en reposo como en activo (ver control de play/stop
-		// mas arriba, entre el titulo y la columna de totales).
+		// Zone 2 — kebab menu: always visible, doesn't depend on
+		// expanding the card or row hover. Last child of the outer row —
+		// fixed at the end both at rest and active (see the play/stop
+		// control above, between the title and the totals column).
 		const menuBtn = outerRow.createEl("button", {
 			cls: "task-time-tracker-log-card-menu task-time-tracker-icon-btn clickable-icon",
 		});
@@ -566,29 +553,32 @@ export class TimeLogView extends ItemView {
 			this.openTaskMenu(menuBtn, taskId, titleText, isMissing);
 		});
 
-		// Medir DESPUES de que titleLine y el resto de hermanos de la fila
-		// exterior (proyecto/cliente, columna derecha, kebab, stop si lo
-		// hay) esten todos insertados — ver comentario detallado sobre este
-		// mismo bug en renderProjectRow() mas abajo, donde se detecto: medir
-		// un span antes de que sus hermanos existan da un clientWidth mas
-		// generoso de lo que sera una vez ocupen su espacio, y el helper
-		// decide (con datos aun no definitivos) que no hace falta tooltip.
+		// Measure AFTER titleLine and the rest of the outer row's
+		// siblings (project/client, right column, kebab, stop if any)
+		// are all inserted — see the detailed comment on this same bug in
+		// renderProjectRow() below, where it was found: measuring a span
+		// before its siblings exist gives a more generous clientWidth
+		// than it'll have once they occupy their space, and the helper
+		// decides (with data that isn't final yet) that no tooltip is
+		// needed.
 		this.applyTruncationTooltip(title, label);
 
 		if (expanded) {
 			const detail = card.createDiv({ cls: "task-time-tracker-log-card-detail" });
-			// Orden cronologico ascendente (mas antigua arriba, mas reciente
-			// abajo) — taskEntries ya viene en ese orden (ver groupByTaskId).
+			// Ascending chronological order (oldest on top, most recent
+			// at the bottom) — taskEntries already comes in that order
+			// (see groupByTaskId).
 			for (const entry of taskEntries) {
 				const row = detail.createDiv({ cls: "task-time-tracker-log-session-row" });
 				renderSessionInfo(row, entry, (el, completedMs, start) =>
 					this.activeCardTicks.push({ kind: "duration", el, completedMs, start }),
 				);
 			}
-			// QA — al expandir (no al re-renderizar una tarjeta ya expandida
-			// por otro motivo), deja visible la sesion mas reciente sin scroll
-			// manual. setTimeout(0): espera a que el navegador termine el
-			// layout de este render antes de medir/hacer scroll.
+			// On expanding (not on re-rendering an already-expanded card
+			// for another reason), leaves the most recent session visible
+			// without manual scrolling. setTimeout(0): waits for the
+			// browser to finish this render's layout before
+			// measuring/scrolling.
 			if (this.pendingScrollKey === expandKey) {
 				this.pendingScrollKey = null;
 				window.setTimeout(() => detail.scrollIntoView({ block: "end" }), 0);
@@ -596,22 +586,19 @@ export class TimeLogView extends ItemView {
 		}
 	}
 
-	// Icono maletin (proyecto) + icono persona (cliente, si tiene).
-	// Indentado con padding-left bajo el TEXTO del titulo (6a pasada de QA
-	// visual — antes un div-spacer .task-time-tracker-log-card-icon-col
-	// vacio, misma idea pero indentando bajo el ICONO, no bajo el texto;
-	// ver styles.css) — pero SOLO en la tarjeta normal, cuyo titulo tiene
-	// icono de nota delante. indented=false desactiva ese padding para la
-	// confirmacion de borrado (ver abajo), cuyo titulo no lleva icono
-	// delante: con el padding puesto ahi, la fila quedaba indentada sin
-	// motivo respecto al titulo (bug de QA, ronda 2). Sin hover, sin accion
-	// de clic — reasignar vive dentro del modal de Editar (Zona 2, kebab ->
-	// Editar).
-	// project null: solo ocurre cuando llama renderTaskDeleteConfirm() (ver
-	// abajo) — a diferencia de la tarjeta normal, que omite la fila entera
-	// si no hay proyecto asignado, la confirmacion de borrado lo muestra
-	// explicito ("No project") por ser el paso previo a una accion
-	// irreversible, donde preferimos explicito sobre implicito.
+	// Briefcase icon (project) + person icon (client, if any). Indented
+	// with padding-left under the title's TEXT (see styles.css) — but
+	// ONLY on the normal card, whose title has a note icon in front.
+	// indented=false disables that padding for the delete confirmation
+	// (see below), whose title carries no icon in front: with the
+	// padding applied there, the row ended up indented with no reason
+	// relative to the title. No hover, no click action — reassigning
+	// lives inside the Edit modal (Zone 2, kebab -> Edit).
+	// project null: only happens when renderTaskDeleteConfirm() calls it
+	// (see below) — unlike the normal card, which omits the whole row if
+	// no project is assigned, the delete confirmation shows it
+	// explicitly ("No project") since it's the step right before an
+	// irreversible action, where explicit is preferred over implicit.
 	private renderProjectRow(container: HTMLElement, project: Project | null, indented = true): void {
 		const row = container.createDiv({ cls: "task-time-tracker-log-card-project-row" });
 		row.toggleClass("is-indented", indented);
@@ -635,46 +622,43 @@ export class TimeLogView extends ItemView {
 			clientTooltip = { el: clientSpan.createSpan({ text: client, cls: "task-time-tracker-log-card-project-name" }), text: client };
 		}
 
-		// Bug de QA — Cliente si mostraba tooltip, Proyecto no, con el
-		// mismo helper: Proyecto se media (aqui abajo) antes de que el
-		// span de Cliente (su hermano en la misma fila flex, ver
-		// .task-time-tracker-log-card-project-row) llegara a existir. En
-		// ese instante el layout de la fila solo tiene un item compitiendo
-		// por el espacio, asi que projectText.clientWidth sale mas ancho
-		// de lo que sera una vez Cliente tambien este presente — el
-		// helper decidia (con un ancho todavia no definitivo) que no
-		// hacia falta tooltip. Cliente, al medirse siempre en ultimo
-		// lugar (ya con Proyecto presente), nunca sufria esto. Fix: medir
-		// los dos solo despues de insertar ambos spans, no el helper en
-		// si (ver applyTruncationTooltip).
+		// Client did show a tooltip, Project didn't, with the same
+		// helper: Project was measured (right here) before Client's span
+		// (its sibling in the same flex row, see
+		// .task-time-tracker-log-card-project-row) came to exist. At
+		// that instant the row's layout only has one item competing for
+		// space, so projectText.clientWidth comes out wider than it'll
+		// be once Client is also present — the helper decided (with a
+		// width that wasn't final yet) that no tooltip was needed.
+		// Client, always measured last (with Project already present),
+		// never suffered this. Fix: measure both only after inserting
+		// both spans, not the helper itself (see applyTruncationTooltip).
 		this.applyTruncationTooltip(projectText, project.name);
 		if (clientTooltip) this.applyTruncationTooltip(clientTooltip.el, clientTooltip.text);
 	}
 
-	// Tooltip nativo con el texto completo solo si el contenido esta
-	// realmente truncado por CSS y solo en desktop — en mobile no hay
-	// hover, asi que no hay donde mostrarlo (ver rediseno "Editar tarea
-	// desde el Historial"). Se llama de forma sincrona justo tras insertar
-	// `el` en un DOM ya adjunto (la tarjeta vive dentro del panel visible
-	// desde antes de este punto), asi que el layout ya esta resuelto al
-	// leer estas propiedades — no hace falta esperar (leer clientWidth/
-	// scrollWidth fuerza un reflow sincrono si hiciera falta). El requisito
-	// real es que `el` mismo tenga una caja con overflow:hidden +
-	// text-overflow:ellipsis en una sola linea (ver
-	// .task-time-tracker-log-card-project-name y el titulo de la tarjeta en
-	// styles.css, ambos single-line desde el rediseno Time Tracker Tab v2):
-	// un <span> sin esas reglas propias (display:inline puro) siempre da
-	// clientWidth 0, asi que la comparacion nunca detecta truncamiento —
-	// bug de QA corregido aplicando esas reglas al span de texto mismo, no
-	// a un contenedor distinto.
+	// Native tooltip with the full text only if the content is really
+	// truncated by CSS and only on desktop — there's no hover on mobile,
+	// so there's nowhere to show it. Called synchronously right after
+	// inserting `el` into an already-attached DOM (the card lives inside
+	// the visible panel from before this point), so layout is already
+	// resolved when reading these properties — no need to wait (reading
+	// clientWidth/scrollWidth forces a synchronous reflow if needed). The
+	// real requirement is that `el` itself has a box with overflow:hidden
+	// + text-overflow:ellipsis on a single line (see
+	// .task-time-tracker-log-card-project-name and the card's title in
+	// styles.css, both single-line): a <span> without those rules of its
+	// own (plain display:inline) always gives clientWidth 0, so the
+	// comparison never detects truncation — fixed by applying those
+	// rules to the text span itself, not to a separate container.
 	private applyTruncationTooltip(el: HTMLElement, fullText: string): void {
 		if (Platform.isMobile) return;
 		if (el.scrollWidth > el.clientWidth) setTooltip(el, fullText);
 	}
 
-	// Zona 2 — menu kebab: Editar (abre EditTaskModal con el historico
-	// completo de la tarea) y Eliminar (misma guarda de sesion activa y
-	// misma confirmacion de borrado de tarea completa de siempre, Fase 5).
+	// Zone 2 — kebab menu: Edit (opens EditTaskModal with the task's
+	// entire history) and Delete (same active-session guard and the
+	// same whole-task delete confirmation as always).
 	private openTaskMenu(anchor: HTMLElement, taskId: string, label: string, isMissing: boolean): void {
 		const menu = new Menu();
 		menu.addItem((item) =>
@@ -695,9 +679,9 @@ export class TimeLogView extends ItemView {
 		menu.showAtPosition({ x: rect.left, y: rect.bottom });
 	}
 
-	// El chequeo de sesion activa usa this.getEntries() sin acotar por
-	// dia/semana — la tarea puede tener su sesion activa hoy aunque esta
-	// tarjeta en concreto muestre otro dia (vista semanal).
+	// The active-session check uses this.getEntries() without scoping to
+	// a day/week — the task can have its active session today even
+	// though this particular card shows a different day (week view).
 	private requestDeleteTask(taskId: string): void {
 		const hasActive = this.getEntries().some((entry) => entry.taskId === taskId && entry.end === null);
 		if (hasActive) {
@@ -708,9 +692,9 @@ export class TimeLogView extends ItemView {
 		void this.render();
 	}
 
-	// Abre el modal de Editar con el historico completo de la tarea (no
-	// solo las entries acotadas al dia/semana visible de esta tarjeta) —
-	// ver TimeLogViewActions#getEntriesForTask.
+	// Opens the Edit modal with the task's entire history (not just the
+	// entries scoped to this card's visible day/week) — see
+	// TimeLogViewActions#getEntriesForTask.
 	private openEditTaskModal(taskId: string, label: string, isMissing: boolean): void {
 		new EditTaskModal(
 			this.app,
@@ -730,18 +714,16 @@ export class TimeLogView extends ItemView {
 		).open();
 	}
 
-	// Backlog Fase 5 — confirmacion de borrado de tarea completa. Mismo
-	// patron de datos visibles + Si/Cancelar que usa el formulario de
-	// edicion de sesion dentro del modal de Editar (EditTaskModal.ts),
-	// reutilizando las mismas clases CSS. A diferencia de la tarjeta
-	// normal (cuyo total puede venir acotado a un dia/semana), aqui se
-	// recalculan sesiones y total SIEMPRE sobre el historico completo de
-	// la tarea (this.getEntries() sin filtrar por fecha): lo que se
-	// muestra debe coincidir exactamente con lo que se va a borrar.
-	// Orden de arriba a abajo: titulo, resumen, aviso, botones (todo junto,
-	// sin scroll, para decidir y confirmar) y, tras una linea divisoria, el
-	// detalle completo de todas las sesiones (renderSessionInfo, solo
-	// lectura, ver sessionEdit.ts).
+	// Whole-task delete confirmation. Same visible-data + Yes/Cancel
+	// pattern the session edit form inside the Edit modal
+	// (EditTaskModal.ts) uses, reusing the same CSS classes. Unlike the
+	// normal card (whose total can come scoped to a day/week), sessions
+	// and total are ALWAYS recalculated over the task's entire history
+	// (this.getEntries() without a date filter): what's shown must match
+	// exactly what's about to be deleted. Top to bottom order: title,
+	// summary, warning, buttons (all together, no scrolling, to decide
+	// and confirm) and, after a divider line, the full detail of every
+	// session (renderSessionInfo, read-only, see sessionEdit.ts).
 	private renderTaskDeleteConfirm(card: Element, taskId: string, label: string): void {
 		const fullTaskEntries = this.getEntries().filter((entry) => entry.taskId === taskId);
 		const totalMs = fullTaskEntries.reduce((sum, entry) => sum + ((entry.end ?? Date.now()) - entry.start), 0);
@@ -749,12 +731,12 @@ export class TimeLogView extends ItemView {
 		const confirm = card.createDiv({ cls: "task-time-tracker-log-edit-form" });
 		confirm.createDiv({ text: label, cls: "task-time-tracker-log-task" });
 
-		// QA — a diferencia de la tarjeta normal (que omite la fila si no
-		// hay proyecto), aqui se muestra siempre, explicito, por ser el paso
-		// previo a una accion irreversible (ver renderProjectRow()).
-		// alignWithNoteIcon=false: este titulo no tiene icono de nota
-		// delante (a diferencia del de la tarjeta), asi que la fila debe
-		// alinearse a ras, sin el hueco de columna reservado para ese icono.
+		// Unlike the normal card (which omits the row if there's no
+		// project), here it's always shown, explicitly, since it's the
+		// step right before an irreversible action (see
+		// renderProjectRow()). alignWithNoteIcon=false: this title has no
+		// note icon in front of it (unlike the card's), so the row must
+		// align flush, without the column gap reserved for that icon.
 		this.renderProjectRow(confirm, this.actions.getProjectForTask(taskId), false);
 
 		const meta = confirm.createDiv({ cls: "task-time-tracker-log-meta" });
@@ -762,12 +744,11 @@ export class TimeLogView extends ItemView {
 			text: `${fullTaskEntries.length} ${fullTaskEntries.length === 1 ? t("log.session.singular") : t("log.session.plural")}`,
 			cls: "task-time-tracker-log-session-count",
 		});
-		// Mismo total agregado que la cabecera de la tarjeta (misma clase
-		// CSS), formato compacto — ver formatDurationCompact(). Sin icono:
-		// a diferencia de la tarjeta normal, esta confirmacion nunca puede
-		// tener la sesion activa (requestDeleteTask() bloquea el borrado si
-		// la hay), asi que el icono de "sumando en vivo" nunca aplicaria
-		// aqui.
+		// Same aggregate total as the card's header (same CSS class),
+		// compact format — see formatDurationCompact(). No icon: unlike
+		// the normal card, this confirmation can never have the active
+		// session (requestDeleteTask() blocks deletion if there is one),
+		// so the "adding up live" icon would never apply here.
 		const totalGroup = meta.createSpan({ cls: "task-time-tracker-totals-duration-group" });
 		totalGroup.createSpan({ text: formatDurationCompact(totalMs), cls: "task-time-tracker-totals-duration" });
 		meta.createSpan({ text: taskId, cls: "task-time-tracker-log-taskid" });
@@ -792,20 +773,19 @@ export class TimeLogView extends ItemView {
 			this.taskDeleteConfirmId = null;
 			void this.render();
 		});
-		// Foco por defecto en "Cancelar", nunca en el boton destructivo —
-		// evita un borrado accidental con Enter (Fase 5). Diferido con
-		// setTimeout: el trigger es ahora el item "Delete" de un Menu (ver
-		// openTaskMenu()), y ese Menu puede devolver el foco a su propio
-		// boton disparador (el kebab) como parte de su propio cierre
-		// DESPUES de que este render() termine — sin el defer, esa
-		// devolucion de foco llegaba despues y pisaba el foco puesto aqui
-		// (regresion detectada en la ronda 2 de QA).
+		// Default focus on "Cancelar", never on the destructive button —
+		// avoids an accidental delete with Enter. Deferred with
+		// setTimeout: the trigger is now a Menu's "Delete" item (see
+		// openTaskMenu()), and that Menu can return focus to its own
+		// trigger button (the kebab) as part of its own closing AFTER
+		// this render() finishes — without the defer, that focus return
+		// arrived later and clobbered the focus set here.
 		window.setTimeout(() => cancelBtn.focus(), 0);
 
-		// Solo lectura a proposito: en la confirmacion de borrar la tarea
-		// entera no hay ninguna via de edicion — se llama renderSessionInfo()
-		// directamente (mismos datos: fecha, hora inicio, hora fin,
-		// duracion), sin listener de clic ni botones.
+		// Read-only on purpose: there's no editing path in the whole-task
+		// delete confirmation — renderSessionInfo() is called directly
+		// (same data: date, start time, end time, duration), with no
+		// click listener or buttons.
 		const detail = confirm.createDiv({ cls: "task-time-tracker-log-card-detail" });
 		for (const entry of [...fullTaskEntries].sort((a, b) => b.start - a.start)) {
 			const row = detail.createDiv({ cls: "task-time-tracker-log-session-row" });
@@ -815,16 +795,15 @@ export class TimeLogView extends ItemView {
 		}
 	}
 
-	// Fase 5 UX — abre la nota de origen de una tarea desde el titulo de
-	// su tarjeta (resolvePreferring: prioriza la nota de la sesion mas
-	// reciente si el id esta duplicado en varias notas, con el criterio
-	// generico de Fase 2 como respaldo). Si la nota ya esta abierta en
-	// alguna pestaña del workspace, se enfoca esa (la primera que se
-	// encuentre, sin importar cual sea "la mas reciente" entre varias) en
-	// vez de abrir una pestaña nueva; si no, se abre una pestaña nueva en
-	// el area central, igual que antes. Selecciona la linea completa unos
-	// instantes a modo de resaltado (no hay una API publica para el flash
-	// de la busqueda nativa de Obsidian sin tocar el DOM interno).
+	// Opens a task's source note from its card's title (resolvePreferring:
+	// prioritizes the most recent session's note if the id is duplicated
+	// across several notes, with the generic first-match criterion as a
+	// fallback). If the note is already open in some workspace tab, that
+	// one is focused (the first one found, regardless of which is "most
+	// recent" among several) instead of opening a new tab; otherwise a
+	// new tab opens in the center area, same as before. Selects the
+	// whole line for a moment as a highlight (there's no public API for
+	// Obsidian's native search flash without touching the internal DOM).
 	private async openTaskNote(taskId: string, taskEntries: TimeEntry[]): Promise<void> {
 		const mostRecent = taskEntries.reduce((latest, entry) => (entry.start > latest.start ? entry : latest));
 		const resolved = await this.taskIdentifier.resolvePreferring(taskId, mostRecent.filePath);
@@ -848,9 +827,9 @@ export class TimeLogView extends ItemView {
 		window.setTimeout(() => editor.setCursor(lineStart), 1200);
 	}
 
-	// Primera pestaña de markdown existente que ya tenga este archivo
-	// abierto, o null si no hay ninguna. No distingue "la mas reciente"
-	// entre varias — basta con la primera que se encuentre.
+	// First existing markdown tab that already has this file open, or
+	// null if none. Doesn't distinguish "the most recent" among several
+	// — the first one found is enough.
 	private findLeafWithFile(file: TFile): WorkspaceLeaf | null {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			if (leaf.view instanceof MarkdownView && leaf.view.file?.path === file.path) {
@@ -860,35 +839,31 @@ export class TimeLogView extends ItemView {
 		return null;
 	}
 
-	// Rediseno de cabecera (v2, agosto 2026 — spec y prototipos aportados por
-	// el usuario: "Cabecera Time Tracker.dc.html" y "Header Responsive
-	// Wireframes.dc.html", estrategia "1c — Stepper de ancho completo".
-	// Sustituye el rediseno anterior de container queries a 400px, tras
-	// varias vueltas de parches sobre ese enfoque). Breakpoint unico a
-	// 480px de contenedor, compartido por las 3 vistas — ver los bloques
-	// @container en styles.css:
-	// - Formato Ancho (>=480px): grid "auto 1fr auto" en una sola fila —
-	//   izquierda: toggle Dia/Semana o "Volver"; centro: flechas+fecha SIN
-	//   caja propia en Dia/Semana, caja con marco (rango + "· N dias") en
-	//   Resultados (ver formatResultsRangeTitle/formatResultsRangeDays);
-	//   derecha: calendario+Filter, siempre anclados al borde derecho.
-	// - Formato Compacto (<480px), 2 filas: fila 1 = toggle/Volver a la
-	//   izquierda + calendario+Filter a la derecha (space-between); fila 2 =
-	//   control de ANCHO COMPLETO con marco — en Dia/Semana un stepper
-	//   real (grid 44px 1fr 44px, targets tactiles en los extremos, ver el
-	//   @container que reestiliza .task-time-tracker-log-datenav-range); en
-	//   Resultados la misma caja pero sin flechas ni divisores, solo texto
-	//   centrado (rango + metadato) — no es interactiva.
-	// Sin boton "Hoy" en esta barra bajo ningun formato — decision de
-	// producto: el unico punto de entrada a "Hoy" es el footer del date-
-	// picker (ver DatePickerPopover.ts#goToToday).
+	// Historial header layout (see docs/DECISIONS.md for the redesign
+	// this replaced). Single 480px container breakpoint, shared by all 3
+	// views — see the @container blocks in styles.css:
+	// - Wide format (>=480px): "auto 1fr auto" grid in a single row —
+	//   left: Day/Week toggle or "Volver"; center: arrows+date with NO
+	//   box of its own in Day/Week, framed box (range + "· N dias") in
+	//   Resultados (see formatResultsRangeTitle/formatResultsRangeDays);
+	//   right: calendar+Filter, always anchored to the right edge.
+	// - Compact format (<480px), 2 rows: row 1 = toggle/Volver on the
+	//   left + calendar+Filter on the right (space-between); row 2 = a
+	//   FULL-WIDTH framed control — in Day/Week a real stepper (grid
+	//   44px 1fr 44px, touch targets on the ends, see the @container
+	//   that restyles .task-time-tracker-log-datenav-range); in
+	//   Resultados the same box but with no arrows or dividers, just
+	//   centered text (range + metadata) — not interactive.
+	// No "Hoy" button on this bar under any format — the only entry
+	// point to "Hoy" is the date-picker's footer (see
+	// DatePickerPopover.ts#goToToday).
 	private renderDateNav(container: Element): void {
 		const nav = container.createDiv({ cls: "task-time-tracker-log-datenav" });
-		// Distingue Resultados de Dia/Semana para el breakpoint propio del
-		// boton de filtro (ver el @container de
-		// .task-time-tracker-log-filter-btn-label en styles.css) — 610px en
-		// Dia/Semana, 575px en Resultados, ninguno de los dos ligado al
-		// breakpoint de 480px que gobierna el resto de la cabecera.
+		// Distinguishes Resultados from Day/Week for the filter button's
+		// own breakpoint (see the @container on
+		// .task-time-tracker-log-filter-btn-label in styles.css) — 610px
+		// in Day/Week, 575px in Resultados, neither tied to the 480px
+		// breakpoint that governs the rest of the header.
 		nav.toggleClass("is-results", this.viewMode === "results");
 
 		const row = nav.createDiv({ cls: "task-time-tracker-log-datenav-row" });
@@ -919,12 +894,13 @@ export class TimeLogView extends ItemView {
 		}
 
 		if (this.viewMode === "results") {
-			// Ocupa el area "mode" del grid (ver .task-time-tracker-log-results-back)
-			// — mismo hueco que el toggle Dia/Semana, alineado igual a la
-			// izquierda. "Volver" lleva siempre a vista Dia con la fecha de
-			// hoy (no recuerda si se venia de Dia o Semana; mismo destino que
-			// "Limpiar" del date-picker en este modo, ver
-			// DatePickerPopover.ts#goToToday).
+			// Occupies the grid's "mode" area (see
+			// .task-time-tracker-log-results-back) — same slot as the
+			// Day/Week toggle, aligned the same way on the left. "Volver"
+			// always leads to Day view with today's date (doesn't
+			// remember whether it came from Day or Week; same
+			// destination as the date-picker's "Limpiar" in this mode,
+			// see DatePickerPopover.ts#goToToday).
 			const backBtn = row.createEl("button", { cls: "task-time-tracker-log-results-back" });
 			setIcon(backBtn.createSpan(), "arrow-left");
 			backBtn.createSpan({ text: t("log.resultsBack") });
@@ -934,18 +910,17 @@ export class TimeLogView extends ItemView {
 				void this.render();
 			});
 
-			// Rango seleccionado (Cambio 2/3/4, rediseno de cabecera agosto
-			// 2026): caja con marco (borde + fondo, ver
-			// .task-time-tracker-log-results-rangebox) en vez de texto plano
-			// — antes se veia desequilibrado frente a "Volver" y calendario+
-			// Filter, que si son controles con su propio marco. Ocupa el
-			// area "range" del grid, el mismo hueco central que las
-			// flechas+fecha en Dia/Semana, pero sin flechas de navegar (un
-			// rango arbitrario no tiene "anterior/siguiente"). Texto en dos
-			// partes: el rango en si (formatResultsRangeTitle, formato ya
-			// existente, sin cambios) y un metadato de dias naturales del
-			// rango completo, ambos extremos incluidos (formatResultsRangeDays
-			// — no solo los dias con actividad, eso ya lo cubre el subtitulo).
+			// Selected range: a framed box (border + background, see
+			// .task-time-tracker-log-results-rangebox) instead of plain
+			// text — plain text looked unbalanced next to "Volver" and
+			// calendar+Filter, which are controls with their own frame.
+			// Occupies the grid's "range" area, the same central slot as
+			// the arrows+date in Day/Week, but with no navigation arrows
+			// (an arbitrary range has no "previous/next"). Text in two
+			// parts: the range itself (formatResultsRangeTitle) and a
+			// metadata of the full range's calendar days, both ends
+			// included (formatResultsRangeDays — not just days with
+			// activity, that's already covered by the subtitle).
 			const rangeStart = this.resultsRangeStart as number;
 			const rangeEnd = this.resultsRangeEnd as number;
 			const rangeBox = row.createDiv({ cls: "task-time-tracker-log-results-rangebox" });
@@ -978,44 +953,44 @@ export class TimeLogView extends ItemView {
 			});
 		}
 
-		// Grupo atomico calendario+Filter: nunca se separan entre si ni
-		// cambian de posicion (siempre anclados al borde derecho de la fila,
-		// ver CSS grid-area en .task-time-tracker-log-datenav-actions) — este
-		// wrapper es lo que los mantiene juntos como una sola unidad de
-		// layout en vez de dos elementos sueltos que el grid pudiera separar.
+		// Atomic calendar+Filter group: they never separate from each
+		// other or change position (always anchored to the row's right
+		// edge, see the CSS grid-area on
+		// .task-time-tracker-log-datenav-actions) — this wrapper is what
+		// keeps them together as a single layout unit instead of two
+		// loose elements the grid could separate.
 		const actions = row.createDiv({ cls: "task-time-tracker-log-datenav-actions" });
 		const calendarBtn = actions.createEl("button", {
 			cls: "task-time-tracker-log-datenav-calendar task-time-tracker-log-header-icon-btn task-time-tracker-icon-btn",
 		});
-		// render() reconstruye esta barra entera desde cero (container.empty()
-		// en render()), incluido este boton — tambien en el render que dispara
-		// el propio onChange del picker al aplicar una seleccion. Reancla el
-		// popover (si esta abierto) al boton nuevo para que el listener de
-		// "clic fuera" y el singleton de abrir/cerrar no sigan comparando
-		// contra el boton viejo, ya desmontado (bug QA agosto 2026: el picker
-		// parecia no cerrarse nunca tras seleccionar algo dentro). No-op si no
-		// hay popover abierto.
+		// render() rebuilds this whole bar from scratch (container.empty()
+		// in render()), including this button — also in the render
+		// triggered by the picker's own onChange when a selection is
+		// applied. Reanchors the popover (if open) to the new button so
+		// the "outside click" listener and the open/close singleton
+		// don't keep comparing against the old, already-unmounted button
+		// (see docs/DECISIONS.md). A no-op if no popover is open.
 		reanchorDatePickerPopover(calendarBtn);
-		// "Filtro de fecha activo" no es un estado propio separado (a
-		// diferencia del filtro de proyecto, la navegacion por fecha
-		// siempre muestra algun dia/semana, nunca "ninguno") — se deriva de
-		// si el panel esta mostrando algo distinto de "hoy en vista Dia".
-		// Mismo tratamiento visual (is-active) que el boton de filtro
-		// cuando hay proyecto seleccionado, para que el usuario note de un
-		// vistazo que no esta viendo la fecha por defecto. Sin pill de
-		// texto (a diferencia del filtro): la fecha ya se muestra en la
-		// fila de abajo, mostrarla tambien aqui la duplicaria.
+		// "Active date filter" isn't a separate state of its own (unlike
+		// the project filter, date navigation always shows some
+		// day/week, never "none") — it's derived from whether the panel
+		// is showing anything other than "today in Day view". Same
+		// visual treatment (is-active) as the filter button when a
+		// project is selected, so the user notices at a glance that
+		// they're not viewing the default date. No text pill (unlike the
+		// filter): the date is already shown in the row below, showing
+		// it here too would duplicate it.
 		const isDateFilterActive = !(this.viewMode === "day" && isSameLocalDay(this.anchorDate, startOfDay(Date.now())));
 		calendarBtn.toggleClass("is-active", isDateFilterActive);
 		setIcon(calendarBtn, "calendar");
 		calendarBtn.setAttribute("aria-label", t("log.datePickerAriaLabel"));
 		setTooltip(calendarBtn, t("log.datePickerAriaLabel"));
 		calendarBtn.addEventListener("click", () => {
-			// Fin del rango ya activo, para que el picker lo marque completo al
-			// reabrirse (fix QA agosto 2026): Semana es anchorDate+6 dias (lunes
-			// a domingo, ver [[Vista de resultados por rango]] y renderDateNav),
-			// Resultados es el fin de rango guardado; Dia no tiene rango, un
-			// dia suelto.
+			// The already-active range's end, so the picker marks it in
+			// full on reopening: Week is anchorDate+6 days (Monday to
+			// Sunday, see [[Vista de resultados por rango]] and
+			// renderDateNav), Resultados is the saved range end; Day has
+			// no range, a lone day.
 			const selectedRangeEnd =
 				this.viewMode === "week"
 					? addDays(this.anchorDate, 6)
@@ -1026,12 +1001,12 @@ export class TimeLogView extends ItemView {
 				anchorEl: calendarBtn,
 				selectedDate: this.viewMode === "results" ? (this.resultsRangeStart as number) : this.anchorDate,
 				selectedRangeEnd,
-				// El picker no distingue "click en el numero de semana" de
-				// "rango de dias que resulta ser justo una semana" — ambos
-				// llegan aqui como el mismo (start, end), y da igual: los
-				// dos deben saltar a vista Semana. Cualquier otro rango (ni
-				// un solo dia ni una semana completa) entra en modo
-				// Resultados — ver renderResultsSection().
+				// The picker doesn't distinguish "click on the week number"
+				// from "a day range that turns out to be exactly a week"
+				// — both arrive here as the same (start, end), and it
+				// doesn't matter: both must jump to Week view. Any other
+				// range (neither a single day nor a full week) enters
+				// Resultados mode — see renderResultsSection().
 				onChange: (start, end) => {
 					if (start === end) {
 						this.viewMode = "day";
@@ -1055,13 +1030,13 @@ export class TimeLogView extends ItemView {
 		this.renderProjectFilter(actions);
 	}
 
-	// Boton de filtro por proyecto, junto al calendario: solo icono
-	// "filter" en reposo (mismo aspecto que el boton de calendario — ver
-	// .task-time-tracker-log-header-icon-btn), nombre del proyecto
-	// seleccionado (o "No project") + fondo tintado en estado activo. El
-	// icono "x" para quitar el filtro es un boton independiente (hit-area
-	// propia), solo presente en estado activo — separado a proposito del
-	// boton principal, que solo abre/cierra el popover.
+	// Project filter button, next to the calendar: just the "filter"
+	// icon at rest (same look as the calendar button — see
+	// .task-time-tracker-log-header-icon-btn), the selected project's
+	// name (or "No project") + a tinted background in active state. The
+	// "x" icon to clear the filter is an independent button (its own
+	// hit-area), only present in active state — deliberately separate
+	// from the main button, which only opens/closes the popover.
 	private renderProjectFilter(nav: HTMLElement): void {
 		const wrap = nav.createDiv({ cls: "task-time-tracker-log-filter" });
 		const activeProject = this.projectFilterId
@@ -1076,10 +1051,10 @@ export class TimeLogView extends ItemView {
 		filterBtn.setAttribute("aria-label", t("log.filterButton"));
 		setTooltip(filterBtn, t("log.filterButton"));
 		setIcon(filterBtn.createSpan(), "filter");
-		// Sin selección: solo el icono (mismo aspecto que el boton de
-		// calendario). Con selección: nombre del proyecto o "No project",
-		// igual que ya mostraba antes — el icono solo es exclusivo del
-		// reposo, no del estado activo.
+		// No selection: just the icon (same look as the calendar
+		// button). With a selection: the project's name or "No project",
+		// same as it already showed before — the icon-only look is
+		// exclusive to rest state, not active state.
 		if (isActive) {
 			filterBtn.createSpan({
 				text: activeProject ? activeProject.name : t("log.editModalNoProject"),
@@ -1118,11 +1093,11 @@ export class TimeLogView extends ItemView {
 		}
 	}
 
-	// Sustituye al estado vacio normal de dia/semana solo cuando hay un
-	// filtro de proyecto activo y el rango visible completo (el dia, o
-	// los 7 dias de la semana) no tiene ninguna sesion de ese proyecto —
-	// un dia suelto vacio dentro de una semana con resultados en otros
-	// dias sigue mostrando el "No sessions this day" normal (ver render()).
+	// Replaces the normal day/week empty state only when a project
+	// filter is active and the whole visible range (the day, or the
+	// week's 7 days) has no session of that project — a lone empty day
+	// inside a week with results on other days still shows the normal
+	// "No sessions this day" (see render()).
 	private renderFilteredEmptyState(container: Element): void {
 		const projectName = this.projectFilterNoProject
 			? t("log.editModalNoProject")
@@ -1139,13 +1114,13 @@ export class TimeLogView extends ItemView {
 		});
 	}
 
-	// Formato corto de fecha (dia): "Mié, 12 ago 2026" en vez de la forma
-	// larga anterior ("miércoles, 12 de agosto de 2026") — la barra de
-	// navegacion ya no necesita competir en ancho con el toggle y el
-	// boton Hoy en la misma linea. Intl da el nombre de dia/mes en
-	// minuscula (locale es); solo la primera letra se pone en mayuscula
-	// a mano, no toda la cadena (text-transform: capitalize la pondria
-	// tambien en "ago").
+	// Short date format (day): "Mié, 12 ago 2026" instead of the earlier
+	// long form ("miércoles, 12 de agosto de 2026") — the navigation bar
+	// no longer needs to compete in width with the toggle and the Hoy
+	// button on the same line. Intl gives the day/month name in
+	// lowercase (es locale); only the first letter is capitalized by
+	// hand, not the whole string (text-transform: capitalize would also
+	// capitalize "ago").
 	private formatRangeLabel(): string {
 		if (this.viewMode === "day") {
 			const label = new Date(this.anchorDate).toLocaleDateString(undefined, {
@@ -1161,25 +1136,22 @@ export class TimeLogView extends ItemView {
 		return `${new Date(weekStart).toLocaleDateString()} – ${new Date(weekEnd).toLocaleDateString()}`;
 	}
 
-	// Bug de QA (5a pasada visual) — CSS text-transform: capitalize (ya
-	// retirado, ver styles.css) capitaliza CADA palabra, no solo la
-	// primera: en es-ES da "Martes, 18 De Agosto" en vez de "Martes, 18 de
-	// agosto". Mismo criterio ya usado en formatRangeLabel(): Intl da el
-	// nombre de dia/mes en minuscula (locale es), solo la primera letra se
-	// pone en mayuscula a mano.
+	// Same criterion as formatRangeLabel() (see docs/DECISIONS.md for why
+	// CSS text-transform: capitalize isn't used instead): Intl gives the
+	// day/month name in lowercase (es locale), only the first letter is
+	// capitalized by hand.
 	private formatDayHeading(dayStart: number): string {
 		const label = new Date(dayStart).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
 		return label.charAt(0).toUpperCase() + label.slice(1);
 	}
 
-	// Rediseno visual del Historial (agosto 2026, Time Tracker Tab.dc.html) —
-	// cabecera de cada dia dentro de Semana/Resultados: titulo + linea
-	// conectora que rellena el espacio + total del dia a la derecha, en vez
-	// del <h6> suelto de antes. dayEntries vacio (solo llega asi desde
-	// Semana — Resultados nunca llama aqui con un dia vacio, ver
-	// renderDaySection#hideIfEmpty) muestra "—" atenuado en vez de un total
-	// real. Sigue siendo un <h6> real (semantica de encabezado para lector
-	// de pantalla), con el layout de fila resuelto por CSS.
+	// Each day's heading inside Week/Resultados: title + connector line
+	// filling the space + the day's total on the right, instead of the
+	// earlier standalone <h6>. Empty dayEntries (only arrives this way
+	// from Week — Resultados never calls here with an empty day, see
+	// renderDaySection#hideIfEmpty) shows a dimmed "—" instead of a real
+	// total. Still a real <h6> (heading semantics for screen readers),
+	// with the row layout resolved by CSS.
 	private renderDayHeading(container: Element, dayStart: number, dayEntries: TimeEntry[]): void {
 		const isEmpty = dayEntries.length === 0;
 		const heading = container.createEl("h6", { cls: "task-time-tracker-log-day-heading" });
@@ -1198,9 +1170,9 @@ export class TimeLogView extends ItemView {
 			.filter((entry) => entry.end !== null)
 			.reduce((sum, entry) => sum + ((entry.end as number) - entry.start), 0);
 		const totalMs = completedMs + (activeEntry ? Date.now() - activeEntry.start : 0);
-		// Icono solo si ESTE dia tiene la sesion activa (mismo criterio que
-		// renderTaskCard() y renderViewTotal()) — indicador de "en vivo", no
-		// decoracion fija.
+		// Icon only if THIS day has the active session (same criterion as
+		// renderTaskCard() and renderViewTotal()) — a "live" indicator,
+		// not fixed decoration.
 		if (activeEntry) {
 			setIcon(totalEl.createSpan({ cls: "task-time-tracker-log-day-heading-total-icon" }), "timer");
 		}
@@ -1217,10 +1189,10 @@ export class TimeLogView extends ItemView {
 		}
 	}
 
-	// Limites (inicio incluido, fin excluido) del rango actualmente visible,
-	// segun viewMode — mismo calculo que ya hacia renderViewTotal() por su
-	// cuenta, ahora compartido con renderSubtitle() (ver rediseno visual del
-	// Historial, agosto 2026: subtitulo "N tareas · M sesiones/dias").
+	// Bounds (start included, end excluded) of the currently visible
+	// range, per viewMode — the same calculation renderViewTotal() used
+	// to do on its own, now shared with renderSubtitle() ("N tareas · M
+	// sesiones/dias").
 	private getViewRangeBounds(): { start: number; end: number } {
 		if (this.viewMode === "results") {
 			return { start: this.resultsRangeStart as number, end: addDays(this.resultsRangeEnd as number, 1) };
@@ -1230,12 +1202,11 @@ export class TimeLogView extends ItemView {
 		return { start, end };
 	}
 
-	// Subtitulo bajo "Time Tracker" (rediseno visual del Historial, agosto
-	// 2026): "N tareas · M sesiones" en Dia, "N tareas · M dias con
-	// actividad" en Semana/Resultados — nunca "N tareas · 1 dia con
-	// actividad" en Dia, ver la nota de diseno (dato trivial en un solo
-	// dia). allEntries ya llega acotado por el filtro de proyecto (ver
-	// render()), aqui solo se acota ademas al rango de fecha visible.
+	// Subtitle under "Time Tracker": "N tareas · M sesiones" in Day, "N
+	// tareas · M dias con actividad" in Week/Resultados — never "N
+	// tareas · 1 dia con actividad" in Day (a trivial fact on a single
+	// day). allEntries already arrives scoped by the project filter (see
+	// render()), here it's only further scoped to the visible date range.
 	private renderSubtitle(container: Element, allEntries: TimeEntry[]): void {
 		const { start, end } = this.getViewRangeBounds();
 		const rangeEntries = allEntries.filter((entry) => entry.start >= start && entry.start < end);
@@ -1255,16 +1226,16 @@ export class TimeLogView extends ItemView {
 		container.createDiv({ text, cls: "task-time-tracker-log-subtitle" });
 	}
 
-	// Bloque 2 — una seccion por dia: filtra allEntries a las que empezaron
-	// (entry.start) ese dia calendario local, y muestra un estado vacio
-	// razonable si no hay ninguna. withHeading solo se usa en vista semanal
-	// y en Resultados (una seccion por dia); en vista diaria el titulo de
-	// la seccion ya lo da la barra de navegacion, asi que no hace falta
-	// repetirlo. hideIfEmpty (Resultados, ver renderResultsSection()): un
-	// dia sin sesiones no se muestra en absoluto, ni siquiera su
-	// cabecera — es una lista de resultados, no un calendario, a
-	// diferencia de Semana, donde SI se muestra la cabecera + "No
-	// sessions this day" para cada dia vacio.
+	// One section per day: filters allEntries to those that started
+	// (entry.start) on that local calendar day, and shows a reasonable
+	// empty state if there are none. withHeading is only used in week
+	// view and in Resultados (one section per day); in day view the
+	// section's title is already given by the navigation bar, so it
+	// doesn't need repeating. hideIfEmpty (Resultados, see
+	// renderResultsSection()): a day with no sessions isn't shown at
+	// all, not even its heading — it's a results list, not a calendar,
+	// unlike Week, where the heading + "No sessions this day" IS shown
+	// for every empty day.
 	private async renderDaySection(
 		container: Element,
 		dayStart: number,
@@ -1291,11 +1262,11 @@ export class TimeLogView extends ItemView {
 		}
 
 		const resolutions = await this.resolveTaskIds(dayEntries);
-		// Una llamada a render() mas reciente ya tomo el control del
-		// contenedor mientras se resolvian los tt-id de esta seccion —
-		// ver comentario de renderToken. Abortar aqui evita duplicar
-		// tarjetas encima del resultado (ya correcto) de esa llamada mas
-		// reciente.
+		// A more recent render() call already took control of the
+		// container while this section's tt-ids were being resolved —
+		// see the renderToken comment. Aborting here avoids duplicating
+		// cards on top of that more recent call's (already correct)
+		// result.
 		if (token !== this.renderToken) return;
 		this.renderTaskList(container, dayEntries, resolutions, dayStart);
 	}
@@ -1306,9 +1277,10 @@ export class TimeLogView extends ItemView {
 		if (!container) return;
 
 		const allEntries = this.getEntries();
-		// Se recalcula desde cero en cada render(): si la tarjeta activa no
-		// se vuelve a renderizar (p. ej. se navega a otra fecha), el tick
-		// deja de tener efecto en vez de apuntar a un nodo ya desmontado.
+		// Recomputed from scratch on every render(): if the active card
+		// isn't rendered again (e.g. navigating to another date), the
+		// tick stops having any effect instead of pointing at an
+		// already-unmounted node.
 		this.activeCardTicks = [];
 
 		container.empty();
@@ -1319,12 +1291,12 @@ export class TimeLogView extends ItemView {
 			return;
 		}
 
-		// Filtro por proyecto (ver renderProjectFilter()): acota TODO el
-		// listado visible (total de la cabecera, navegacion incluida) a las
-		// entries de tareas asignadas a ese proyecto — allEntries (sin
-		// filtrar) se conserva arriba solo para decidir el estado vacio
-		// global del plugin ("No sessions recorded yet"), que no tiene
-		// relacion con el filtro.
+		// Project filter (see renderProjectFilter()): scopes the ENTIRE
+		// visible listing (header total, navigation included) to entries
+		// of tasks assigned to that project — allEntries (unfiltered) is
+		// kept above only to decide the plugin's global empty state ("No
+		// sessions recorded yet"), which has nothing to do with the
+		// filter.
 		const visibleEntries = this.projectFilterNoProject
 			? allEntries.filter((entry) => this.actions.getProjectForTask(entry.taskId) === null)
 			: this.projectFilterId
@@ -1360,15 +1332,15 @@ export class TimeLogView extends ItemView {
 		}
 	}
 
-	// Vista de resultados por rango: agrupado por dia (cabecera + tarjetas,
-	// ver renderDaySection con hideIfEmpty), sin dias vacios intercalados.
-	// Paginado en bloques de RESULTS_PAGE_DAYS dias — un rango puede ser
-	// arbitrariamente amplio (sin limite en el date-picker), pero resolver
-	// de golpe cientos/miles de dias (la inmensa mayoria vacios) no tiene
-	// sentido; "Cargar mas" solo aparece si el rango completo excede lo ya
-	// cargado. El total de la fila de titulo (ver renderViewTotal) SIEMPRE
-	// cubre el rango completo, no solo lo cargado — se calcula aparte, no
-	// depende de este bucle.
+	// Range results view: grouped by day (heading + cards, see
+	// renderDaySection with hideIfEmpty), with no empty days interspersed.
+	// Paginated in blocks of RESULTS_PAGE_DAYS days — a range can be
+	// arbitrarily wide (no limit in the date-picker), but resolving
+	// hundreds/thousands of days (the vast majority empty) all at once
+	// makes no sense; "Cargar mas" only appears if the full range
+	// exceeds what's already loaded. The title row's total (see
+	// renderViewTotal) ALWAYS covers the full range, not just what's
+	// loaded — it's computed separately, it doesn't depend on this loop.
 	private async renderResultsSection(container: Element, visibleEntries: TimeEntry[], token: number): Promise<void> {
 		const rangeStart = this.resultsRangeStart as number;
 		const rangeEnd = this.resultsRangeEnd as number; // dia de inicio del ultimo dia (inclusive)
@@ -1398,13 +1370,13 @@ export class TimeLogView extends ItemView {
 		}
 	}
 
-	// "Quitar filtros" (plural, QA agosto 2026 — release 0.0.29): el rango
-	// vacio de Resultados puede deberse al rango de fechas, al filtro de
-	// proyecto/"No project", o a la combinacion de ambos — a diferencia de
-	// renderFilteredEmptyState (que solo puede deberse al filtro de
-	// proyecto, sin rango en Dia/Semana), aqui no hay forma de distinguir
-	// la causa, asi que el boton quita los dos a la vez y vuelve siempre a
-	// Dia/hoy (mismo destino que "Volver"/"Limpiar" en este modo).
+	// "Quitar filtros" (plural): Resultados' empty range can be due to
+	// the date range, the project/"No project" filter, or a combination
+	// of both — unlike renderFilteredEmptyState (which can only be due
+	// to the project filter, no range in Day/Week), there's no way to
+	// tell the cause apart here, so the button clears both at once and
+	// always returns to Day/today (same destination as
+	// "Volver"/"Limpiar" in this mode).
 	private renderResultsEmptyState(container: Element, rangeStart: number, rangeEnd: number): void {
 		const sameMonth =
 			new Date(rangeStart).getMonth() === new Date(rangeEnd).getMonth() &&
@@ -1430,13 +1402,13 @@ export class TimeLogView extends ItemView {
 		});
 	}
 
-	// Total de tiempo trackeado en la vista actual (dia, semana o el rango
-	// completo de Resultados — nunca solo la parte ya cargada si hay
-	// paginacion, ver renderResultsSection()), junto al titulo. A
-	// diferencia del total compacto de cada tarjeta (formatDurationCompact),
-	// aqui se usa formatDuration (HH:MM:SS): es un unico numero destacado,
-	// no una lista de totales por tarea donde el formato compacto evita
-	// que compita visualmente con el titulo de cada tarjeta.
+	// Total time tracked in the current view (day, week, or Resultados'
+	// full range — never just the already-loaded part if there's
+	// pagination, see renderResultsSection()), next to the title. Unlike
+	// each card's compact total (formatDurationCompact), this one uses
+	// formatDuration (HH:MM:SS): it's a single standout number, not a
+	// list of per-task totals where the compact format avoids visually
+	// competing with each card's title.
 	private renderViewTotal(container: Element, allEntries: TimeEntry[]): void {
 		const { start: rangeStart, end: rangeEnd } = this.getViewRangeBounds();
 		const viewEntries = allEntries.filter((entry) => entry.start >= rangeStart && entry.start < rangeEnd);
@@ -1447,22 +1419,22 @@ export class TimeLogView extends ItemView {
 			.reduce((sum, entry) => sum + ((entry.end as number) - entry.start), 0);
 		const totalMs = completedMs + (activeEntry ? Date.now() - activeEntry.start : 0);
 
-		// Etiqueta "Total del rango" (rediseno visual del Historial, agosto
-		// 2026): mismo dato de siempre (el total del rango visible, sube en
-		// vivo si hay sesion activa), solo se le añade el rotulo encima —
-		// util sobre todo en Resultados, sin "hoy"/"esta semana" implicitos.
+		// "Total del rango" label: the same data as always (the visible
+		// range's total, ticking up live if there's an active session),
+		// just with a label added above it — most useful in Resultados,
+		// which has no implicit "today"/"this week".
 		const totalCol = container.createDiv({ cls: "task-time-tracker-log-total-col" });
 		totalCol.createSpan({ text: t("log.rangeTotalLabel"), cls: "task-time-tracker-log-total-label" });
 		const totalGroup = totalCol.createSpan({ cls: "task-time-tracker-totals-duration-group" });
-		// Icono solo si la sesion activa cae dentro del rango visible — ver
-		// mismo criterio en renderTaskCard() y renderDayHeading().
+		// Icon only if the active session falls inside the visible range
+		// — same criterion as in renderTaskCard() and renderDayHeading().
 		if (activeEntry) {
 			setIcon(totalGroup.createSpan({ cls: "task-time-tracker-totals-duration-icon" }), "clock");
 		}
-		// task-time-tracker-log-view-total-value: escala grande (22px en el
-		// prototipo) exclusiva de este total de cabecera — la clase base
-		// task-time-tracker-totals-duration se queda en la escala pequeña
-		// que comparten la tarjeta de tarea y la confirmacion de borrado.
+		// task-time-tracker-log-view-total-value: large scale (22px in
+		// the prototype) exclusive to this header total — the base class
+		// task-time-tracker-totals-duration stays at the small scale the
+		// task card and the delete confirmation share.
 		const value = totalGroup.createSpan({
 			text: formatDuration(totalMs),
 			cls: "task-time-tracker-totals-duration task-time-tracker-log-view-total-value",
