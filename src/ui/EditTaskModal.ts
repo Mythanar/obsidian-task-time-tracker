@@ -1,11 +1,11 @@
 // ui/EditTaskModal.ts
-// Rediseno "Editar tarea desde el Historial" (agosto 2026) — unica via de
-// gestion de una tarea desde el Historial: reasignar Proyecto/Cliente
-// (vinculo vivo por tt-id, ver core/ProjectManager.ts) y editar/borrar
-// sesiones sueltas. El nombre de la tarea es puramente informativo (sin
-// navegacion a la nota — eso vive solo en el icono file-search de la
-// tarjeta, ver TimeLogView.ts) y el borrado de la tarea completa vive
-// solo en el menu kebab de la tarjeta, nunca aqui.
+// "Editar tarea desde el Historial" — the only way to manage a task
+// from the Historial: reassigning Project/Client (live link by tt-id,
+// see core/ProjectManager.ts) and editing/deleting individual sessions.
+// The task name is purely informational (no navigation to the note —
+// that only lives in the card's file-search icon, see TimeLogView.ts)
+// and deleting the whole task only lives in the card's kebab menu,
+// never here.
 
 import { App, Modal, Notice, Setting, setIcon } from "obsidian";
 import { formatDuration, formatDurationCompact } from "../core/TrackingEngine";
@@ -38,26 +38,25 @@ export class EditTaskModal extends Modal {
 	private projectFeedbackEl: HTMLElement | null = null;
 	private feedbackTimeoutId: number | null = null;
 	private currentProjectId: string;
-	// QA ronda 2 — no existe ningun hook publico documentado (ver
-	// obsidian.d.ts#Modal) para desactivar el cierre al clicar fuera del
-	// contenido. Unica via basada solo en API publica: detectar un
-	// mousedown fuera de modalEl (containerEl/modalEl son ambos publicos)
-	// y, durante una ventana muy breve despues, bloquear cualquier
-	// close() en el propio override de abajo. Ni Esc ni el boton "Cerrar"
-	// pasan nunca por un mousedown fuera del modal, asi que nunca activan
-	// este bloqueo — no hace falta tocar su manejo, que ya funciona.
+	// There's no documented public hook (see obsidian.d.ts#Modal) to
+	// disable closing on an outside click. The only public-API-only way:
+	// detect a mousedown outside modalEl (containerEl/modalEl are both
+	// public) and, for a very brief window afterward, block any close()
+	// in the override below. Neither Esc nor the "Close" button ever go
+	// through a mousedown outside the modal, so they never trigger this
+	// block — no need to touch their handling, which already works.
 	private outsideMousedownGuardUntil = 0;
 
 	constructor(
 		app: App,
 		private taskId: string,
 		private label: string,
-		// Bug 0.0.32 — nota borrada: `label` ya llega como el taskText real
-		// (mismo snapshot que usa la tarjeta del Historial, ver
-		// TimeLogView.ts#renderTaskCard), no el generico "Task not found"/
-		// "Tarea no encontrada". Este flag solo controla el aviso adicional
-		// "Note not found" bajo el titulo — no afecta a tt-id, Project ni
-		// Sessions, que ya funcionan sin depender de la nota.
+		// `label` always arrives as the real taskText (the same snapshot
+		// the Historial card uses, see TimeLogView.ts#renderTaskCard),
+		// never the generic "Task not found". This flag only controls the
+		// extra "Note not found" warning under the title — it doesn't
+		// affect tt-id, Project, or Sessions, which already work without
+		// depending on the note.
 		private isMissing: boolean,
 		// The full history of THIS task and the project list, both as
 		// readers: the in-memory state is replaced wholesale after every
@@ -65,24 +64,24 @@ export class EditTaskModal extends Modal {
 		// the array would leave orphan objects — and reading on demand also
 		// makes a change delivered by sync visible on the next render.
 		private getEntries: () => TimeEntry[],
-		// Todas las entries del plugin (no solo las de esta tarea): el
-		// aviso de solapamiento compara contra cualquier otra sesion, igual
-		// que ya hacia la edicion inline de Fase 5.
+		// All of the plugin's entries (not just this task's): the overlap
+		// warning compares against any other session, same as the earlier
+		// inline editing did.
 		private getAllEntries: () => TimeEntry[],
 		private getProjects: () => Project[],
 		currentProject: Project | null,
 		private actions: EditTaskModalActions,
-		// Refresca el panel del Historial detras del modal tras cada
-		// mutacion (reasignar proyecto, editar u borrar una sesion).
+		// Refreshes the Historial panel behind the modal after every
+		// mutation (reassigning a project, editing or deleting a session).
 		private onChange: () => void,
 	) {
 		super(app);
 		this.currentProjectId = currentProject?.id ?? "";
 	}
 
-	// Unico punto de cierre real permitido, aparte del guard de close()
-	// abajo. Ver el comentario junto a outsideMousedownGuardUntil sobre
-	// por que esto se resuelve asi (solo API publica).
+	// The only real closing point allowed, aside from the guard on
+	// close() below. See the comment next to outsideMousedownGuardUntil
+	// for why this is resolved this way (public API only).
 	close(): void {
 		if (Date.now() < this.outsideMousedownGuardUntil) return;
 		super.close();
@@ -90,10 +89,10 @@ export class EditTaskModal extends Modal {
 
 	onOpen(): void {
 		const { contentEl } = this;
-		// En modalEl (no contentEl): modal-title vive en modal-header, un
-		// hermano de modal-content, asi que el selector CSS de este modal
-		// (ver .task-time-tracker-edit-modal .modal-title en styles.css)
-		// necesita un ancestro comun a ambos para alcanzar el titulo.
+		// On modalEl (not contentEl): modal-title lives in modal-header, a
+		// sibling of modal-content, so this modal's CSS selector (see
+		// .task-time-tracker-edit-modal .modal-title in styles.css) needs
+		// a common ancestor of both to reach the title.
 		this.modalEl.addClass("task-time-tracker-edit-modal");
 
 		this.containerEl.addEventListener(
@@ -106,28 +105,28 @@ export class EditTaskModal extends Modal {
 			true,
 		);
 
-		// Correccion QA ronda 4: usar el titulo nativo del Modal (this.titleEl,
-		// publico via setTitle()) en vez de un h3 propio dentro de contentEl.
-		// Obsidian ya posiciona titleEl en la misma fila que su boton de
-		// cerrar (X) dentro del modal-header — resuelve el desalineamiento
-		// de raiz, sin necesidad de parchear un margin-top a mano.
+		// Uses the Modal's native title (this.titleEl, public via
+		// setTitle()) instead of a plain h3 inside contentEl. Obsidian
+		// already positions titleEl on the same row as its close (X)
+		// button inside modal-header — fixes the misalignment at the
+		// root, no need to hand-patch a margin-top.
 		this.setTitle(this.label);
 
-		// Bug 0.0.32 — nota borrada: aviso en cursiva bajo el titulo, distinto
-		// del tratamiento de la tarjeta del Historial (ahi el nombre va en
-		// cursiva; aqui es el titulo el que queda normal y este aviso el que
-		// va en cursiva, ver encargo). No afecta a tt-id/Project/Sessions.
+		// Note deleted: italic warning under the title, unlike the
+		// Historial card's treatment (there the name goes italic; here
+		// the title stays normal and this warning is what goes italic).
+		// Doesn't affect tt-id/Project/Sessions.
 		if (this.isMissing) {
 			contentEl.createDiv({ text: t("log.noteNotFound"), cls: "task-time-tracker-edit-modal-note-missing" });
 		}
 
-		// Metadato secundario (siempre visible, no sujeto a los niveles
-		// Normal/Reducido/Oculto del tt-id renderizado en la nota via
-		// Dataview — eso es un ajuste distinto sobre la nota, ver
-		// SettingsTab.ts#taskIdFormat): id limpio (sin corchetes ni
-		// "tt-id::", igual que la columna del CSV de exportacion, ver
-		// CsvAdapter.ts) mas boton de copiar. Mismo estilo atenuado que ya
-		// usa el subtitulo del panel (task-time-tracker-log-subtitle).
+		// Secondary metadata (always visible, not subject to the
+		// Normal/Reduced/Hidden levels of the tt-id rendered in the note
+		// via Dataview — that's a separate setting on the note, see
+		// SettingsTab.ts#taskIdFormat): a clean id (no brackets or
+		// "tt-id::", same as the export CSV's column, see CsvAdapter.ts)
+		// plus a copy button. Same dimmed style the panel's subtitle
+		// already uses (task-time-tracker-log-subtitle).
 		const idRow = contentEl.createDiv({ cls: "task-time-tracker-edit-modal-id-row" });
 		idRow.createSpan({ text: "tt-id", cls: "task-time-tracker-edit-modal-id-key" });
 		idRow.createSpan({ text: this.taskId, cls: "task-time-tracker-edit-modal-id-value" });
@@ -142,9 +141,9 @@ export class EditTaskModal extends Modal {
 			});
 		});
 
-		// Boton + popover (componente compartido "Project picker list", ver
-		// ProjectPickerList.ts) en vez del <select> nativo anterior: label y
-		// boton juntos, alineados a la izquierda.
+		// Button + popover (shared "Project picker list" component, see
+		// ProjectPickerList.ts) instead of the previous native <select>:
+		// label and button together, left-aligned.
 		const projectRow = contentEl.createDiv({ cls: "task-time-tracker-edit-modal-project-row" });
 		projectRow.createSpan({ text: t("log.editModalProjectLabel"), cls: "task-time-tracker-edit-modal-project-label" });
 		const projectBtn = projectRow.createEl("button", {
@@ -154,13 +153,14 @@ export class EditTaskModal extends Modal {
 		const projectBtnLabel = projectBtn.createSpan({ cls: "task-time-tracker-log-filter-btn-label" });
 		this.updateProjectBtnLabel(projectBtnLabel);
 		projectBtn.addEventListener("click", () => {
-			// Guard permanente mientras el popover este abierto (no solo los
-			// 300ms del detector automatico de arriba): el popover vive fuera
-			// de modalEl (appendeado a document.body para poder posicionarse
-			// con position: fixed), asi que buscar o clicar una fila dentro
-			// de el se veria como un click "fuera del modal" y lo cerraria —
-			// mismo problema que el <select> nativo que este boton reemplaza
-			// (ver el comentario junto a outsideMousedownGuardUntil arriba).
+			// Permanent guard while the popover is open (not just the
+			// 300ms of the automatic detector above): the popover lives
+			// outside modalEl (appended to document.body so it can be
+			// positioned with position: fixed), so searching or clicking a
+			// row inside it would look like a click "outside the modal"
+			// and close it — same problem as the native <select> this
+			// button replaces (see the comment next to
+			// outsideMousedownGuardUntil above).
 			this.outsideMousedownGuardUntil = Number.MAX_SAFE_INTEGER;
 			openProjectPickerPopover({
 				anchorEl: projectBtn,
@@ -181,18 +181,18 @@ export class EditTaskModal extends Modal {
 			});
 		});
 
-		// Espacio reservado (una linea, ver styles.css min-height) desde el
-		// primer render, vacio por defecto — evita que el aviso "Project
-		// updated" al aparecer/desaparecer desplace el resto del modal.
+		// Reserved space (one line, see styles.css min-height) from the
+		// first render, empty by default — keeps the "Project updated"
+		// warning from shifting the rest of the modal when it appears or
+		// disappears.
 		this.projectFeedbackEl = contentEl.createDiv({ cls: "task-time-tracker-edit-modal-project-feedback" });
 
-		// QA ronda 3 — encabezado "Sessions" y resumen (nº sesiones + total)
-		// comparten fila: titulo a la izquierda, resumen a la derecha. El
-		// resumen usa el mismo formato/clases que ya usa la tarjeta del
-		// panel — a proposito distinto del total de la tarjeta que abrio
-		// este modal (esa esta acotada al dia/semana visible, ver Fase 5);
-		// aqui es el historico completo de la tarea, coherente con el
-		// resto del modal.
+		// "Sessions" heading and summary (# sessions + total) share a row:
+		// title on the left, summary on the right. The summary uses the
+		// same format/classes the panel's card already uses — deliberately
+		// different from the total on the card that opened this modal
+		// (that one is scoped to the visible day/week); here it's the
+		// task's entire history, consistent with the rest of the modal.
 		const sessionsHeader = contentEl.createDiv({ cls: "task-time-tracker-edit-modal-sessions-header" });
 		sessionsHeader.createEl("h4", { text: t("log.editModalSessionsHeading") });
 		this.summaryEl = sessionsHeader.createDiv({ cls: "task-time-tracker-log-meta task-time-tracker-edit-modal-summary" });
@@ -200,9 +200,10 @@ export class EditTaskModal extends Modal {
 
 		this.sessionsEl = contentEl.createDiv({ cls: "task-time-tracker-edit-modal-sessions" });
 		this.renderSessions();
-		// Al abrir, la sesion mas reciente (ultima en el orden cronologico
-		// ascendente, ver renderSessions()) queda visible sin scroll manual —
-		// solo en la apertura inicial, no en cada re-render tras editar.
+		// On open, the most recent session (last in ascending
+		// chronological order, see renderSessions()) is visible without
+		// manual scrolling — only on the initial open, not on every
+		// re-render after editing.
 		this.sessionsEl.scrollTop = this.sessionsEl.scrollHeight;
 
 		new Setting(contentEl).addButton((button) =>
@@ -215,10 +216,10 @@ export class EditTaskModal extends Modal {
 		this.contentEl.empty();
 	}
 
-	// Feedback inline (no Notice global, no footer): escribe el aviso en el
-	// espacio ya reservado y lo desvanece tras ~3s. Reinicia el temporizador
-	// si se reasigna otra vez antes de que termine el anterior, para que dos
-	// reasignaciones seguidas no se pisen a medio desvanecer.
+	// Inline feedback (no global Notice, no footer): writes the message
+	// into the already-reserved space and fades it after ~3s. Restarts
+	// the timer if reassigned again before the previous one finishes, so
+	// two reassignments in a row don't clobber each other mid-fade.
 	private showProjectFeedback(): void {
 		const el = this.projectFeedbackEl;
 		if (!el) return;
@@ -231,9 +232,9 @@ export class EditTaskModal extends Modal {
 		this.feedbackTimeoutId = window.setTimeout(() => {
 			el.removeClass("is-visible");
 			this.feedbackTimeoutId = null;
-			// Limpia el texto solo tras el fade (ver transition en
-			// styles.css) para no dejar un nodo de texto invisible pero
-			// presente (accesibilidad) mas alla de lo necesario.
+			// Clears the text only after the fade (see transition in
+			// styles.css) to avoid leaving an invisible-but-present text
+			// node (accessibility) longer than necessary.
 			window.setTimeout(() => el.setText(""), 300);
 		}, 3000);
 	}
@@ -259,10 +260,10 @@ export class EditTaskModal extends Modal {
 		totalGroup.createSpan({ text: formatDurationCompact(totalMs), cls: "task-time-tracker-totals-duration" });
 	}
 
-	// Orden cronologico ascendente (mas antigua arriba, mas reciente abajo)
-	// — mismo criterio canonico que el resto de la app (panel del Historial,
-	// CSV de exportacion). No se reordena tras cada render(): solo la
-	// apertura inicial hace scroll al final (ver onOpen()).
+	// Ascending chronological order (oldest on top, most recent at the
+	// bottom) — same canonical criterion as the rest of the app (the
+	// Historial panel, the export CSV). Not reordered on every render():
+	// only the initial open scrolls to the end (see onOpen()).
 	private renderSessions(): void {
 		const container = this.sessionsEl;
 		if (!container) return;
@@ -289,8 +290,8 @@ export class EditTaskModal extends Modal {
 		const row = container.createDiv({ cls: "task-time-tracker-log-session-row" });
 		renderSessionInfo(row, entry);
 
-		// Solo sesiones cerradas son editables: la activa (si la tarea
-		// tuviera una en curso) nunca se edita desde aqui.
+		// Only closed sessions are editable: the active one (if the task
+		// had one running) is never edited from here.
 		if (entry.end !== null) {
 			row.addClass("task-time-tracker-log-session-row-editable");
 			row.addEventListener("click", () => {
@@ -313,9 +314,9 @@ export class EditTaskModal extends Modal {
 		}
 	}
 
-	// Campo de texto con icono + etiqueta encima (fecha u hora), parte de
-	// una de las dos parejas (inicio/fin) del formulario de edicion. Sin
-	// selector nativo del sistema: type="text" siempre.
+	// Text field with an icon + label above (date or time), part of one
+	// of the edit form's two pairs (start/end). No native system picker:
+	// always type="text".
 	private createEditField(container: Element, icon: string, label: string): HTMLInputElement {
 		const field = container.createDiv({ cls: "task-time-tracker-log-edit-field" });
 		const labelRow = field.createDiv({ cls: "task-time-tracker-log-edit-field-label" });
@@ -333,8 +334,8 @@ export class EditTaskModal extends Modal {
 		const form = container.createDiv({ cls: "task-time-tracker-log-edit-form" });
 
 		if (draft.confirmingDelete) {
-			// Los datos de la sesion (originales, no lo que se haya
-			// tecleado sin guardar) siguen visibles mientras se confirma.
+			// The session's data (original, not whatever was typed but not
+			// saved) stays visible while confirming.
 			renderSessionInfo(form, entry);
 			form.createEl("p", {
 				text: t("log.deleteSessionConfirm"),
@@ -359,11 +360,11 @@ export class EditTaskModal extends Modal {
 			return;
 		}
 
-		// Parejas etiquetadas con icono (fecha inicio/hora inicio, fecha
-		// fin/hora fin), todas como campos de texto libres, sin selector
-		// nativo del sistema ni siquiera para las fechas. El grid se apila
-		// verticalmente en pantallas estrechas y pasa a una sola fila si
-		// hay ancho suficiente (ver .task-time-tracker-log-edit-grid).
+		// Icon-labeled pairs (start date/start time, end date/end time),
+		// all as free text fields, no native system picker even for
+		// dates. The grid stacks vertically on narrow screens and moves
+		// to a single row if there's enough width (see
+		// .task-time-tracker-log-edit-grid).
 		const grid = form.createDiv({ cls: "task-time-tracker-log-edit-grid" });
 
 		const startGroup = grid.createDiv({ cls: "task-time-tracker-log-edit-group" });
@@ -381,19 +382,19 @@ export class EditTaskModal extends Modal {
 		endDateInput.value = draft.endDate;
 		endInput.value = draft.endTime;
 
-		// El estado "invalido" se guarda en el draft ({campo}Evaluated), no
-		// solo como clase CSS: un refresh externo reconstruye este
-		// formulario entero, y sin esto la marca visual se perderia aunque
-		// el campo siguiera siendo invalido.
+		// The "invalid" state is saved in the draft ({field}Evaluated),
+		// not only as a CSS class: an external refresh rebuilds this
+		// whole form, and without this the visual marker would be lost
+		// even though the field was still invalid.
 		startDateInput.toggleClass("is-invalid", draft.startDateEvaluated && parseDateInput(draft.startDate) === null);
 		startInput.toggleClass("is-invalid", draft.startTimeEvaluated && parseTimeInput(draft.startTime) === null);
 		endDateInput.toggleClass("is-invalid", draft.endDateEvaluated && parseDateInput(draft.endDate) === null);
 		endInput.toggleClass("is-invalid", draft.endTimeEvaluated && parseTimeInput(draft.endTime) === null);
 
-		// Bloque resaltado de solo lectura: duracion calculada en vivo a
-		// partir de los cuatro campos, sin la affordance de input de los 4
-		// campos de arriba — la ausencia de borde/fondo tipo-input es lo
-		// que comunica "esto no se edita directamente".
+		// Highlighted read-only block: duration computed live from the
+		// four fields, without the input affordance of the four fields
+		// above — the absence of an input-like border/background is what
+		// communicates "this isn't edited directly".
 		const durationBlock = form.createDiv({ cls: "task-time-tracker-log-edit-duration" });
 		const durationLabelGroup = durationBlock.createDiv({ cls: "task-time-tracker-log-edit-duration-label-group" });
 		setIcon(durationLabelGroup.createSpan(), "timer");
@@ -403,10 +404,10 @@ export class EditTaskModal extends Modal {
 		});
 		const durationPreview = durationBlock.createSpan({ cls: "task-time-tracker-log-edit-duration-value" });
 
-		// Bloque de aviso unico y fijo, justo debajo del bloque de
-		// duracion: siempre en la misma posicion, con altura reservada
-		// aunque no haya nada que mostrar. Nunca muestra dos mensajes a la
-		// vez — ver updateMessage() para la prioridad entre ellos.
+		// Single, fixed warning block, right below the duration block:
+		// always in the same position, with height reserved even when
+		// there's nothing to show. Never shows two messages at once — see
+		// updateMessage() for the priority between them.
 		const messageEl = form.createEl("p", { cls: "task-time-tracker-log-edit-message" });
 
 		const actions = form.createDiv({ cls: "task-time-tracker-log-edit-actions" });
@@ -420,8 +421,8 @@ export class EditTaskModal extends Modal {
 			this.renderSessions();
 		});
 
-		// "Eliminar sesion": icono de papelera en la misma fila que
-		// Guardar/Cancelar, empujado al extremo derecho.
+		// "Delete session": trash icon on the same row as Save/Cancel,
+		// pushed to the far right.
 		const deleteBtn = actions.createEl("button", { cls: "task-time-tracker-log-edit-delete clickable-icon" });
 		setIcon(deleteBtn, "trash-2");
 		deleteBtn.setAttribute("aria-label", t("log.delete"));
@@ -436,24 +437,23 @@ export class EditTaskModal extends Modal {
 			messageEl.toggleClass("task-time-tracker-log-edit-message-warning", kind === "warning");
 		};
 
-		// Prioridad, nunca dos a la vez: 1) error de guardado del backend
-		// (sesion borrada mientras se editaba) 2) error de formato — solo
-		// si algun campo ya fue evaluado (blur o longitud completa, ver
-		// bindDraftField; nunca mientras se sigue escribiendo) 3) fin <=
-		// inicio (una vez el formato es valido) 4) aviso de solapamiento
-		// (solo con formato valido y fin > inicio) 5) nada.
+		// Priority, never two at once: 1) backend save error (session
+		// deleted while editing) 2) format error — only if some field has
+		// already been evaluated (blur or full length, see
+		// bindDraftField; never while still typing) 3) end <= start (once
+		// the format is valid) 4) overlap warning (only with valid format
+		// and end > start) 5) nothing.
 		const updateMessage = () => {
 			const startDateInvalid = draft.startDateEvaluated && parseDateInput(draft.startDate) === null;
 			const endDateInvalid = draft.endDateEvaluated && parseDateInput(draft.endDate) === null;
 			const startTimeInvalid = draft.startTimeEvaluated && parseTimeInput(draft.startTime) === null;
 			const endTimeInvalid = draft.endTimeEvaluated && parseTimeInput(draft.endTime) === null;
 			const formatInvalid = startDateInvalid || endDateInvalid || startTimeInvalid || endTimeInvalid;
-			// Bloqueo real del boton, no solo un mensaje, y computado siempre
-			// (no solo dentro de la rama de formato invalido): un valor con
-			// formato invalido (ej. dia fuera de rango del mes) nunca debe
-			// poder llegar a saveDraft() ni por accidente — ver bug critico QA
-			// 0.0.29 (fecha invalida se guardaba silenciosamente como otra
-			// fecha distinta, sin aviso).
+			// Real button blocking, not just a message, and always
+			// computed (not only inside the invalid-format branch): a
+			// value with an invalid format (e.g. a day out of the month's
+			// range) must never be able to reach saveDraft() even by
+			// accident (see docs/DECISIONS.md).
 			saveButton.disabled = formatInvalid;
 
 			if (draft.error) {
@@ -467,8 +467,8 @@ export class EditTaskModal extends Modal {
 
 			const resolved = resolveDraftTimestamps(draft);
 			if (!resolved.ok) {
-				// Formato todavia incompleto pero no marcado invalido (el
-				// usuario sigue escribiendo) — sin mensaje todavia.
+				// Format still incomplete but not marked invalid (the user
+				// is still typing) — no message yet.
 				setMessage("", "none");
 				return;
 			}
@@ -484,9 +484,9 @@ export class EditTaskModal extends Modal {
 			setMessage(overlapping ? t("log.warnOverlap") : "", overlapping ? "warning" : "none");
 		};
 
-		// Vista previa en vivo de la duracion calculada, sin reconstruir el
-		// formulario entero — eso perderia el foco del input a mitad de
-		// tecleo. Sin duracion valida todavia, se muestra "—".
+		// Live preview of the computed duration, without rebuilding the
+		// whole form — that would lose the input's focus mid-typing. With
+		// no valid duration yet, "—" is shown.
 		const updatePreview = () => {
 			const resolved = resolveDraftTimestamps(draft);
 			if (!resolved.ok) {
@@ -497,10 +497,10 @@ export class EditTaskModal extends Modal {
 			durationPreview.setText(end > start ? formatDuration(end - start) : "—");
 		};
 
-		// El formato NO se evalua en cada tecla: solo al perder el foco
-		// (blur) o al llegar a la longitud completa del campo (10
-		// caracteres "YYYY-MM-DD", 8 "HH:MM:SS"). Sin selector nativo ni
-		// flechas arriba/abajo: se edita solo a mano.
+		// The format is NOT evaluated on every keystroke: only on losing
+		// focus (blur) or reaching the field's full length (10 characters
+		// for "YYYY-MM-DD", 8 for "HH:MM:SS"). No native picker or
+		// up/down arrows: edited by hand only.
 		const bindDraftField = (
 			input: HTMLInputElement,
 			isValid: (value: string) => boolean,
@@ -559,10 +559,10 @@ export class EditTaskModal extends Modal {
 		updateMessage();
 	}
 
-	// Fin debe ser posterior a inicio, aplicada la logica de cruce de
-	// medianoche (ver resolveDraftTimestamps). El solapamiento con otra
-	// sesion ya se avisa en vivo mientras se edita (ver updateMessage());
-	// aqui no se vuelve a comprobar, nunca bloquea el guardado.
+	// End must be after start, with the midnight-crossing logic already
+	// applied (see resolveDraftTimestamps). Overlap with another session
+	// is already warned about live while editing (see updateMessage());
+	// it isn't checked again here, it never blocks saving.
 	private async saveDraft(entry: TimeEntry): Promise<void> {
 		const draft = this.draft;
 		if (!draft) return;
