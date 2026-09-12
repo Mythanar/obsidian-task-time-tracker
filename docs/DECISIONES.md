@@ -1258,3 +1258,27 @@ resultado final.
   no comparten soporte nativo de TypeScript. El "disco" simulado hace un
   ida y vuelta por JSON en cada `load`/`save`, así que memoria y disco
   nunca comparten referencias y una prueba no puede pasar por accidente.
+
+## Historial — retomar tracking de una tarea ya registrada
+
+- **Nuevo control en la tarjeta del Historial para retomar el tracking de
+  una tarea ya cerrada (con historial), sin volver a la nota.** Vive en
+  una franja (`.task-time-tracker-log-card-control-slot`) colapsada a
+  ancho 0 en reposo, entre el título y la columna de duración/sesiones —
+  nunca después de esta última. Se revela con `:hover` o `:focus-within`
+  de toda la fila (no solo del propio botón, para que un usuario de
+  teclado que tabula hasta un botón de ancho 0 pueda verlo aparecer) o
+  siempre en dispositivos táctiles, donde `hover` no existe. La fila con
+  tracking activo nunca colapsa su control, al haber como máximo un timer
+  activo a la vez (regla no negociable del plugin).
+- **El título de la tarjeta vuelve a truncarse en una sola línea,
+  revirtiendo el clamp a 2 líneas** adoptado en el rediseño visual
+  anterior (ver "Fase 5 — rediseño visual del Historial (cabecera +
+  lista)"). Motivo: la nueva franja de acción anima su ancho entre 0 y
+  28px al hacer hover/focus sobre la fila, y un título que aún pudiera
+  envolver a una segunda línea se re-envolvería a mitad de esa
+  transición, causando parpadeo visual y pudiendo empujar la columna
+  derecha. El truncado en una sola línea evita el problema de raíz: la
+  altura del título ya no depende de cuánto ancho tenga en cada
+  instante, así que la transición de 150ms solo mueve el punto de corte
+  del ellipsis, nunca el layout de la fila.

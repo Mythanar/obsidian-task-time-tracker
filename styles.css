@@ -1,13 +1,8 @@
-/* Rediseno visual del Historial, 2a pasada de QA (agosto 2026, Time
-   Tracker Tab.dc.html) — las tareas de un mismo dia ya no son tarjetas
-   sueltas con hueco entre si: viven todas dentro de este UNICO
-   contenedor (borde, radio, fondo, ver mas abajo), como en el prototipo.
-   overflow:hidden recorta las esquinas de la primera/ultima fila para
-   que sigan el radio redondeado del contenedor aunque las filas en si no
-   tengan radio propio. Sin gap: las filas van pegadas, separadas solo
-   por el divisor de .task-time-tracker-log-row (ver abajo) — el borde y
-   el fondo compartidos son justo lo que antes daba cada
-   .task-time-tracker-log-row por separado. */
+/* Tasks for the same day share this one container (border/radius/background)
+   instead of separate cards with gaps. overflow:hidden clips the first/last
+   row to the container's rounded corners since rows have none of their own;
+   no gap — rows are divided only by the border in .task-time-tracker-log-row
+   below. */
 .task-time-tracker-log-list {
 	display: flex;
 	flex-direction: column;
@@ -18,12 +13,6 @@
 	overflow: hidden;
 }
 
-/* Fila de tarea (o de la confirmacion de borrado, misma clase, mismo
-   contenedor list): sin caja propia — vive dentro del contenedor de
-   arriba. Divisor solo entre filas, nunca antes de la primera (selector
-   posicional puro, no depende de ningun indice calculado en TS) — mismo
-   criterio "divider: i===0 ? none : ..." del prototipo. Padding 11px/12px
-   del prototipo, sin cambios de interaccion. */
 .task-time-tracker-log-row {
 	padding: 0.6875em 0.75em;
 }
@@ -37,9 +26,9 @@
 	margin-bottom: 0.25em;
 }
 
-/* Bug 0.0.32 — titulo real (taskText) cuando la nota se borro: solo
-   cursiva, sin tocar el color del texto (a diferencia del icono, que si
-   se colorea de error — ver .task-time-tracker-log-card-note-missing). */
+/* Real title (taskText) when the source note was deleted: italic only, no
+   color change — unlike the icon, which does turn to error color (see
+   .task-time-tracker-log-card-note-missing). */
 .task-time-tracker-log-task-title-missing-note {
 	font-style: italic;
 }
@@ -50,13 +39,10 @@
 	margin-bottom: 0.25em;
 }
 
-/* Chevron + sesiones + total + tt-id + boton (trash o stop+contador):
-   un unico grupo flex-wrap, sin contenedor "summary" intermedio — en
-   mobile, con el panel mas estrecho que la pantalla, el conjunto no
-   siempre cabe en una linea. Cada elemento (ver white-space: nowrap y
-   flex-shrink: 0 mas abajo) se trata como un bloque atomico: si no cabe
-   entero, baja entero a la siguiente linea, nunca se parte por dentro
-   (ej. "1 sesión" partido en "1"/"sesión" por word-wrap del navegador). */
+/* Single flex-wrap group (chevron, sessions, total, tt-id, button); each
+   item (white-space:nowrap + flex-shrink:0 below) wraps to the next line as
+   a whole rather than breaking mid-text (e.g. "1 session" splitting into
+   "1"/"session"). */
 .task-time-tracker-log-meta {
 	display: flex;
 	align-items: center;
@@ -66,13 +52,11 @@
 	color: var(--text-muted);
 }
 
-/* Escala del prototipo (11.5px, text-faint) — mas atenuado que el
-   text-muted heredado de .task-time-tracker-log-meta. 0.85em porque este
-   span ya hereda el 0.85em de .task-time-tracker-log-meta (13.6px): otro
-   0.85em encima da los ~11.5px del prototipo, no habria que calcularlo
-   contra el tamaño base de la tarjeta directamente. Sigue aplicando tal
-   cual a la confirmacion de borrado (renderTaskDeleteConfirm), que sigue
-   anidada dentro de .task-time-tracker-log-meta. */
+/* This span already inherits 0.85em from .task-time-tracker-log-meta;
+   another 0.85em here compounds to the intended size rather than being
+   calculated directly against the card's base font-size. Also applies as-is
+   to the delete confirmation (renderTaskDeleteConfirm), still nested inside
+   .task-time-tracker-log-meta. */
 .task-time-tracker-log-session-count {
 	font-size: 0.85em;
 	color: var(--text-faint);
@@ -80,17 +64,11 @@
 	flex-shrink: 0;
 }
 
-/* La tarjeta de tarea (3a pasada de QA visual; bajada debajo del total
-   dentro de .task-time-tracker-log-card-right-col en la 4a) ya no anida
-   esto en .task-time-tracker-log-meta — vive directo en
-   .task-time-tracker-log-card-title-row, contra los 16px base de la
-   tarjeta sin escalado intermedio, por eso hace falta este valor propio
-   en vez de reusar el 0.85em de arriba, calibrado para la otra anidacion.
-   11px, valor exacto del prototipo actualizado (Time Tracker Tab.dc.html,
-   docs/Prototype) para esta posicion apilada — distinto del 11.5px que
-   usaba en la disposicion en linea anterior. Selector compuesto: gana por
-   especificidad, no por orden — el descendiente combinator no depende de
-   que .task-time-tracker-log-card-right-col este de por medio o no. */
+/* Not nested inside .task-time-tracker-log-meta here — this lives directly
+   in .task-time-tracker-log-card-title-row, against the card's 16px base
+   with no intermediate scaling, hence its own value instead of reusing the
+   0.85em above (calibrated for that other nesting). Compound selector: wins
+   by specificity, not by source order. */
 .task-time-tracker-log-card-title-row .task-time-tracker-log-session-count {
 	font-size: 0.6875em;
 }
@@ -103,11 +81,8 @@
 	flex-shrink: 0;
 }
 
-/* Icono de cronometro + valor agrupados (mismo patron que el bloque
-   "Calculated duration" del formulario de edicion). Rediseno visual del
-   Historial (agosto 2026) — el icono ahora solo se inserta en el DOM
-   (ver TimeLogView.ts) cuando ese total tiene la sesion activa: indicador
-   de "en vivo", no decoracion fija. El valor va en --text-normal. */
+/* Icon is only inserted in the DOM (see TimeLogView.ts) when this total
+   belongs to the active session — a "live" indicator, not fixed decoration. */
 .task-time-tracker-totals-duration-group {
 	display: inline-flex;
 	align-items: center;
@@ -115,14 +90,11 @@
 	flex-shrink: 0;
 }
 
-/* display: block (fix QA agosto 2026, release 0.0.29) — sin esto el svg
-   queda con su comportamiento inline por defecto, que reserva debajo el
-   hueco de descendentes de una linea de texto normal; align-items:center
-   del contenedor (.task-time-tracker-totals-duration-group) entonces
-   centra esa caja con hueco extra, no el icono visible, y el icono queda
-   corrido hacia arriba respecto al valor grande (22px) que tiene al lado.
-   Mismo patron ya aplicado en .task-time-tracker-log-card-control svg y
-   .task-time-tracker-inline-icon svg. */
+/* svg defaults to inline, which reserves descender space below it; that
+   extra box — not the visible icon — is what align-items:center on the
+   container centers, so it looks shifted up relative to the value beside
+   it. display:block fixes it. Same pattern in .task-time-tracker-log-card-
+   control svg and .task-time-tracker-inline-icon svg. */
 .task-time-tracker-totals-duration-icon svg {
 	width: 0.9em;
 	height: 0.9em;
@@ -130,13 +102,11 @@
 	color: var(--interactive-accent);
 }
 
-/* Escala del prototipo para un total "de fila" (13px/600 sobre una
-   tarjeta de 16px base): usada tal cual por el total de cada tarjeta de
-   tarea y por el de la confirmacion de borrado — ambos anidados dentro de
-   .task-time-tracker-log-meta (0.85em), por eso 0.96em aqui da los ~13px
-   reales, no 0.8125em (13/16) que seria el calculo sin la anidacion. El
-   total grande de cabecera (22px) vive en la clase de abajo, que pisa
-   esta por especificidad de selector compuesto, no por orden. */
+/* Used as-is by both the task-card total and the delete confirmation's
+   total, both nested inside .task-time-tracker-log-meta (0.85em) — so
+   0.96em here compounds to the intended size, not 0.8125em (13/16), which
+   would be the calculation without that nesting. The larger header total
+   below overrides this via compound-selector specificity, not source order. */
 .task-time-tracker-totals-duration {
 	font-size: 0.96em;
 	font-weight: 600;
@@ -144,26 +114,18 @@
 	white-space: nowrap;
 }
 
-/* Igual que .task-time-tracker-log-session-count arriba: en la tarjeta de
-   tarea este total ya no vive anidado en .task-time-tracker-log-meta,
-   asi que necesita su propio font-size contra los 16px base (13/16),
-   distinto del 0.96em de arriba (calibrado para la confirmacion de
-   borrado, que si sigue anidada). El alineado a la derecha y el ancho
-   minimo para que la cifra no salte entre tarjetas viven ahora en el
-   contenedor .task-time-tracker-log-card-right-col (4a pasada de QA
-   visual, spec del prototipo actualizado), no en este span suelto. */
+/* Not nested in .task-time-tracker-log-meta here, so this needs its own
+   font-size against the 16px base (13/16) rather than the 0.96em calibrated
+   for the nested case above. Right-alignment and the min-width that keeps
+   the figure from jumping between cards live in the container
+   .task-time-tracker-log-card-right-col, not on this span. */
 .task-time-tracker-log-card-title-row .task-time-tracker-totals-duration {
 	font-size: 0.8125em;
 }
 
-/* Columna derecha de la fila de titulo (4a pasada de QA visual — "N
-   sessions" bajado debajo del total para dejarle mas ancho al titulo, ver
-   Time Tracker Tab.dc.html actualizado en docs/Prototype, lineas 124-127):
-   duracion arriba, nº de sesiones debajo, alineados a la derecha contra
-   el kebab que va justo despues en la fila. min-width: 56px (valor
-   literal del prototipo) evita que la columna salte de ancho entre
-   tarjetas de un mismo dia segun la duracion tenga o no icono de "en
-   vivo" delante. */
+/* Duration on top, session count below, right-aligned against the kebab
+   that follows in the row. min-width keeps the column's width stable
+   regardless of whether the duration has a live icon in front of it. */
 .task-time-tracker-log-card-right-col {
 	display: flex;
 	flex-direction: column;
@@ -173,12 +135,10 @@
 	min-width: 3.5em;
 }
 
-/* Total del rango en la cabecera del panel (rediseno visual del
-   Historial, agosto 2026): escala grande del prototipo (22px/600/-.01em).
-   No esta anidado en .task-time-tracker-log-meta como los dos usos de
-   arriba, asi que aqui el em es directo contra la base de 16px. Selector
-   compuesto (mayor especificidad que .task-time-tracker-totals-duration
-   sola) para que gane sin depender del orden de aparicion en el archivo. */
+/* Not nested in .task-time-tracker-log-meta like the two uses above, so the
+   em here is direct against the 16px base. Compound selector (higher
+   specificity than .task-time-tracker-totals-duration alone) so it wins
+   regardless of source order. */
 .task-time-tracker-totals-duration.task-time-tracker-log-view-total-value {
 	font-size: 1.375em;
 	letter-spacing: -0.01em;
@@ -195,24 +155,18 @@
 	color: var(--text-error);
 }
 
-/* Vista declarativa de Settings (Obsidian >=1.13, ver
-   SettingsTab.ts#getSettingDefinitions): una fila `render` sigue siendo un
-   Setting con layout de dos columnas (nombre/descripcion + control) por
-   defecto. El banner y el bloque de "Projects & clients" necesitan todo el
-   ancho de la fila — esta clase anula ese layout de dos columnas para que
-   el contenido inyectado no se comprima en la columna de control. */
+/* Settings rows default to a two-column layout (label/description +
+   control, see SettingsTab.ts#getSettingDefinitions); this overrides it to
+   block so full-width content (banner, Projects & clients) isn't squeezed
+   into the control column. */
 .task-time-tracker-settings-fullwidth-row {
 	display: block !important;
 }
 
-/* Correccion QA — banner de aviso "warning" en Settings (p. ej. el muro de
-   pago de Clockify, ver SettingsTab.ts#configureClockifyPaymentWallInfo):
-   mismo patron icono+texto que .task-time-tracker-projects-banner, pero
-   con los tokens de color "warning" del tema (var(--text-warning), nunca
-   un hex fijo) en vez de accent — para un aviso real de "algo no
-   funcionara como esperas", distinto de .task-time-tracker-settings-error
-   (rojo, reservado para estados de bloqueo genuinos como un email
-   invalido). */
+/* Same icon+text pattern as .task-time-tracker-projects-banner, but using
+   the theme's warning tokens instead of accent — for a "this may not work
+   as expected" notice, distinct from .task-time-tracker-settings-error
+   (reserved for actual blocking states). */
 .task-time-tracker-settings-warning-banner {
 	display: flex;
 	align-items: flex-start;
@@ -245,17 +199,12 @@
 	color: var(--text-normal);
 }
 
-/* Cambio de comportamiento (3a pasada de QA visual del rediseno visual
-   del Historial, revert parcial deliberado de la decision de Fase 5
-   "ningun control depende solo del hover") — la cabecera entera (titulo,
-   proyecto/cliente, columna derecha) es ahora una zona clicable que
-   expande/colapsa la tarjeta (ver TimeLogView.ts#renderTaskCard), con
-   hover en escritorio como añadido visual. margin negativo + padding
-   igual al de .task-time-tracker-log-row (bleed, mismo patron que
-   .task-time-tracker-log-session-row mas abajo): el fondo de hover llega
-   hasta el borde real de la fila en vez de quedarse dentro del padding
-   de esta — el icono de nota y el kebab siguen siendo zonas
-   independientes via evt.stopPropagation(). */
+/* The whole header (title, project/client, right column) is a click target
+   that expands/collapses the card (see TimeLogView.ts#renderTaskCard), with
+   hover on desktop as a visual addition. Negative margin + matching padding
+   (bleed pattern, same as .task-time-tracker-log-session-row below) extends
+   the hover background to the row's real edge. Note icon and kebab remain
+   independent hit areas via evt.stopPropagation(). */
 .task-time-tracker-log-card-header {
 	display: flex;
 	flex-direction: column;
@@ -269,28 +218,20 @@
 	background-color: var(--interactive-hover);
 }
 
-/* Reestructuracion (6a pasada de QA visual — diff explicito contra el
-   HTML exportado de Claude Design): esta es ahora la fila EXTERIOR, con
-   3 hijos directos — .task-time-tracker-log-card-info (bloque
-   icono+titulo+proyecto/cliente, flex:1 1 auto), la columna derecha y el
-   kebab. Antes icono/titulo vivian sueltos aqui mismo y proyecto/cliente
-   era hermana de esta fila a nivel de .task-time-tracker-log-card-header
-   — por eso ningun align-items conseguia alinear la columna derecha
-   contra el bloque titulo+meta completo, solo contra el icono+titulo.
-   align-items: flex-start (4a pasada — el titulo puede ocupar hasta 2
-   lineas): con center, dejaba el resto de elementos (columna derecha,
-   kebab) flotando a media altura en vez de alineados con la primera
-   linea del bloque de informacion. */
+/* Outer row with 3 direct children: .task-time-tracker-log-card-info
+   (icon+title+project/client block, flex:1 1 auto), the right column, and
+   the kebab. align-items:flex-start (not center) since the title can wrap
+   to 2 lines — center would leave the right column and kebab floating
+   mid-height instead of aligned with the info block's first line. */
 .task-time-tracker-log-card-title-row {
 	display: flex;
 	align-items: flex-start;
 	gap: 0.75em;
 }
 
-/* Bloque de informacion (6a pasada): fila-titulo (icono+nombre) + fila
-   proyecto/cliente, apiladas — el unico hijo de la fila exterior que
-   crece (flex:1 1 auto) y se encoge (min-width:0) para dejarle sitio a
-   la columna derecha y al kebab. gap:3px, valor literal del prototipo. */
+/* Title row (icon+name) + project/client row, stacked — the only child of
+   the outer row that both grows (flex:1 1 auto) and shrinks (min-width:0)
+   to leave room for the right column and kebab. */
 .task-time-tracker-log-card-info {
 	flex: 1 1 auto;
 	min-width: 0;
@@ -299,10 +240,6 @@
 	gap: 3px;
 }
 
-/* Fila de titulo: icono + nombre, anidada dentro de
-   .task-time-tracker-log-card-info (6a pasada — antes icono y titulo
-   eran hijos sueltos de la fila exterior). gap:8px, valor literal del
-   prototipo. */
 .task-time-tracker-log-card-title-line {
 	display: flex;
 	align-items: flex-start;
@@ -310,25 +247,15 @@
 	min-width: 0;
 }
 
-/* Title: single line, ellipsis-truncated (Time Tracker Tab v2 redesign —
-   reverts the earlier 2-line clamp). The row's action slot now animates
-   its width between 0 and 28px on hover/focus (see
-   .task-time-tracker-log-card-control-slot above), and the title (its
-   flex:1 1 auto sibling) is what claims that freed width while idle — a
-   title that could still wrap to 2 lines would re-wrap mid-transition,
-   causing visible reflow/jitter and possibly pushing the right-hand
-   column. Single-line ellipsis sidesteps that entirely: the title's
-   height never depends on how much width it currently has, so the 150ms
-   width transition only ever moves the ellipsis cutoff point, never the
-   row's layout. min-width: 0 still needed — it's a flex item inside
-   title-line, and a flex item never shrinks below its intrinsic content
-   width without it. No cursor/
-   hover of its own (the title isn't a clickable area — see
-   TimeLogView.ts#applyTruncationTooltip for the native tooltip shown when
-   the text doesn't fit). Size/weight/color unchanged from the previous
-   design (13.5px/500/text-normal) — differs from the standalone title in
-   the delete confirmation, which stays at .task-time-tracker-log-task's
-   own 600 weight without this override. */
+/* Single-line ellipsis, not a 2-line clamp: the control slot
+   (.task-time-tracker-log-card-control-slot above) animates width 0↔28px on
+   hover/focus, and the title (its flex:1 1 auto sibling) claims the freed
+   width while idle. A title that could still wrap to 2 lines would re-wrap
+   mid-transition, causing jitter; single-line ellipsis means only the
+   cutoff point moves, never the row's layout. min-width:0 still needed — a
+   flex item never shrinks below its content width without it. No
+   cursor/hover of its own — see TimeLogView.ts#applyTruncationTooltip for
+   the native tooltip shown when the text doesn't fit. */
 .task-time-tracker-log-card-title-line .task-time-tracker-log-task {
 	flex: 1 1 auto;
 	min-width: 0;
@@ -342,11 +269,9 @@
 	color: var(--text-normal);
 }
 
-/* Menu kebab: siempre visible (columna derecha, 3a pasada de QA visual),
-   caja 28x28 del prototipo — sin margin-left:auto: el titulo (flex:1 1
-   auto) ya empuja todo lo que va detras hasta el borde real de la fila,
-   no hace falta forzarlo aqui. Hit-area invisible 44x44 aparte (ver
-   .task-time-tracker-icon-btn) para el toque en movil. */
+/* No margin-left:auto needed — the title (flex:1 1 auto) already pushes
+   everything after it to the row's edge. Separate invisible 44x44 hit area
+   (see .task-time-tracker-icon-btn) for mobile touch. */
 .task-time-tracker-log-card-menu {
 	display: flex;
 	align-items: center;
@@ -364,26 +289,19 @@
 	background-color: var(--background-modifier-hover);
 }
 
-/* Tamaño explicito (6a pasada de QA visual — sin esto, el svg de Lucide
-   cae al tamaño por defecto de Obsidian, ~24px, dejando solo ~2px de
-   margen dentro de la caja de 28x28 y dando el aspecto "gordo" reportado
-   en QA): 15px, valor literal del prototipo. */
+/* Explicit size — without it, a Lucide svg falls back to Obsidian's
+   default (~24px), overflowing the 28x28 box. Same reason applies to the
+   other icon-size rules below (note, project icons). */
 .task-time-tracker-log-card-menu svg {
 	width: 15px;
 	height: 15px;
 }
 
-/* Fila 2 — Proyecto/Cliente (ver renderProjectRow() en TimeLogView.ts):
-   sin hover ni clic propios. Escala/color del prototipo (11.5px,
-   text-faint — mas atenuado que el resto de la tarjeta). gap: 12px,
-   valor literal del prototipo — ya no relativo al font-size reducido de
-   esta fila (11.52px, riesgo de anidacion visto en rondas anteriores),
-   directo en px como el resto de valores tocados en la 6a pasada de QA
-   visual. is-indented: padding-left:22px (6a pasada — reemplaza al
-   div-spacer vacio .task-time-tracker-log-card-icon-col de antes) para
-   que la fila quede bajo el TEXTO del titulo, no bajo el icono — solo se
-   aplica en la tarjeta normal (indented=true), no en la confirmacion de
-   borrado, cuyo titulo no lleva icono delante. */
+/* Project/client row (see renderProjectRow() in TimeLogView.ts): no hover
+   or click of its own. gap is a fixed px value rather than relative to this
+   row's own reduced font-size, to avoid compounding nested ems. is-indented
+   aligns this row under the title TEXT, not the icon — only applied to the
+   normal card, not the delete confirmation, whose title has no icon. */
 .task-time-tracker-log-card-project-row {
 	display: flex;
 	align-items: center;
@@ -408,25 +326,19 @@
 	flex-shrink: 0;
 }
 
-/* Tamaño explicito (6a pasada de QA visual — mismo motivo que el icono de
-   nota y el kebab: sin esto cae al tamaño por defecto de Obsidian,
-   ~24px): 11px, valor literal del prototipo. */
 .task-time-tracker-log-card-project-icon svg {
 	width: 11px;
 	height: 11px;
 	flex-shrink: 0;
 }
 
-/* Bug de QA — el truncamiento (y por tanto el tooltip, ver
-   applyTruncationTooltip en TimeLogView.ts) tiene que vivir en el propio
-   span de texto, no en .task-time-tracker-log-card-project-item (el
-   contenedor icono+texto): un span sin sus propias reglas de overflow es
-   puramente inline y su clientWidth es siempre 0, asi que la comparacion
-   scrollWidth > clientWidth nunca detectaba truncamiento real — el
-   tooltip no llegaba a dispararse aunque el texto se viera cortado.
-   flex: 1 1 auto + min-width: 0 lo convierte en el unico elemento
-   encogible de .task-time-tracker-log-card-project-item (el icono de al
-   lado no se encoge, ver flex-shrink: 0 arriba). */
+/* Truncation (and its tooltip, see applyTruncationTooltip in
+   TimeLogView.ts) has to live on this text span, not on
+   .task-time-tracker-log-card-project-item (the icon+text container): a
+   span with no overflow rules of its own is purely inline and its
+   clientWidth is always 0, so scrollWidth > clientWidth could never detect
+   real truncation. flex:1 1 auto + min-width:0 makes this the only
+   shrinkable element (the icon next to it has flex-shrink:0). */
 .task-time-tracker-log-card-project-name {
 	flex: 1 1 auto;
 	min-width: 0;
@@ -435,12 +347,10 @@
 	white-space: nowrap;
 }
 
-/* Area de toque minima 44x44px (punto 7 del rediseno de interaccion) en
-   los botones-icono solo-icono de la cabecera de tarjeta y de la fila de
-   sesion (nota, kebab, trash de sesion dentro del modal de Editar), sin
-   inflar el icono visual ni la altura real de la fila que los contiene:
-   el hit-area extra es un pseudo-elemento invisible posicionado fuera
-   del propio boton (::after con inset negativo), no padding/tamaño real. */
+/* 44x44 minimum touch target on icon-only buttons (card header, session
+   row, edit modal), without inflating the visible icon or the row height:
+   the extra hit area is an invisible ::after with a negative inset, not
+   real padding/size. */
 .task-time-tracker-icon-btn {
 	position: relative;
 }
@@ -451,32 +361,15 @@
 	inset: -10px;
 }
 
-/* Icono de nota delante del titulo — Zona 1 del rediseno: unico punto de
-   navegacion a la nota, hit-area e hijos propios (ver TimeLogView.ts).
-   Tinte de acento (5a pasada de QA visual, spec del prototipo
-   actualizado: color-mix(in srgb, var(--text-accent) 55%,
-   var(--text-muted))) — antes en text-muted liso, sin distinguirse del
-   resto de iconos secundarios de la tarjeta. display:flex (6a pasada):
-   el boton en si no tiene tamaño fijo (a diferencia del kebab, que si
-   mide 28x28) — se ajusta al icono de 14px de dentro, ver la regla del
-   svg mas abajo. align-items: flex-start, NO center (bug de QA, 7a
-   pasada) — el boton nativo de Obsidian es mas alto que el icono (padding
-   propio de <button>); con center, el icono se recentraba dentro de esa
-   caja mas alta y el margin-top:2px del svg (pensado para medirse desde
-   el borde superior real de la fila) quedaba anulado. Con flex-start, el
-   svg se posiciona desde el borde superior del boton, que a su vez esta
-   pegado al borde superior de .task-time-tracker-log-card-title-line. */
-/* Caja fija 14x16 (8a pasada de QA visual) — mismo motivo por el que
-   .task-time-tracker-log-card-menu (el kebab) ya fijaba su propio
-   width/height: sin una caja explicita, el <button> nativo de Obsidian
-   (clickable-icon) conserva su padding propio y el boton acaba mas alto
-   que el icono de una sola linea, estirando .task-time-tracker-log-card-title-line
-   entero (bug de QA confirmado con devtools — el "hueco" bajo el titulo
-   de una linea era la altura del boton, no una segunda linea reservada
-   por el line-clamp). padding:0 refuerza el recorte por si box-sizing no
-   fuese border-box aqui. 14px de ancho = el icono, sin margen horizontal;
-   16px de alto = 14px del svg + los 2px de margin-top de la regla de
-   abajo, para que el icono llene la caja exacta sin sobrante ni recorte. */
+/* Note icon before the title — the only navigation point to the note (see
+   TimeLogView.ts). align-items:flex-start, not center: Obsidian's native
+   button keeps its own padding and is taller than the 14px icon; with
+   center, the icon re-centers within that taller box and the margin-top:2px
+   on the svg below (meant to be measured from the row's real top edge)
+   gets neutralized. Fixed 14x16 box: without it, the native button's own
+   padding makes it taller than a single line of text, stretching
+   .task-time-tracker-log-card-title-line. padding:0 reinforces the clip in
+   case box-sizing isn't border-box here. */
 .task-time-tracker-log-card-note {
 	display: flex;
 	align-items: flex-start;
@@ -495,13 +388,9 @@
 	}
 }
 
-/* Tamaño explicito (6a pasada de QA visual — sin esto, el svg de Lucide
-   cae al tamaño por defecto de Obsidian, ~24px, y desborda visualmente
-   el boton): 14px, valor literal del prototipo. margin-top:2px (tambien
-   del prototipo) afina el icono contra la altura de mayuscula de la
-   PRIMERA linea del titulo, ya que align-items:flex-start en
-   .task-time-tracker-log-card-title-line ya no lo centra automaticamente
-   contra el bloque completo de 1 o 2 lineas. */
+/* margin-top aligns the icon to the cap-height of the title's first line —
+   align-items:flex-start on .task-time-tracker-log-card-title-line no
+   longer auto-centers it against the full (possibly 2-line) block. */
 .task-time-tracker-log-card-note svg {
 	width: 14px;
 	height: 14px;
@@ -512,26 +401,23 @@
 	color: var(--text-accent);
 }
 
-/* Bug 0.0.32 — icono de nota borrada (file-x): unico elemento de la
-   tarjeta que se colorea de error; titulo y linea secundaria mantienen su
-   color normal (ver .task-time-tracker-log-task-title-missing-note). El
-   hover se fija tambien en error para no sugerir una navegacion (color de
-   accent) que este boton ya no ofrece. */
+/* Deleted-note icon (file-x): the only element on the card colored as an
+   error; title and subtitle keep their normal color (see
+   .task-time-tracker-log-task-title-missing-note). Hover stays error too,
+   since this button no longer offers navigation. */
 .task-time-tracker-log-card-note-missing,
 .task-time-tracker-log-card-note-missing:hover {
 	color: var(--text-error);
 }
 
-/* Fila cuya tarea tiene el tracking activo en este momento: contorno de
-   color de enfasis para distinguirla de un vistazo, incluso colapsada.
-   Solo se aplica si esa tarea tiene alguna sesion en el rango de fecha
-   visible (ver activeEntry en TimeLogView.ts#renderTaskCard) — nunca se
-   fuerza a aparecer una fila fuera de ese rango. box-shadow inset en vez
-   de border-color (agrupacion por dia, 2a pasada de QA visual): la fila
-   ya no tiene un border propio que recolorear — ahora vive dentro del
-   contenedor compartido .task-time-tracker-log-list — asi que el
-   contorno se dibuja como sombra interior, sin afectar el layout ni el
-   divisor :not(:first-child) de las filas vecinas. */
+/* Row whose task currently has active tracking: only applied if that task
+   has a session in the visible date range (see activeEntry in
+   TimeLogView.ts#renderTaskCard) — never forced to appear outside it.
+   box-shadow inset rather than border-color: the row no longer has its own
+   border to recolor since it lives inside the shared
+   .task-time-tracker-log-list container, so the outline is drawn as an
+   inset shadow, without affecting layout or the :not(:first-child) divider
+   on neighboring rows. */
 .task-time-tracker-log-row.is-tracking-active {
 	box-shadow: inset 0 0 0 1px var(--interactive-accent);
 	background-color: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-primary));
@@ -543,39 +429,32 @@
 	}
 }
 
-/* Icono de nota mas discreto mientras la tarjeta esta activa: la tarjeta
-   ya se distingue por su cuenta (borde + fondo con tinte de accent), asi
-   que este icono puede pesar menos sin perder legibilidad. Solo opacity,
-   no color/tamaño: sigue siendo el mismo boton funcional, con su mismo
-   hover (color: var(--text-accent), ver arriba) intacto. */
+/* Only opacity dims here, not color/size — same functional button, same
+   hover as above, just visually lighter since the card already stands out
+   on its own (border + accent-tinted background). */
 .task-time-tracker-log-row.is-tracking-active .task-time-tracker-log-card-note {
 	opacity: 0.5;
 }
 
-/* Flecha entre horas de inicio/fin, tono atenuado en vez del mismo color
-   que las horas que separa — es un separador, no un dato. */
+/* Muted tone rather than matching the times it separates — it's a
+   separator, not data. */
 .task-time-tracker-log-row.is-tracking-active .task-time-tracker-log-session-arrow {
 	color: var(--text-faint);
 }
 
-/* "Retomar tracking de una tarea ya registrada" — Time Tracker Tab v2
-   redesign. The slot collapses its width to 0 at rest and back to 28px
-   on reveal, between the title and the time/sessions column (never after
-   it like the earlier iteration) — see renderTaskCard() in
-   TimeLogView.ts. That collapse is also what lets the title (flex:1 1
-   auto on .task-time-tracker-log-card-info, its flex sibling here) claim
-   the freed width automatically while the row is idle: no extra CSS
-   needed for that, it falls out of the existing flex layout once this
-   slot's own width goes to 0. Reveal triggers are hover/focus of the
-   WHOLE row (:hover and :focus-within both — a keyboard user tabbing
-   into a width:0 button still needs to see it appear, which :hover alone
-   would never trigger) or always on touch devices, where hover doesn't
-   exist (see the (hover: none) block below). The active row's stop never
-   collapses (.is-active): there is at most one at a time, since the
-   plugin has a single active timer, so there is nothing to hide.
-   overflow-x only (not the overflow shorthand) — this is the axis that
-   actually animates; clipping the Y axis too cut off the button's own
-   bottom edge in an earlier pass of this design (style QA). */
+/* Width-collapsing slot for resuming tracking of an already-tracked task
+   (see renderTaskCard() in TimeLogView.ts): collapses to 0 at rest,
+   expands to 28px on reveal, between the title and the time/sessions
+   column. The title (flex:1 1 auto on .task-time-tracker-log-card-info,
+   its flex sibling) automatically reclaims the freed width when idle — no
+   extra CSS needed, it falls out of the existing flex layout. Reveal
+   triggers on :hover or :focus-within of the WHOLE row (focus-within so a
+   keyboard user tabbing into a width:0 button still sees it appear), or
+   always on touch, where hover doesn't exist (see the (hover: none) block
+   below). The active row's control never collapses (.is-active) — there is
+   at most one at a time, so there's nothing to hide. Only overflow-x is
+   hidden, since that's the axis that animates; clipping Y too cuts off the
+   button's own bottom edge. */
 .task-time-tracker-log-card-control-slot {
 	width: 0;
 	overflow-x: hidden;
@@ -597,28 +476,15 @@
 }
 
 /* A <span> (role="button" + tabIndex set in TimeLogView.ts), not a real
-   <button> — style QA fix, same reasoning as the inline play/stop
-   control next to the task in the note (see
-   .task-time-tracker-inline-control above): a native <button> carries
-   Obsidian's/the browser's own default appearance, most visibly a hover
-   box-shadow, that this tightly-fitted 28px circle has no room for
-   without clipping it against the slot above. A span has none of that
-   baggage to fight, so every visual rule below is the complete story —
-   nothing implicit left to override. box-sizing: border-box so the 1px
-   border stays inside the declared 28x28 box instead of adding on top of
-   it.
+   <button>: a native button carries Obsidian's default hover box-shadow,
+   which this tightly-fitted 28px circle has no room for without clipping
+   against the slot above. box-sizing:border-box keeps the 1px border
+   inside the declared 28x28 box.
 
-   Idle palette (style QA fix) is grayscale on purpose — icon in
-   --text-muted (visibly lighter than the fill for real contrast, a step
-   up from --text-faint, which read as too washed-out against the fill in
-   an earlier pass) over a solid --background-modifier-border fill/border
-   — plain neutral tokens, no color-mix needed since nothing here is
-   accent-tinted. --interactive-accent is reserved entirely for hover/
-   focus (below) and for the row's OWN "running" fill (.is-active,
-   further below, unchanged solid accent): accent only ever means
-   "interactive right now" or "this is the active row", never the resting
-   look, so hovering an idle play can't be confused with a row that is
-   actually tracking. */
+   Idle palette is grayscale on purpose — --interactive-accent is reserved
+   for hover/focus and for the active row's own fill (.is-active, below),
+   so hovering an idle control can't be mistaken for a row that is actually
+   tracking. */
 .task-time-tracker-log-card-control {
 	display: flex;
 	align-items: center;
@@ -669,16 +535,11 @@
 	stroke: none;
 }
 
-/* Active row's stop (style QA fix — darker, matches the same colors as
-   the inline stop next to the task in the note, see
-   .task-time-tracker-inline-control.is-active above; the note's version
-   is a pill and this one stays a circle, only the color recipe is
-   shared): a translucent accent tint instead of a solid fill, mixed onto
-   transparent exactly like the note does — never a solid fill (never
-   collapsed either, see .task-time-tracker-log-card-control-slot.is-active
-   above). color stays --interactive-accent, never --text-on-accent: with
-   a translucent background instead of a solid one, --text-on-accent would
-   lose contrast against it. */
+/* Translucent accent tint (color-mix onto transparent), not a solid fill —
+   matches the inline stop's color recipe (see
+   .task-time-tracker-inline-control.is-active) though this stays a circle.
+   color stays --interactive-accent, not --text-on-accent, since with a
+   translucent background --text-on-accent would lose contrast. */
 .task-time-tracker-log-card-control.is-active {
 	color: var(--interactive-accent);
 	background-color: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
@@ -705,13 +566,8 @@
 	}
 }
 
-/* Bullet pulsante junto al TOTAL (no dentro del boton de arriba, ver
-   comentario de renderTaskCard() en TimeLogView.ts) mientras esa tarea
-   esta en tracking activo: reusa .task-time-tracker-inline-dot (mismo
-   tamaño/animacion que el badge inline y el resto del panel, ver la regla
-   compartida mas abajo), con su propio color explicito en accent — sin
-   esto heredaria el color del valor del total (--text-normal, ver
-   .task-time-tracker-totals-duration), no el accent que pide el croquis. */
+/* Explicit accent color — without it this would inherit --text-normal from
+   .task-time-tracker-totals-duration instead of accent. */
 .task-time-tracker-log-card-total-dot {
 	color: var(--interactive-accent);
 }
@@ -725,14 +581,12 @@
 	border-top: 1px solid var(--background-modifier-border);
 }
 
-/* Separador entre filas de sesion (linea fina, no fondos alternos tipo
-   cebra: en filas cortas el zebra anade ruido en vez de claridad). Se
-   aplica por posicion, no por clase: cubre tanto una fila estatica como
-   el formulario de edicion o la confirmacion de borrado cuando
-   sustituyen a una fila dentro de la misma lista. */
+/* Thin separators between session rows, not zebra striping — zebra adds
+   noise rather than clarity on such short rows. Applied by position, not by
+   class, so it also covers the edit form / delete confirmation when they
+   replace a static row in the same list. */
 .task-time-tracker-log-card-detail > *:not(:last-child) {
 	border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
-	/*padding-bottom: 0.35em;*/
 }
 
 @supports not (color: color-mix(in srgb, red 50%, blue)) {
@@ -741,11 +595,10 @@
 	}
 }
 
-/* min-width: 0 — sin esto, este flex item (hijo de .task-time-tracker-log-card-detail,
-   que es flex-direction: column) no puede encogerse por debajo del ancho
-   minimo de su contenido: en la tarjeta del panel (mas ancha) no se nota,
-   pero en el modal de Editar (mas estrecho, ver .task-time-tracker-edit-modal-sessions)
-   provocaba scroll horizontal — bug reportado en QA. */
+/* min-width:0 — without it this flex item (child of a flex-direction:column
+   parent) can't shrink below its content's min width; not noticeable in the
+   wider panel card, but caused horizontal scroll in the narrower Edit modal
+   (see .task-time-tracker-edit-modal-sessions). */
 .task-time-tracker-log-session-row {
 	display: flex;
 	align-items: center;
@@ -757,9 +610,8 @@
 	border-radius: 4px;
 }
 
-/* Punto D2 del rediseno: toda la fila es clicable (sin icono de editar
-   aparte); el fondo en hover indica que es interactiva. La sesion activa
-   (sin fila editable, ver renderSessionRow()) no lleva esta clase. */
+/* The active session (no editable row, see renderSessionRow()) doesn't get
+   this class. */
 .task-time-tracker-log-session-row-editable {
 	cursor: pointer;
 }
@@ -768,15 +620,12 @@
 	background-color: var(--background-modifier-hover);
 }
 
-/* flex: 1 1 auto (no width: 100%) es el fix real aqui: este div ya no es
-   siempre el unico hijo de .task-time-tracker-log-session-row (ahora
-   puede convivir con el icono de borrado a la derecha, ver arriba), asi
-   que necesita crecer para llenar el espacio disponible en vez de fijar
-   un ancho que no deja hueco para ese hermano. Sin esto, su propio
-   justify-content: space-between no tenia espacio que repartir y la
-   fecha/rango y la duracion quedaban pegados en vez de a los extremos.
-   Se estira automaticamente tanto en el sidebar estrecho como en el
-   panel central, sin media queries. */
+/* flex:1 1 auto, not width:100%: this div isn't always the only child of
+   .task-time-tracker-log-session-row anymore (can share the row with the
+   delete icon), so it needs to grow into available space rather than claim
+   a fixed width that leaves no room for that sibling — otherwise its own
+   justify-content:space-between has no space to distribute and date/range
+   and duration end up bunched together. */
 .task-time-tracker-log-session-info {
 	display: flex;
 	flex: 1 1 auto;
@@ -785,15 +634,12 @@
 	justify-content: space-between;
 	gap: 1em;
 	font-size: 0.85em;
-	/* Fecha, rango horario (incluida la fecha de fin de apoyo junto al
-	   badge "+N") y duracion: todos numeros/horas de ancho fijo, se leen
-	   mejor en monoespaciada — mismo criterio que ya usaba el contador en
-	   vivo (.task-time-tracker-log-session-live-value). */
+	/* Dates/times/durations are fixed-width numerals, read better in
+	   monospace — same rationale as
+	   .task-time-tracker-log-session-live-value. */
 	font-family: var(--font-monospace);
 }
 
-/* Columna izquierda: fecha + rango horario, agrupados para dejar la
-   duracion (columna derecha) siempre alineada al extremo opuesto. */
 .task-time-tracker-log-session-left {
 	display: flex;
 	flex-wrap: wrap;
@@ -802,8 +648,6 @@
 	min-width: 0;
 }
 
-/* min-width fijo: actua como columna alineada entre filas en vez de
-   texto corrido de ancho variable segun la fecha de cada sesion. */
 .task-time-tracker-log-session-date {
 	min-width: 6em;
 	color: color-mix(in srgb, var(--text-normal) 82%, transparent);
@@ -819,16 +663,14 @@
 	color: var(--text-normal);
 }
 
-/* Texto "ongoing" del rango horario: color de enfasis en vez de tono
-   neutro, para que la fila se lea como distinta de una sesion cerrada
-   incluso antes de llegar al indicador de la columna derecha. */
+/* "ongoing" text uses an accent color instead of a neutral tone, so the
+   row reads as different from a closed session before reaching the
+   indicator in the right column. */
 .task-time-tracker-log-ongoing {
 	color: var(--interactive-accent);
 	font-weight: 600;
 }
 
-/* Columna derecha: duracion, con mas peso que el resto de la fila pero
-   sin ser tan marcada como un titulo — texto normal en vez de muted. */
 .task-time-tracker-log-session-duration {
 	font-weight: 500;
 	color: var(--text-normal);
@@ -837,9 +679,8 @@
 	flex-shrink: 0;
 }
 
-/* Sesion en curso: mismo punto pulsante + contador que el badge junto al
-   checkbox y el boton de stop de la tarjeta activa (ver
-   .task-time-tracker-inline-dot), no un indicador nuevo. */
+/* Same pulsing dot + counter as the inline badge and the active card's stop
+   button (see .task-time-tracker-inline-dot), not a new indicator. */
 .task-time-tracker-log-session-duration.task-time-tracker-log-session-live {
 	display: inline-flex;
 	align-items: center;
@@ -851,8 +692,8 @@
 	font-family: var(--font-monospace);
 }
 
-/* Indicador "+N" de sesion que abarca mas de un dia natural (ver
-   getDaySpan() en TimeLogView.ts). */
+/* "+N" indicator for a session spanning more than one calendar day (see
+   getDaySpan() in TimeLogView.ts). */
 .task-time-tracker-log-nextday-badge {
 	color: var(--text-accent);
 	font-weight: 600;
@@ -864,12 +705,10 @@
 	display: none;
 }
 
-/* Fecha de fin de apoyo junto al badge "+N": tono secundario, no el
-   color de enfasis del badge — el badge es la alerta ("esto cruza
-   dias"), la fecha es el detalle de apoyo, deben leerse con jerarquia
-   distinta. Mismo tono que .task-time-tracker-log-session-date (la
-   fecha de inicio a la izquierda de la fila), para que ambas fechas de
-   la fila se lean como parte del mismo nivel de informacion. */
+/* Secondary tone, not the badge's accent color — the badge is the alert
+   ("this spans days"), the date is supporting detail. Matches
+   .task-time-tracker-log-session-date's tone so both dates in the row read
+   as the same info level. */
 .task-time-tracker-log-nextday-date {
 	color: color-mix(in srgb, var(--text-normal) 82%, transparent);
 }
@@ -880,42 +719,29 @@
 	}
 }
 
-/* Fondo permanente (no solo hover) mientras la fila esta en edicion o
-   en confirmacion de borrado: sin esto, al mover el raton fuera de la
-   fila (p.ej. para hacer clic en un boton) se pierde la referencia
-   visual de sobre que sesion se esta actuando. El tono es --color-base-00
-   (plano, de la escala base de Obsidian), no el tinte de
-   --background-modifier-hover que usa el hover normal de una fila:
-   distingue el formulario abierto del resto de la lista en vez de
-   imitar su estado de hover.
-   Padding real de 20px (ya no el truco de margen negativo cancelando un
-   padding pequeño que usan las filas estaticas): los 4 campos + bloque
-   de duracion + botones necesitan aire propio respecto al borde de la
-   tarjeta, no solo quedar a ras como una fila mas de la lista. El fondo
-   sigue pintando el border-box completo (Obsidian/CSS ya lo hace por
-   defecto), asi que este padding no dejaba un hueco sin colorear. */
+/* Persistent background (not just hover) while a row is in edit/delete-
+   confirm state — keeps the visual reference to which row is being acted
+   on even when the mouse leaves it. Uses the flat --color-base-00 token,
+   not --background-modifier-hover, so the open form reads as distinct from
+   a hovered row rather than mimicking hover. Real padding, not the
+   negative-margin trick static rows use — this content needs its own
+   breathing room against the card edge. */
 .task-time-tracker-log-edit-form {
 	display: flex;
 	flex-direction: column;
 	gap: 0.4em;
 	padding: 20px;
 	border-radius: 4px;
-    background-color: var(--color-base-00);}
+	background-color: var(--color-base-00);
+}
 
-/* Bloque 3 UX — rediseno del formulario de edicion inline: dos parejas
-   etiquetadas (inicio/fin), cada una con su campo de fecha y de hora.
-   El grid se apila verticalmente en pantallas estrechas (flex-wrap) y
-   pasa a una sola fila si hay ancho suficiente para las dos parejas. */
 .task-time-tracker-log-edit-grid {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 0.6em 1.5em;
 }
 
-/* Cada pareja (fecha+hora de inicio, o de fin) se apila a su vez si no
-   entra ni siquiera ella sola en el ancho disponible. flex-basis fija
-   un ancho minimo antes de que el grid pase las parejas a filas
-   distintas. */
+/* flex-basis sets a minimum width before pairs wrap onto separate rows. */
 .task-time-tracker-log-edit-group {
 	display: flex;
 	flex-wrap: wrap;
@@ -930,13 +756,9 @@
 	flex: 1 1 100px;
 }
 
-/* Contraste: --text-muted queda reservado para metadatos realmente
-   secundarios (tt-id, "N sesiones" — ver .task-time-tracker-log-taskid /
-   .task-time-tracker-log-meta). Los labels de campo suben a --text-normal
-   atenuado via color-mix() (declaracion plana antes, como respaldo para
-   motores sin soporte de color-mix, relevante en mobile) en vez de
-   --text-muted a secas. El icono no lleva color propio: hereda de aqui
-   via currentColor (ver regla de abajo, sin "color:"). */
+/* --text-muted is reserved for secondary metadata (tt-id, session count);
+   field labels use a lighter tint of --text-normal via color-mix instead.
+   The icon has no color of its own — it inherits via currentColor. */
 .task-time-tracker-log-edit-field-label {
 	display: flex;
 	align-items: center;
@@ -956,17 +778,11 @@
 	height: 0.85em;
 }
 
-/* Affordance de input: antes texto plano indistinguible del resto del
-   formulario. Fondo con el token correcto de Obsidian para campos de
-   formulario (no hereda --background-primary por error: se comprobo
-   antes de tocar nada mas). En el tema por defecto ese token por si
-   solo no da contraste suficiente contra el fondo circundante,
-   sobre todo con el panel del Historial en pestaña central (incluida
-   dentro de --background-modifier-hover del formulario, que a su vez
-   esta sobre --background-primary): --background-modifier-border-hover
-   (mas marcado que el --background-modifier-border normal) refuerza el
-   borde para que el contraste no dependa de un unico valor que puede
-   fallar segun el tema activo. */
+/* Field affordance: previously plain text indistinguishable from the rest
+   of the form. Uses Obsidian's form-field background token; that alone
+   doesn't give enough contrast in the default theme against the
+   surrounding panel, so the border uses the stronger
+   --background-modifier-border-hover instead of the plain border token. */
 .task-time-tracker-log-edit-input {
 	width: 100%;
 	font-size: 0.85em;
@@ -982,37 +798,22 @@
 	border-color: var(--interactive-accent);
 }
 
-/* Declarada despues de :focus a proposito: mismo nivel de especificidad,
-   asi que un campo invalido mantiene el borde de error aunque tenga el
-   foco encima. */
+/* Declared after :focus on purpose, same specificity — an invalid field
+   keeps its error border even when focused. */
 .task-time-tracker-log-edit-input.is-invalid {
 	border-color: var(--text-error);
 }
 
-/* Bloque resaltado con la duracion calculada en vivo a partir de los
-   cuatro campos, icono + label a la izquierda, valor a la derecha con
-   mas peso tipografico que el resto del formulario. Sin fondo/borde
-   tipo-input a proposito (ver comentario en
-   TimeLogView.ts#renderEditForm): la ausencia de esa affordance es lo
-   que comunica que este bloque no se edita directamente.
-   Contraste: fondo mezclado con --background-primary (no con
-   transparent) para que el tinte no dependa del fondo real detras del
-   panel; label y valor pasan a --text-muted/--text-normal en vez de
-   --interactive-accent, que en el tema por defecto de Obsidian (claro y
-   oscuro) no da contraste suficiente como color de texto sobre este
-   fondo. El accent conserva identidad visual solo via el borde
-   izquierdo y el icono — los unicos elementos que no son texto de
-   lectura critica.
-   Padding simetrico (10px a cada lado): el valor no debe tocar el
-   borde derecho del bloque, ni el icono/label quedar mas pegados al
-   borde de acento izquierdo que el valor al derecho — antes solo
-   llevaba padding a la izquierda (para alinear el valor con la
-   papelera de la cabecera y la duracion de una fila de sesion; ver
-   docs/DECISIONES.md); con el formulario ahora en padding real de
-   20px (.task-time-tracker-log-edit-form) esa alineacion exacta ya no
-   se sostiene sin desbordar el borde de la tarjeta, asi que se prioriza
-   que la caja quede visualmente compensada en vez de perfectamente
-   alineada con esos otros elementos. */
+/* No input-like background/border on purpose (see
+   TimeLogView.ts#renderEditForm) — the lack of that affordance signals this
+   block isn't directly editable. Background mixes with
+   --background-primary (not transparent) so the tint doesn't depend on
+   what's behind the panel; label/value use muted/normal text rather than
+   accent, since --interactive-accent doesn't give enough contrast as text
+   color in Obsidian's default themes — accent identity is kept via the
+   left border and icon only. Padding is symmetric rather than
+   alignment-matched to other elements, since exact alignment stopped
+   holding once the form got real padding. */
 .task-time-tracker-log-edit-duration {
 	display: flex;
 	align-items: center;
@@ -1036,7 +837,7 @@
 	gap: 0.4em;
 }
 
-/* Unico elemento que conserva el color accent: el icono. */
+/* Only element that keeps the accent color: the icon. */
 .task-time-tracker-log-edit-duration-label-group svg {
 	width: 0.9em;
 	height: 0.9em;
@@ -1055,8 +856,6 @@
 	color: var(--text-normal);
 }
 
-/* Icono de "Eliminar sesion", en la misma fila que Guardar/Cancelar,
-   empujado al extremo derecho (ver EditTaskModal.ts). */
 .task-time-tracker-log-edit-delete {
 	margin-left: auto;
 	color: var(--text-muted);
@@ -1073,10 +872,8 @@
 	margin: 0;
 }
 
-/* Bloque de aviso unico y fijo (error de formato/rango, o aviso de
-   solapamiento — nunca los dos a la vez): altura reservada aunque este
-   vacio, para que el formulario no cambie de alto al aparecer/
-   desaparecer un mensaje. */
+/* Reserved height even when empty, so the form doesn't change height as a
+   message appears/disappears. */
 .task-time-tracker-log-edit-message {
 	font-size: 0.85em;
 	margin: 0;
@@ -1095,36 +892,22 @@
 	display: none;
 }
 
-/* Fase 5 — modal de exportacion: el campo de email de Toggl solo se
-   muestra si hace falta (formato Toggl + email invalido/vacio), ver
-   ExportModal.ts#updateFormatFields(). */
 .task-time-tracker-export-email-setting.is-hidden {
 	display: none;
 }
 
-/* Fase 8 — casilla "Incluir Proyecto y Cliente": mismo condicionamiento
-   que el campo de email de arriba, visible solo con formato Toggl (ver
-   ExportModal.ts#updateFormatFields()). */
 .task-time-tracker-export-include-project-client-setting.is-hidden {
 	display: none;
 }
 
-/* Fase 9 — email de Clockify: mismo condicionamiento que el resto, visible
-   solo con formato Clockify (ver ExportModal.ts#updateFormatFields()). El
-   resto de contenido de Clockify (checkboxes Include Project/Include
-   Client incluidos) vive dentro de
-   .task-time-tracker-export-clockify-sections, que se oculta en bloque mas
-   abajo. */
 .task-time-tracker-export-clockify-email-setting.is-hidden {
 	display: none;
 }
 
-/* Fase 9 rediseno — tres secciones separadas por linea divisoria (checkboxes
-   Include Project/Include Client juntos, Date format, Avoid duplicates in
-   Clockify), sustituyendo al bloque de texto corrido anterior. El
-   contenedor entero se oculta/muestra segun el formato elegido (ver
-   ExportModal.ts#updateFormatFields()); cada seccion individual controla
-   su propio contenido. */
+/* Three sections separated by a divider (Include Project/Client checkboxes,
+   Date format, Avoid duplicates), shown/hidden as a block based on the
+   selected export format (see ExportModal.ts#updateFormatFields()); each
+   section controls its own content. */
 .task-time-tracker-export-clockify-sections {
 	margin-top: 0.5em;
 	margin-bottom: 0.75em;
@@ -1134,8 +917,6 @@
 	display: none;
 }
 
-/* Linea divisoria entre secciones: borde superior en todas menos la
-   primera (los checkboxes, que ya traen su propio espaciado de Setting). */
 .task-time-tracker-export-clockify-section {
 	margin-top: 0.75em;
 	padding-top: 0.75em;
@@ -1148,47 +929,38 @@
 	border-top: none;
 }
 
-/* Encabezado en negrita de cada seccion (excepto la de los checkboxes, que
-   usa el nombre de cada Setting como encabezado, ver ExportModal.ts). */
 .task-time-tracker-export-clockify-heading {
 	font-weight: 600;
 	margin: 0 0 0.25em;
 }
 
-/* Nota individual (formato de fecha, reimportacion): mismo estilo discreto
-   que .task-time-tracker-projects-help (texto de ayuda, no una alerta). */
 .task-time-tracker-export-clockify-note {
 	font-size: 0.8em;
 	color: var(--text-muted);
 	margin: 0;
 }
 
-/* Punto 1: alineados a la izquierda, junto a los campos — si no entran
-   en la misma linea, caen debajo de los campos por el flex-wrap del
-   contenedor padre en vez de irse a la derecha del todo. */
+/* If these don't fit on one line, they wrap below the fields (flex-wrap on
+   the parent), not shifted fully right. */
 .task-time-tracker-log-edit-actions {
 	display: flex;
 	gap: 0.4em;
 }
 
-/* Guardar/Cancelar del formulario de edicion y Si-eliminar/Cancelar de
-   ambas confirmaciones de borrado (sesion y tarea completa) comparten
-   este mismo contenedor — ninguno lleva una clase propia del plugin
-   (solo .mod-cta/.mod-warning de Obsidian, o ninguna), asi que el
-   cursor de mano se fija aqui una sola vez para los cuatro en vez de
-   depender de que Obsidian ya lo resuelva por su cuenta dentro de una
-   vista de plugin (no es un modal ni un Setting, donde si lo hace). */
+/* Save/Cancel and both delete confirmations share this container without
+   their own plugin classes (only Obsidian's .mod-cta/.mod-warning, or
+   none), so cursor:pointer is set once here for all of them rather than
+   relying on Obsidian to resolve it in a plugin view (unlike a modal or
+   Setting, where it does). */
 .task-time-tracker-log-edit-actions button {
 	cursor: pointer;
 }
 
-/* Cabecera del panel (rediseno visual del Historial, agosto 2026 — Time
-   Tracker Tab.dc.html): columna titulo+subtitulo a la izquierda, columna
-   etiqueta+total de la vista actual a la derecha. align-items: flex-end
-   para que ambas columnas queden ancladas por abajo, no por la primera
-   linea de texto (baseline quedaba raro con dos columnas de dos lineas
-   cada una). flex-wrap: por si el total no cupiera junto al titulo en un
-   panel muy estrecho, baja debajo en vez de desbordar. */
+/* Title+subtitle column on the left, label+total column on the right.
+   align-items:flex-end anchors both columns to their bottom edge rather
+   than baseline, which looked off with two two-line columns. flex-wrap
+   lets the total drop below the title in a narrow panel instead of
+   overflowing. */
 .task-time-tracker-log-title-row {
 	display: flex;
 	align-items: flex-end;
@@ -1208,9 +980,7 @@
 	min-width: 0;
 }
 
-/* "N tareas · M sesiones" (Dia) / "N tareas · M dias con actividad"
-   (Semana, Resultados) — ver TimeLogView.ts#renderSubtitle. Escala del
-   prototipo: 12.5px sobre una base de 16px. */
+/* See TimeLogView.ts#renderSubtitle. */
 .task-time-tracker-log-subtitle {
 	font-size: 0.78em;
 	color: var(--text-muted);
@@ -1224,9 +994,6 @@
 	flex-shrink: 0;
 }
 
-/* Etiqueta "Total del rango" sobre el valor — mismo dato de siempre (ver
-   TimeLogView.ts#renderViewTotal), solo se añade el rotulo. Escala del
-   prototipo: 10.5px, letter-spacing .07em, sobre una base de 16px. */
 .task-time-tracker-log-total-label {
 	font-size: 0.66em;
 	font-weight: 600;
@@ -1235,16 +1002,11 @@
 	color: var(--text-faint);
 }
 
-/* Rediseno de cabecera (Selector de fecha, agosto 2026; fix de responsive
-   con container queries, agosto 2026 — bug critico corregido: en anchos
-   intermedios el grupo calendario+Filter caia a una segunda linea sin
-   margen suficiente y se solapaba con el contenido de debajo). Container
-   query, no media query: el ancho real del panel/leaf no se corresponde
-   con el viewport (un side panel puede ser estrecho en un monitor grande,
-   y viceversa). Establecido aqui (elemento padre de
-   .task-time-tracker-log-datenav-row) en vez de en la propia fila para
-   evitar cualquier referencia circular entre el contenedor de la query y
-   el grid que esa query controla. */
+/* Container query, not media query: the panel's real width doesn't match
+   the viewport (a side panel can be narrow on a large monitor, or vice
+   versa). Set on the parent of .task-time-tracker-log-datenav-row, not the
+   row itself, to avoid a circular reference between the query's container
+   and the grid it controls. */
 .task-time-tracker-log-datenav {
 	display: flex;
 	flex-direction: column;
@@ -1254,15 +1016,10 @@
 	container-name: tt-datenav;
 }
 
-/* display:flex es solo el fallback pre-container-queries; a partir de
-   480px de contenedor pasa a grid en una fila (formato Ancho) y por debajo
-   a grid en dos filas (formato Compacto) — ver los dos bloques
-   @container mas abajo. Solo 2 formatos, sin tratamiento propio para
-   tablet (hereda Ancho) — 480px es el unico punto de corte, compartido por
-   las 3 vistas (Dia, Semana, Resultados) — rediseno de cabecera v2, agosto
-   2026, spec + prototipos "Cabecera Time Tracker.dc.html" y "Header
-   Responsive Wireframes.dc.html" (estrategia "1c"), en sustitucion del
-   breakpoint anterior a 400px. */
+/* display:flex is the pre-container-queries fallback; from 480px of
+   container width this becomes a single-row grid (Wide), below that a
+   two-row grid (Compact) — see the two @container blocks below. Single
+   480px breakpoint shared by all three views (Day/Week/Results). */
 .task-time-tracker-log-datenav-row {
 	display: flex;
 	align-items: center;
@@ -1274,21 +1031,18 @@
 	min-height: 40px;
 }
 
-/* Formato Ancho (>= 480px de contenedor): los tres grupos fijos —
-   toggle Dia/Semana, flechas+fecha, calendario+Filter — en una sola fila.
-   El grupo central se centra en el espacio flexible (1fr) y el ultimo
-   queda anclado al borde derecho por definicion de columnas (auto al
-   final), sin necesidad de margin-left: auto. minmax(0, 1fr) en vez de
-   1fr a secas — bug critico QA (agosto 2026): una columna 1fr tiene un
-   minimo automatico implicito igual al min-content de su contenido, NO
-   0; con mode+actions ya anchos (auto, no negociable), esa columna
-   central no podia encogerse por debajo del ancho minimo de
-   .task-time-tracker-log-datenav-range y el grupo flechas+fecha
-   desbordaba su track pisando visualmente el toggle Dia/Semana en el
-   tramo justo por encima de este breakpoint. minmax(0, 1fr) le quita ese
-   suelo automatico — ver tambien min-width:0 + el cambio de min-width a
-   flex-basis en .task-time-tracker-log-datenav-label mas abajo, la otra
-   mitad del mismo fix. */
+/* Wide (>= 480px of container): the three fixed groups — Day/Week toggle,
+   arrows+date, calendar+Filter — in a single row. The center group centers
+   in the flexible space (1fr) and the last is anchored to the right edge
+   by column definition, no margin-left:auto needed. minmax(0, 1fr) instead
+   of plain 1fr: a 1fr track's automatic minimum equals its content's
+   min-content, not 0 — with mode+actions already at their non-negotiable
+   auto width, the center column couldn't shrink below
+   .task-time-tracker-log-datenav-range's min content and would overflow
+   its track, visually overlapping the Day/Week toggle. minmax(0, 1fr)
+   removes that automatic floor — paired with min-width:0 and the
+   min-width→flex-basis change on .task-time-tracker-log-datenav-label
+   below, the other half of the same fix. */
 @container tt-datenav (min-width: 480px) {
 	.task-time-tracker-log-datenav-row {
 		display: grid;
@@ -1298,15 +1052,12 @@
 	}
 }
 
-/* Formato Compacto (< 480px de contenedor): fila 1 con el toggle/"Volver"
-   a la izquierda y calendario+Filter anclado a la derecha; fila 2 es un
-   control de ANCHO COMPLETO con marco (ver el @container que reestiliza
-   .task-time-tracker-log-datenav-range mas abajo, y
-   .task-time-tracker-log-results-rangebox para Resultados) — ya no es
-   texto centrado sin caja como en la v1 de este rediseno. margin-bottom y
-   min-height mayores que en Ancho: hay una fila extra apilada, y sin este
-   margen extra el conjunto se solapa con el divisor/"Sin sesiones este
-   dia" de debajo (bug critico que motivo este fix en la v1). */
+/* Compact (< 480px): row 1 has the mode toggle/Back and calendar+Filter
+   anchored right; row 2 is a full-width boxed control (see the @container
+   block restyling .task-time-tracker-log-datenav-range below, and
+   .task-time-tracker-log-results-rangebox for Results). Larger
+   margin-bottom/min-height than Wide, since there's an extra stacked row —
+   without it the row overlaps the divider/empty-day content below. */
 @container tt-datenav (max-width: 479px) {
 	.task-time-tracker-log-datenav-row {
 		display: grid;
@@ -1321,27 +1072,21 @@
 	}
 }
 
-/* Dia/Semana, flechas prev/siguiente, calendario y "Volver": mismo motivo
-   que .task-time-tracker-log-edit-actions button de arriba — sin esto se
-   quedan con el cursor por defecto del navegador en esta vista. */
 .task-time-tracker-log-datenav button {
 	cursor: pointer;
 }
 
-/* Target tactil minimo 44x44px (WCAG 2.5.5) en movil — ligado a
-   .is-mobile (clase que Obsidian añade al body), no al breakpoint de
-   ancho del container query: un side panel ancho en movil tambien
-   necesita targets grandes. En desktop se mantienen los tamaños
-   compactos actuales sin forzar 44px. */
+/* 44x44 minimum touch target (WCAG 2.5.5) on mobile — gated on .is-mobile
+   (added by Obsidian to body), not the container-query breakpoint: a wide
+   side panel on mobile still needs large targets. Desktop keeps its
+   compact sizes. */
 .is-mobile .task-time-tracker-log-datenav-row button {
 	min-width: 44px;
 	min-height: 44px;
 }
 
-/* Toggle Dia/Semana como un solo control segmentado (un borde, un fondo,
-   sin huecos entre los dos botones) en vez de dos botones sueltos. Grupo
-   fijo "mode" del grid de .task-time-tracker-log-datenav-row — no se
-   renderiza en modo Resultados, dejando esa area del grid vacia. */
+/* Fixed "mode" group of the grid — not rendered in Results mode, leaving
+   this grid area empty. */
 .task-time-tracker-log-datenav-mode {
 	grid-area: mode;
 	justify-self: start;
@@ -1364,18 +1109,14 @@
 	color: var(--text-on-accent);
 }
 
-/* Flechas + fecha: grupo fijo "range" del grid — centrado en el espacio
-   flexible que le deja el grid en formato Ancho, SIN caja/borde propio
-   (decision de producto del rediseno v2, Cambio 2 — a diferencia de la
-   caja con marco que si lleva el rango de Resultados, ver
-   .task-time-tracker-log-results-rangebox). En formato Compacto pasa a
-   ser un control de ancho completo con marco (ver el @container mas abajo)
-   — sigue siendo el mismo elemento, solo cambia su aspecto/tamaño segun el
-   ancho del contenedor. "Volver" (modo Resultados, ver
-   .task-time-tracker-log-results-back) ocupa esta misma area del grid
-   cuando sustituye al toggle Dia/Semana, pero NO a este grupo — el rango
-   de Resultados vive en su propio elemento (rangebox), tambien en el area
-   "range". */
+/* Centered in the free space of the Wide grid, without its own box border
+   (unlike the boxed range in Results, see
+   .task-time-tracker-log-results-rangebox). Becomes a full-width boxed
+   control in Compact (see @container below) — same element, just restyled
+   by container width. "Back" (.task-time-tracker-log-results-back) occupies
+   the "mode" grid area when it replaces the Day/Week toggle, not this
+   "range" area — the Results range lives in its own element (rangebox),
+   also in the "range" area. */
 .task-time-tracker-log-datenav-range {
 	grid-area: range;
 	justify-self: center;
@@ -1386,19 +1127,13 @@
 	white-space: nowrap;
 }
 
-/* flex-basis 21ch (no min-width) igual para el rango de dia ("Mie, 12 ago
-   2026") y el de semana ("8/10/2026 - 8/16/2026", mas ancho): sin esto,
-   cambiar de Dia a Semana angosta o ensancha la fila superior al
-   alternar el modo, con el panel en el mismo ancho. 21ch cubre el mas
-   ancho de los dos formatos (semana) — pero como PREFERENCIA, no como
-   suelo: min-width:0 + overflow:hidden dejan que el propio min-content
-   de este span baje a ~0 (en vez de a 21ch), que es lo que le permite a
-   .task-time-tracker-log-datenav-range encogerse de verdad en el tramo
-   justo por encima del breakpoint Ancho en vez de desbordar su columna
-   (ver comentario en el bloque @container Ancho mas arriba — bug critico
-   QA agosto 2026: con min-width:21ch como suelo, el ellipsis nunca
-   llegaba a activarse porque el span se negaba a bajar de 21ch, asi que
-   el desborde persistia igual). */
+/* flex-basis:21ch (not min-width), sized to the wider of the Day/Week
+   label formats, used as a PREFERENCE rather than a floor: min-width:0 +
+   overflow:hidden let this span's min-content shrink toward 0, which is
+   what lets .task-time-tracker-log-datenav-range actually shrink in the
+   range just above the Wide breakpoint instead of overflowing its column
+   (see the minmax(0,1fr) comment above) — with min-width:21ch as a floor,
+   the ellipsis would never activate and the overflow would persist. */
 .task-time-tracker-log-datenav-label {
 	font-weight: 600;
 	text-align: center;
@@ -1409,16 +1144,11 @@
 	text-overflow: ellipsis;
 }
 
-/* Formato Compacto (Cambio 3, rediseno de cabecera v2, agosto 2026):
-   .task-time-tracker-log-datenav-range deja de ser un grupo centrado sin
-   caja y pasa a ser un stepper de ANCHO COMPLETO con marco — mismo patron
-   que "1c" del prototipo de referencia. justify-self:stretch (en vez de
-   center) para que ocupe todo el ancho de la fila "range range";
-   grid 44px/1fr/44px en vez de flex: las celdas 1 y 3 son el target
-   tactil de las flechas (44px, mejora respecto al tamaño compacto de
-   Ancho, pensado para mobile), la celda central es la fecha. gap:0 (no el
-   0.35em de Ancho) porque los separadores entre celdas son bordes, no
-   huecos. */
+/* Compact: .task-time-tracker-log-datenav-range becomes a full-width boxed
+   stepper instead of a centered borderless group. justify-self:stretch
+   fills the "range range" row; grid 44px/1fr/44px gives the arrow cells a
+   44px touch target with the date in the middle. gap:0 since cell
+   separators are borders, not gaps. */
 @container tt-datenav (max-width: 479px) {
 	.task-time-tracker-log-datenav-range {
 		display: grid;
@@ -1430,18 +1160,11 @@
 		background: var(--background-secondary);
 	}
 
-	/* Sin height fijo (bug QA agosto 2026 — fix verificado por el usuario:
-	   38px se quedaba corto para el contenido real de la fila, y los
-	   divisores verticales entre celdas sobresalian por fuera del borde de
-	   la caja). La altura se ajusta sola al contenido; el target tactil de
-	   44px de las flechas no depende de esto — lo cubre .task-time-tracker-
-	   icon-btn con su ::after de hit-area invisible (inset:-10px), no la
-	   altura visual real del boton. Las flechas ocupan toda su celda (44px
-	   de ancho) en vez de flotar centradas en una celda mas grande que
-	   ellas; border-radius:0 porque aqui viven pegadas al marco de la caja,
-	   no sueltas como en Ancho. El divisor va en el borde interior de cada
-	   celda (right en la primera, left en la ultima) para no depender del
-	   orden real de los hijos mas alla de "primero y ultimo". */
+	/* No fixed height — content sets its own; the 44px touch target for the
+	   arrows comes from .task-time-tracker-icon-btn's invisible hit-area, not
+	   the button's visual height. Divider sits on each cell's inner edge
+	   (right on the first, left on the last) so it doesn't depend on child
+	   order beyond "first and last". */
 	.task-time-tracker-log-datenav-range > button:first-child,
 	.task-time-tracker-log-datenav-range > button:last-child {
 		width: 100%;
@@ -1465,10 +1188,9 @@
 	}
 }
 
-/* Grupo atomico calendario+Filter (ver TimeLogView.ts#renderDateNav):
-   nunca se separan entre si ni cambian de grid-area — siempre anclados al
-   borde derecho de la fila en ambos formatos (justify-self: end), lo que
-   corrige el bug de solapamiento/desagrupacion en anchos intermedios. */
+/* Calendar+Filter (see TimeLogView.ts#renderDateNav) never separate or
+   change grid-area — always anchored to the row's right edge
+   (justify-self:end) in both formats. */
 .task-time-tracker-log-datenav-actions {
 	grid-area: actions;
 	justify-self: end;
@@ -1488,11 +1210,9 @@
 	flex-shrink: 0;
 }
 
-/* Filtro por proyecto (ver TimeLogView.ts#renderProjectFilter), dentro del
-   grupo calendario+Filter. flex-shrink:0: nunca cede espacio ni compite
-   con el resto de la fila — ver .task-time-tracker-log-filter-btn mas
-   abajo para como se adapta el boton en si (cambio binario por
-   breakpoint, no recorte progresivo). */
+/* flex-shrink:0 — this group never cedes space to the rest of the row; see
+   .task-time-tracker-log-filter-btn below for how the button itself adapts
+   (a binary breakpoint swap, not progressive shrinking). */
 .task-time-tracker-log-filter {
 	display: flex;
 	align-items: center;
@@ -1500,24 +1220,18 @@
 	flex-shrink: 0;
 }
 
-/* Boton de filtro por proyecto (ver TimeLogView.ts#renderProjectFilter) y
-   el boton "Proyecto" del modal de Editar (ver
-   .task-time-tracker-edit-modal-project-btn mas abajo) comparten esta
-   misma clase base: icono + texto opcional. El aspecto visual (fondo,
-   tamaño, icono-solo vs pill) lo pone cada contexto por separado — ver
-   .task-time-tracker-log-header-icon-btn mas abajo para el boton del
-   header. flex-shrink:0 heredado de esa misma clase: el boton NUNCA
-   compite por espacio con el resto de la fila (bug QA agosto 2026,
-   rediseno de cabecera v2 — un intento de recorte progresivo via
-   flex-shrink/min-width dinamicos causo dos regresiones: la caja de fecha
-   de Resultados cortandose, y la fila de Dia/Semana rota, porque metia al
-   filtro a competir por el espacio de toda la fila). max-width: limite
-   fijo, propio del boton, no relacionado con el espacio disponible en la
-   fila — solo salvaguarda nombres de proyecto extremadamente largos (ver
-   .task-time-tracker-log-filter-btn-label para el ellipsis). En formato
-   Compacto (<480px, ver el @container mas abajo) el nombre desaparece
-   del todo — cambio binario atado al mismo breakpoint que ya gobierna el
-   resto de la cabecera, no un estado intermedio. */
+/* Shared base class with the Edit modal's Project button (see
+   .task-time-tracker-edit-modal-project-btn below) — visual look
+   (background, size, icon-only vs pill) is set per context. flex-shrink:0
+   is deliberate: an earlier attempt at progressive shrinking via dynamic
+   flex-shrink/min-width caused the Results date box to clip and the
+   Day/Week row to break, by making the filter compete for the whole row's
+   space. max-width is a fixed cap on the button itself, unrelated to
+   available row space — it only guards against extremely long project
+   names (see .task-time-tracker-log-filter-btn-label for the ellipsis).
+   The name disappears entirely below 480px (see the @container block
+   below) — a binary swap tied to the same breakpoint as the rest of the
+   header, not an intermediate state. */
 .task-time-tracker-log-filter-btn {
 	display: inline-flex;
 	align-items: center;
@@ -1530,12 +1244,9 @@
 	flex-shrink: 0;
 }
 
-/* min-width:0 aqui es un ajuste interno y autocontenido del boton (para
-   que el ellipsis realmente se active dentro del max-width fijo de
-   .task-time-tracker-log-filter-btn), no una invitacion a encogerse por
-   presion del resto de la fila — el boton en si sigue siendo
-   flex-shrink:0 (ver arriba), asi que esto no repite el problema de las
-   regresiones QA agosto 2026. */
+/* min-width:0 here is a self-contained adjustment (so the ellipsis can
+   activate within the button's fixed max-width), not an invitation to
+   shrink from row pressure — the button itself stays flex-shrink:0. */
 .task-time-tracker-log-filter-btn-label {
 	min-width: 0;
 	overflow: hidden;
@@ -1543,20 +1254,15 @@
 	white-space: nowrap;
 }
 
-/* Breakpoint PROPIO de este boton (fix QA agosto 2026) — deliberadamente
-   NO el de 480px que gobierna el resto de la cabecera (ver los
-   @container de mas arriba): el nombre de proyecto desaparece por
-   completo y el boton se queda solo con el icono de embudo, cambio
-   binario sin recorte progresivo ni estado intermedio (rediseno de bug 6,
-   tras descartar el enfoque de recorte dinamico que causaba
-   regresiones). Umbral distinto segun la vista, medido aparte: 610px en
-   Dia/Semana (comparte fila con el toggle) y 575px en Resultados (comparte
-   fila con "Volver" y la caja de rango, algo menos cargada) — is-results
-   (ver renderDateNav) distingue ambos casos dentro del mismo contenedor
-   de container-query. Cambiar el breakpoint de 2 filas de la cabecera
-   (480px) no afecta a este, y viceversa. El icono "x" de quitar filtro
-   (.task-time-tracker-log-filter-clear) no se ve afectado, sigue siempre
-   visible en ambos formatos. */
+/* This button's own breakpoint — deliberately not the 480px one governing
+   the rest of the header: the project name disappears entirely and only
+   the funnel icon remains, a binary swap with no intermediate state.
+   Threshold differs by view: 610px in Day/Week (shares the row with the
+   mode toggle) vs 575px in Results (shares the row with Back and the range
+   box, a bit less crowded) — .is-results on .task-time-tracker-log-datenav
+   distinguishes the two within the same container-query context.
+   Independent of the header's 480px 2-row breakpoint. The clear-filter "x"
+   icon is unaffected, always visible in both formats. */
 @container tt-datenav (max-width: 609px) {
 	.task-time-tracker-log-datenav:not(.is-results) .task-time-tracker-log-filter-btn-label {
 		display: none;
@@ -1569,10 +1275,9 @@
 	}
 }
 
-/* Boton solo-icono compartido entre calendario y filtro de proyecto en
-   reposo (QA agosto 2026 — unificar aspecto entre los dos): sin fondo/
-   borde/sombra propios, deja el boton nativo de Obsidian tal cual. Solo
-   centra el icono y evita que se encoja. */
+/* Shared appearance between calendar and project-filter buttons at rest:
+   no background/border/shadow of their own, keeping Obsidian's native
+   button look — this only centers the icon and prevents shrinking. */
 .task-time-tracker-log-header-icon-btn {
 	display: flex;
 	align-items: center;
@@ -1580,14 +1285,11 @@
 	flex-shrink: 0;
 }
 
-/* Estado activo: fondo tintado de --interactive-accent a baja opacidad +
-   texto en acento, distinto del fill solido que usa el toggle Dia/Semana
-   activo, para no competir visualmente con el en la misma barra. Lo usan
-   tanto el filtro de proyecto (cuando hay proyecto/"No project"
-   seleccionado) como el calendario (isDateFilterActive, ver
-   renderDateNav) — este ultimo queda activo en Semana, en Dia si no es
-   "hoy", y siempre en Resultados (Cambio 2, rediseno de cabecera v2,
-   agosto 2026: indica que ese es el filtro de fecha aplicado). */
+/* Distinct from the solid fill used by the active Day/Week toggle, so the
+   two don't visually compete in the same bar. Used by both the project
+   filter (when a project/"No project" is selected) and the calendar
+   (active whenever a date filter applies — in Week, in Day when not
+   "today", always in Results). */
 .task-time-tracker-log-header-icon-btn.is-active {
 	gap: 0.35em;
 	background-color: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
@@ -1602,9 +1304,8 @@
 	}
 }
 
-/* Icono "x" para quitar el filtro: boton independiente del principal
-   (hit-area propia), mismo patron que el resto de botones-icono solo-
-   icono del panel (menu kebab, nota). */
+/* Independent hit area from the main filter button, same pattern as the
+   panel's other icon-only buttons. */
 .task-time-tracker-log-filter-clear {
 	flex-shrink: 0;
 	color: var(--text-muted);
@@ -1616,12 +1317,8 @@
 	border-radius: 50%;
 }
 
-/* Estado "sin resultados" del rango visible completo con un filtro de
-   proyecto activo (ver TimeLogView.ts#renderFilteredEmptyState) —
-   sustituye a .task-time-tracker-log-empty-day normal solo en ese caso.
-   Boton "Quitar filtro" sin mod-cta/mod-warning (estilo neutro tipo
-   "ghost"): es una salida secundaria, no la accion principal de la
-   vista. */
+/* "Clear filter" uses a neutral ghost style (no mod-cta/mod-warning) — it's
+   a secondary escape, not the view's primary action. */
 .task-time-tracker-log-filter-empty {
 	margin-bottom: 1em;
 }
@@ -1630,15 +1327,11 @@
 	margin: 0 0 0.5em;
 }
 
-/* Cabecera de cada dia dentro de la vista semanal (7 secciones, dias
-   vacios incluidos con total "—") y de la vista de Resultados (solo dias
-   con sesiones — Resultados nunca llega aqui vacio, ver
-   TimeLogView.ts#renderDaySection/hideIfEmpty). Rediseno visual del
-   Historial (agosto 2026, Time Tracker Tab.dc.html): titulo + linea
-   conectora que rellena el espacio + total del dia a la derecha, en vez
-   del titulo suelto de antes. Sigue siendo un <h6> real (ver
-   TimeLogView.ts#renderDayHeading) — el reset de margin/font aqui es
-   necesario porque el navegador le pone los suyos por defecto. */
+/* Used both in the weekly view (7 sections, empty days included with a "—"
+   total) and Results (only days with sessions, see
+   TimeLogView.ts#renderDaySection/hideIfEmpty). Still a real <h6> (see
+   TimeLogView.ts#renderDayHeading) — the margin/font reset here is needed
+   because the browser applies its own h6 defaults. */
 .task-time-tracker-log-day-heading {
 	display: flex;
 	align-items: baseline;
@@ -1649,10 +1342,9 @@
 	font-weight: inherit;
 }
 
-/* Sin text-transform: capitalize (bug QA, 5a pasada visual) — capitaliza
-   CADA palabra, no solo la primera ("Martes, 18 De Agosto" en vez de
-   "Martes, 18 de agosto"): el texto ya llega con la primera letra en
-   mayuscula desde TimeLogView.ts#formatDayHeading. */
+/* No text-transform:capitalize — it would capitalize every word
+   ("Martes, 18 De Agosto" instead of "Martes, 18 de agosto"); the leading
+   capital already comes from TimeLogView.ts#formatDayHeading. */
 .task-time-tracker-log-day-heading-title {
 	font-size: 0.8125em;
 	font-weight: 600;
@@ -1676,17 +1368,14 @@
 	white-space: nowrap;
 }
 
-/* Solo presente en el DOM si este dia tiene la sesion activa (ver
-   TimeLogView.ts#renderDayHeading) — mismo criterio "en vivo" que
-   .task-time-tracker-totals-duration-icon. */
+/* Only present in the DOM when this day contains the active session — same
+   "live" criterion as .task-time-tracker-totals-duration-icon. */
 .task-time-tracker-log-day-heading-total-icon svg {
 	width: 0.9em;
 	height: 0.9em;
 	color: var(--interactive-accent);
 }
 
-/* Dia sin sesiones (solo ocurre en Semana, ver arriba): titulo y total
-   mas atenuados, total en "—" en vez de un valor real. */
 .task-time-tracker-log-day-heading.is-empty .task-time-tracker-log-day-heading-title {
 	color: var(--text-muted);
 }
@@ -1695,12 +1384,10 @@
 	color: var(--text-faint);
 }
 
-/* Boton "Volver" (ver TimeLogView.ts#renderDateNav): mismo mecanismo
-   ESTRUCTURADO de Dia/Semana (grid de 3 areas "mode range actions" + los
-   bloques @container de arriba) — nunca wrap libre, exactamente 2 filas
-   fijas en Compacto (fila 1: "Volver"+acciones, fila 2: rangebox de ancho
-   completo, ver mas abajo). "Volver" ocupa el area "mode" — mismo hueco y
-   mismo justify-self:start que el toggle Dia/Semana al que sustituye. */
+/* "Back" (see TimeLogView.ts#renderDateNav) reuses the same 3-area grid
+   mechanism as the Day/Week mode toggle (see the @container blocks above)
+   — always exactly 2 fixed rows in Compact, never free wrapping. Occupies
+   the "mode" area, same slot and justify-self as the toggle it replaces. */
 .task-time-tracker-log-results-back {
 	grid-area: mode;
 	justify-self: start;
@@ -1709,17 +1396,13 @@
 	gap: 0.35em;
 }
 
-/* Caja del rango de Resultados (Cambio 2/3, rediseno de cabecera v2,
-   agosto 2026 — ver TimeLogView.ts#formatResultsRangeTitle/
-   formatResultsRangeDays): marco (borde + fondo + radio) en vez de texto
-   plano, para que no se vea desequilibrado frente a "Volver" y
-   calendario+Filter, que si son controles con su propio marco. Ocupa el
-   area "range" del mismo grid que las flechas+fecha de Dia/Semana. En
-   Ancho es una pill centrada de tamaño ajustado a su contenido (34px alto,
-   14px de padding horizontal); en Compacto (ver el @container mas abajo)
-   pasa a ser una barra de ANCHO COMPLETO (justify-self:stretch), la misma
-   idea de "control de ancho completo" que el stepper de Dia/Semana, pero
-   sin flechas ni divisores — es estatica, solo texto. */
+/* Boxed (border+background+radius) rather than plain text (see
+   TimeLogView.ts#formatResultsRangeTitle/formatResultsRangeDays), so it
+   doesn't look unbalanced next to Back and calendar+Filter, which are
+   boxed controls too. Shares the "range" grid area with the Day/Week
+   arrows+date. In Wide it's a content-sized pill; in Compact (see
+   @container below) it becomes a full-width bar like the Day/Week
+   stepper, but static (no arrows/dividers). */
 .task-time-tracker-log-results-rangebox {
 	grid-area: range;
 	justify-self: center;
@@ -1745,11 +1428,10 @@
 	}
 }
 
-/* Rango ("14 jun - 17 ago"): unico elemento que se trunca si no cabe —
-   min-width:0 + ellipsis, mismo criterio que
-   .task-time-tracker-log-datenav-label (necesario ademas del
-   minmax(0,1fr) de la columna, ver el comentario extenso ahi). El
-   metadato de dias (ver abajo) se queda siempre visible entero. */
+/* Only element here that truncates if it doesn't fit — same criterion as
+   .task-time-tracker-log-datenav-label (needed in addition to the column's
+   minmax(0,1fr), see that comment). The day-count metadata below always
+   stays fully visible. */
 .task-time-tracker-log-results-rangebox-label {
 	font-weight: 600;
 	color: var(--text-normal);
@@ -1759,8 +1441,8 @@
 	white-space: nowrap;
 }
 
-/* Metadato "· N dias" (Cambio 4): mas tenue y pequeño que el rango, nunca
-   se trunca (flex-shrink:0) — el rango es lo primero que cede espacio. */
+/* Never truncates (flex-shrink:0) — the range label is what cedes space
+   first. */
 .task-time-tracker-log-results-rangebox-meta {
 	font-size: 0.85em;
 	color: var(--text-faint);
@@ -1768,19 +1450,12 @@
 	flex-shrink: 0;
 }
 
-/* "Cargar mas" (ver renderResultsSection — paginacion de rangos amplios):
-   centrado, sin mod-cta, es una accion secundaria dentro de la lista. */
 .task-time-tracker-log-results-load-more {
 	display: flex;
 	justify-content: center;
 	margin-top: 1em;
 }
 
-/* Estado vacio especifico de Resultados (ver renderResultsEmptyState) —
-   reutilizado tal cual del prototipo de Claude Design (Date Filter
-   Prototype.dc.html, estado "Lista de tareas · sin sesiones en el
-   rango"): centrado, texto atenuado con el rango de fechas destacado, y
-   un boton fantasma para salir. */
 .task-time-tracker-log-results-empty {
 	display: flex;
 	flex-direction: column;
@@ -1806,10 +1481,6 @@
 	margin-top: 0;
 }
 
-/* Estado vacio de un dia (vista diaria) o de un dia dentro de la semana
-   (vista semanal) sin ninguna sesion — texto suelto, sin tarjeta ni
-   borde. Escala/color del prototipo (12.5px, text-faint), 3a pasada de
-   QA visual. */
 .task-time-tracker-log-empty-day {
 	color: var(--text-faint);
 	font-size: 0.78em;
@@ -1817,8 +1488,6 @@
 	margin: 0 0 1em;
 }
 
-/* Fase 5 UX — el status bar completo abre el panel de Historial al
-   hacer clic, tanto con tracking activo como en reposo. */
 .task-time-tracker-statusbar {
 	cursor: pointer;
 	border-radius: var(--radius-s);
@@ -1828,13 +1497,9 @@
 	background-color: var(--background-modifier-hover);
 }
 
-/* Fase 5 UX — badge tipo tag junto al checkbox, solo modo Edicion.
-   Pill con tinte de --interactive-accent (nunca un color fijo, via
-   color-mix()) en los tres estados no estaticos — disponible/con
-   historial y en ejecucion comparten el mismo color de texto/icono,
-   solo cambia la intensidad del tinte de fondo/borde y el punto
-   pulsante. Se adapta a cualquier tema claro/oscuro/personalizado
-   porque deriva siempre del accent del tema activo. */
+/* Pill tinted via color-mix() of --interactive-accent (never a fixed
+   color) across all three non-static states — adapts to any light/dark/
+   custom theme since it always derives from the active theme's accent. */
 .task-time-tracker-inline-control {
 	display: inline-flex;
 	align-items: center;
@@ -1852,7 +1517,7 @@
 		border-color 0.15s ease-in-out,
 		color 0.1s ease-in-out;
 
-	/* Disponible / con historial (no activa): tinte suave del accent. */
+	/* Available / has history (not active): soft accent tint. */
 	color: var(--interactive-accent);
 	background-color: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
 	border-color: color-mix(in srgb, var(--interactive-accent) 30%, transparent);
@@ -1876,12 +1541,9 @@
 	}
 }
 
-/* Tarea abierta, sin tracking activo y sin historial (sin tt-id
-   todavia): mismo tinte apagado que .is-static (color/fondo/borde),
-   sin heredar su cursor: default — este boton si hace algo al
-   pulsarlo (inicia tracking), a diferencia del de una tarea cerrada.
-   Siempre visible (opacity: 1), ya no depende de :hover ni de
-   .is-mobile para revelarse. */
+/* Same muted tint as .is-static (color/background/border) but without
+   inheriting its cursor:default — this button does something when clicked
+   (starts tracking), unlike a closed task's. */
 .task-time-tracker-inline-control:not(.is-active):not(.has-history):not(.is-static) {
 	opacity: 1;
 	color: var(--text-faint);
@@ -1889,13 +1551,11 @@
 	border-color: var(--background-modifier-border);
 }
 
-/* El color/fondo/borde base de ese mismo estado ya no son los del
-   accent (ver regla de arriba) — con mas clases en su selector
-   (:not(.is-active):not(.has-history) de mas), esa regla es mas
-   especifica que :hover:not(.is-static) de mas arriba y ganaria
-   incluso en hover, dejando fondo/borde sin iluminar. Se repiten aqui
-   los mismos valores de esa regla junto al color, para que el hover
-   de este estado concreto vuelva a verse igual que el resto. */
+/* This state's base color/background/border are no longer the accent ones
+   (previous rule) — with more classes in its selector, that rule is more
+   specific than :hover:not(.is-static) above and would win even on hover,
+   leaving background/border unlit. The values are repeated here so hover
+   on this specific state still lights up. */
 .task-time-tracker-inline-control:hover:not(.is-active):not(.has-history):not(.is-static) {
 	color: var(--interactive-accent);
 	background-color: color-mix(in srgb, var(--interactive-accent) 18%, transparent);
@@ -1908,16 +1568,12 @@
 	}
 }
 
-/* Con al menos una sesion guardada (tarea abierta, no activa), el badge
-   se mantiene siempre visible en vez de solo al hacer hover. */
 .task-time-tracker-inline-control.has-history {
 	opacity: 1;
 }
 
-/* En ejecucion: mismo color de texto/icono que el resto de estados
-   (nunca --text-on-accent: el fondo aqui es un tinte translucido, no
-   un relleno solido, y --text-on-accent perderia contraste sobre el).
-   Tinte de fondo/borde mas saturado, con el punto pulsante visible. */
+/* Never --text-on-accent here — the background is a translucent tint, not
+   a solid fill, and --text-on-accent would lose contrast against it. */
 .task-time-tracker-inline-control.is-active {
 	color: var(--interactive-accent);
 	background-color: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
@@ -1945,9 +1601,6 @@
 	}
 }
 
-/* Cerrada con historial: solo informativo, sin interaccion posible —
-   tono apagado/desaturado (sin tinte de accent) y check en vez de
-   icono de play/stop. */
 .task-time-tracker-inline-control.is-static {
 	cursor: default;
 	opacity: 1;
@@ -1956,16 +1609,11 @@
 	border-color: var(--background-modifier-border);
 }
 
-/* Punto pulsante junto al icono, solo mientras hay tracking activo:
-   compartido por el badge inline (.is-active), por el bullet junto al
-   total de cada tarjeta del Historial
-   (.task-time-tracker-log-card-total-dot, siempre "en ejecucion" por
-   definicion — solo se inserta en el DOM en ese caso, ver
-   renderTaskCard() en TimeLogView.ts) y por la fila de sesion en curso
-   dentro del detalle expandido de una tarjeta
-   (.task-time-tracker-log-session-live) — mismo tamaño/animacion en los
-   tres sitios (el color puede variar, ver
-   .task-time-tracker-log-card-total-dot mas arriba). */
+/* Shared by the inline badge (.is-active), the total's dot on the log card
+   (.task-time-tracker-log-card-total-dot — always "running" by definition,
+   only inserted when true) and the live session row in an expanded card
+   (.task-time-tracker-log-session-live) — same size/animation in all three
+   (color can vary, see .task-time-tracker-log-card-total-dot above). */
 .task-time-tracker-inline-dot {
 	display: none;
 	width: 6px;
@@ -1992,9 +1640,9 @@
 	}
 }
 
-/* Iconos de tipo relleno (no de contorno): los iconos de Lucide que usa
-   Obsidian se dibujan con fill:none + stroke, asi que se invierte para
-   que el propio trazo (un triangulo o un cuadrado) quede solido. */
+/* Lucide icons (used by Obsidian) are drawn with fill:none + stroke;
+   inverted here so the stroke shape itself (a solid triangle/square)
+   renders filled. */
 .task-time-tracker-inline-icon svg {
 	width: 0.85em;
 	height: 0.85em;
@@ -2015,30 +1663,27 @@
 	display: none;
 }
 
-/* Se revela al hacer hover sobre la linea de la tarea en modo Edicion
-   (Live Preview: .cm-line). Las tareas activas o cerradas-con-historial
-   ya tienen opacity:1 propio (arriba) y no dependen de esto. */
+/* Reveals on hover over the task's line in Live Preview (.cm-line). Active
+   or closed-with-history tasks already have their own opacity:1 (above)
+   and don't depend on this. */
 .cm-line:hover .task-time-tracker-inline-control {
 	opacity: 1;
 }
 
-/* Mobile no tiene hover: el icono de play de una tarea abierta sin
-   historial (unico estado que dependia de .cm-line:hover, arriba) se
-   fuerza siempre visible via esta clase (ver InlineTaskControl.ts). */
+/* Mobile has no hover: the play icon of an open task with no history (the
+   only state that depended on .cm-line:hover above) is forced always
+   visible via this class (see InlineTaskControl.ts). */
 .task-time-tracker-inline-control.is-mobile {
 	opacity: 1;
 }
 
-/* Fase 7 — ajuste "Formato del id de tarea" (Settings): estas clases
-   las pone/quita applyTaskIdFormatClass() en document.body segun el
-   valor elegido ("normal" no lleva clase ni CSS propio, es el
-   renderizado por defecto de Dataview). Puramente visual sobre lo que
-   Dataview ya renderiza (Reading mode / Live Preview sin el cursor en
-   la linea) — nunca sobre el texto fuente de la nota, y sin efecto si
-   Dataview no esta instalado (no se generan estos atributos
-   data-dv-key). Selectores acotados a [data-dv-key="tt-id"] a
-   proposito: no deben afectar a ningun otro inline field que el
-   usuario tenga en sus notas. */
+/* Classes toggled on document.body by applyTaskIdFormatClass() based on the
+   chosen format ("normal" has no class, Dataview's own default rendering).
+   Purely visual over what Dataview already renders — never touches the
+   note's source text, and has no effect if Dataview isn't installed (no
+   data-dv-key attributes exist then). Selectors scoped to
+   [data-dv-key="tt-id"] deliberately, so they never affect other inline
+   fields the user has in their notes. */
 body.task-time-tracker-taskid-reduced .dataview .inline-field-key[data-dv-key="tt-id"] {
 	display: none;
 }
@@ -2058,25 +1703,18 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	display: none;
 }
 
-/* Fase 8 — Settings > "Projects & clients" (ver settings/ProjectsSection.ts).
-   Alta/baja de proyectos y clientes, base para futuros adapters de
-   exportacion (Clockify y otros esperan columnas Project/Client en su
-   importador).
-   container-type aqui, no @media: este bloque vive dentro del panel de
-   Settings de Obsidian (sidebar o tab central, elegible por el usuario —
-   ver CLAUDE.md), cuyo ancho no tiene por que coincidir con el del
-   viewport de la ventana. Un unico container context para todo el bloque
-   (formulario "One by one" y filas de "N projects saved" comparten el
-   mismo punto de corte, ver @container mas abajo). */
+/* container-type here, not @media: this lives inside Obsidian's Settings
+   panel (sidebar or center tab, user's choice), whose width doesn't have
+   to match the window viewport. One container context covers the whole
+   block, so the "one by one" form and the project rows share the same
+   breakpoint (see @container below). */
 .task-time-tracker-projects {
 	container-type: inline-size;
 	margin-bottom: 1em;
 }
 
-/* Banner informativo, siempre visible (nunca tooltip): por que importan
-   los nombres exactos de proyecto/cliente. Mismo patron de bloque
-   destacado con borde de acento a la izquierda que ya usa el resto del
-   plugin (ver .task-time-tracker-log-edit-duration). */
+/* Same highlighted-block-with-left-accent-border pattern already used
+   elsewhere in the plugin (see .task-time-tracker-log-edit-duration). */
 .task-time-tracker-projects-banner {
 	display: flex;
 	align-items: flex-start;
@@ -2110,8 +1748,8 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	color: var(--text-muted);
 }
 
-/* Pestañas "One by one" / "Paste list": mismo control segmentado que el
-   toggle Dia/Semana del Historial (.task-time-tracker-log-datenav-mode). */
+/* Same segmented control as the History's Day/Week toggle
+   (.task-time-tracker-log-datenav-mode). */
 .task-time-tracker-projects-tabs {
 	width: fit-content;
 	margin-bottom: 1em;
@@ -2129,9 +1767,6 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	margin-bottom: 1.25em;
 }
 
-/* Project name / Client / Add: apilados en tres filas completas por
-   defecto (ancho reducido). A partir del punto de corte de mas abajo,
-   comparten una sola fila. */
 .task-time-tracker-projects-form-fields {
 	display: flex;
 	flex-direction: column;
@@ -2160,8 +1795,8 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	}
 }
 
-/* Mismo estilo de campo que .task-time-tracker-log-edit-input (ver
-   Historial), adaptado a textarea multilinea para la pestaña "Paste list". */
+/* Same field style as .task-time-tracker-log-edit-input, adapted to a
+   multiline textarea for the "Paste list" tab. */
 .task-time-tracker-projects-textarea {
 	width: 100%;
 	min-height: 6em;
@@ -2204,11 +1839,10 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	gap: 0.5em;
 }
 
-/* Ancho reducido (por defecto): nombre arriba, cliente+papelera
-   agrupados debajo — de ahi que .task-time-tracker-projects-row-meta
-   agrupe ambos en un unico wrapper (ver @container mas abajo y
-   ProjectsSection.ts#renderProjectRow), en vez de que la papelera cuelgue
-   suelta del row entero. */
+/* Narrow layout (default): name on top, client+trash grouped below — hence
+   .task-time-tracker-projects-row-meta wraps both in one wrapper (see
+   @container below and ProjectsSection.ts#renderProjectRow), rather than
+   trash hanging loose off the whole row. */
 .task-time-tracker-projects-row {
 	display: flex;
 	flex-direction: column;
@@ -2235,8 +1869,6 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	color: var(--text-muted);
 }
 
-/* Ancho suficiente: nombre, cliente y papelera en una sola linea (nombre
-   a la izquierda, cliente+papelera agrupados a la derecha). */
 @container (min-width: 480px) {
 	.task-time-tracker-projects-row {
 		flex-direction: row;
@@ -2264,10 +1896,9 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	color: var(--text-error);
 }
 
-/* Edicion inline por campo (Settings > Projects & clients). El nombre y
-   el cliente son clicables para entrar en modo edicion — mismo affordance
-   en desktop (hover) y mobile (tap, ver ProjectsSection.ts que no
-   depende de :hover para funcionar). */
+/* Name and client are clickable to enter edit mode — same affordance on
+   desktop (hover) and mobile (tap, see ProjectsSection.ts, which doesn't
+   depend on :hover to work). */
 .task-time-tracker-projects-row-editable {
 	cursor: pointer;
 	border-radius: var(--radius-s);
@@ -2279,9 +1910,8 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	background-color: var(--background-modifier-hover);
 }
 
-/* Marcador visual de "sin cliente todavia": mismo texto que el
-   placeholder del formulario de alta, en cursiva y mas tenue que un
-   cliente real para no confundirse con un valor guardado. */
+/* Same text as the add-form's placeholder, italic and dimmer than a real
+   client so it can't be mistaken for a saved value. */
 .task-time-tracker-projects-row-client-empty {
 	font-style: italic;
 	opacity: 0.7;
@@ -2297,9 +1927,6 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	color: var(--text-success, var(--text-accent));
 }
 
-/* Input de edicion inline: mismo campo que el resto del plugin
-   (.task-time-tracker-log-edit-input), pero a ancho completo de su
-   celda en vez del ancho fijo por defecto de un <input>. */
 .task-time-tracker-projects-row-edit-field {
 	flex: 1 1 auto;
 	min-width: 0;
@@ -2313,46 +1940,35 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	margin: 0.3em 0 0;
 }
 
-/* Bug QA ronda 4 (mobile) — el titleEl nativo de Obsidian (this.setTitle(),
-   ver EditTaskModal.ts#onOpen) trae por defecto un truncado con ellipsis
-   pensado para titulos cortos de un modal generico, no para el nombre de
-   una nota que puede ser largo. Aqui ese nombre es puramente informativo
-   y este modal es la unica via para leerlo completo en mobile (no hay
-   tooltip ahi), asi que truncarlo deja al nombre sin ningun sitio donde
-   consultarse. Se anula solo dentro de este modal (selector con la clase
-   propia como ancestro), sin tocar el titulo de otros modales del plugin
-   (RecoveryModal, ExportModal) que no tienen este problema. */
+/* Obsidian's native .modal-title truncates with ellipsis by default —
+   fine for a short generic modal title, but the note name shown here can
+   be long, and this modal is the only place to read it in full on mobile
+   (no tooltip there), so truncating would leave no way to see it.
+   Overridden only inside this modal, not other modals (RecoveryModal,
+   ExportModal) that don't have this problem. */
 .task-time-tracker-edit-modal .modal-title {
 	overflow: visible;
 	white-space: normal;
 	overflow-wrap: break-word;
 	text-overflow: clip;
 	text-align: left;
-	/* Causa raiz real (confirmada via DevTools remoto, app.css:9071):
-	   .modal-title nativo trae margin-left/right: auto, que centra la
-	   caja del titulo dentro de modal-header independientemente de
-	   text-align — de ahi el centrado original y el "margen izquierdo
-	   extra" visto despues en mobile (rondas 3-4 nunca tocaban margin).
-	   Sin esto, text-align: left de arriba solo alineaba el texto DENTRO
-	   de una caja que seguia centrada. */
+	/* .modal-title has its own margin-left/right:auto, which centers the
+	   title box within modal-header regardless of text-align — that's the
+	   real cause of the original centering; text-align:left alone only
+	   aligns text inside a box that stays centered. */
 	margin: 0;
-	/* Bug QA ronda 5 — al envolver a varias lineas (fix de arriba), el
-	   texto crecia hacia la derecha sin limite e invadia la X de cerrar,
-	   que esta posicionada aparte (no es un hermano flex del titulo, ver
-	   modal-close-button). box-sizing: border-box asegura que este
-	   padding-right reste del ancho real en vez de sumarse a el; el valor
-	   es un margen de seguridad generoso (ancho tipico del boton +
-	   holgura), no una medida exacta — vale para cualquier numero de
-	   lineas, a diferencia de una solucion basada en truncar o en no
-	   envolver. */
+	/* Wrapping to multiple lines lets the text grow rightward without bound
+	   and invade the close button (positioned separately, not a flex
+	   sibling of the title). box-sizing:border-box makes padding-right
+	   actually subtract from the width; the value is a generous safety
+	   margin (typical button width + slack), not an exact measurement —
+	   works for any number of lines. */
 	box-sizing: border-box;
 	padding-right: 2.5em;
 }
 
-/* Bug 0.0.32 — aviso "Note not found" bajo el titulo del modal cuando la
-   nota se borro. Mismo tamaño/color atenuado que el tt-id de abajo, mas
-   cursiva (a diferencia del titulo, que se mantiene en su estilo normal
-   — ver EditTaskModal.ts#onOpen). */
+/* Same dimmed size/color as the tt-id below, plus italic — unlike the
+   title, which keeps its normal style (see EditTaskModal.ts#onOpen). */
 .task-time-tracker-edit-modal-note-missing {
 	margin-top: 0.15em;
 	font-size: 0.78em;
@@ -2360,12 +1976,9 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	color: var(--text-muted);
 }
 
-/* Metadato secundario "tt-id" bajo el nombre de la nota (ver
-   EditTaskModal.ts) — siempre visible, no sujeto a los niveles Normal/
-   Reducido/Oculto que existen para el tt-id renderizado en la nota via
-   Dataview (ajuste distinto, sobre la nota). Mismo tamaño/color atenuado
-   que ya usa .task-time-tracker-log-subtitle del panel, para el mismo
-   proposito (dato de apoyo, no un campo destacado). */
+/* Always visible here — not subject to the Normal/Reduced/Hidden levels
+   that apply to the tt-id rendered in the note via Dataview (a separate,
+   note-facing setting). */
 .task-time-tracker-edit-modal-id-row {
 	display: flex;
 	align-items: center;
@@ -2400,34 +2013,24 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	height: 12px;
 }
 
-/* Modal "Editar tarea" (ver EditTaskModal.ts) — lista de sesiones con
-   scroll propio, separada del resto del modal (nombre de la tarea,
-   selector de Proyecto/Cliente, footer). Reutiliza las clases ya
-   existentes de fila/detalle/formulario de edicion del Historial, solo
-   contenidas aqui dentro con una altura maxima. */
 .task-time-tracker-edit-modal-sessions {
 	max-height: 50vh;
 	overflow-y: auto;
 	margin-top: 0.25em;
 }
 
-/* QA ronda 3, bug de scroll horizontal (segundo intento) — confirmado:
-   .task-time-tracker-log-session-row usa un margen negativo horizontal a
-   proposito (mismo patron "bleed" que .task-time-tracker-log-edit-form),
-   para que su fondo de hover llegue hasta el borde real de la tarjeta del
-   panel — ahi es seguro porque .task-time-tracker-log-row (la tarjeta)
-   tiene padding: 0.5em de sobra para absorberlo. .task-time-tracker-edit-modal-sessions
-   no tiene ese padding de sobra, asi que ese mismo sangrado sobresalia
-   del contenedor con scroll y disparaba una barra horizontal — no es un
-   problema de min-width (ya corregido en la ronda 2), es el sangrado en
-   si. Se anula solo aqui dentro, sin tocar la clase base (que sigue
-   siendo correcta para la tarjeta del panel). */
+/* .task-time-tracker-log-session-row uses a negative horizontal margin on
+   purpose (bleed pattern, like .task-time-tracker-log-edit-form) so its
+   hover background reaches the panel card's real edge, where
+   .task-time-tracker-log-row has enough padding to absorb it. This modal's
+   session list has no such spare padding, so that same bleed overflowed
+   the scroll container and triggered a horizontal scrollbar. Cancelled
+   only here, without touching the base class (still correct for the panel
+   card). */
 .task-time-tracker-edit-modal-sessions .task-time-tracker-log-session-row {
 	margin: 0;
 }
 
-/* QA ronda 3 — encabezado "Sessions" y resumen (nº sesiones + total) en
-   la misma fila: titulo a la izquierda, resumen a la derecha. */
 .task-time-tracker-edit-modal-sessions-header {
 	display: flex;
 	justify-content: space-between;
@@ -2440,10 +2043,8 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	margin: 0;
 }
 
-/* Selector de Proyecto del modal de Editar: boton + popover (componente
-   compartido "Project picker list", ver ProjectPickerList.ts) en vez del
-   <select> nativo anterior — etiqueta y boton juntos, alineados a la
-   izquierda, mismo pedido de QA que ya regia para el <select>. */
+/* Button + popover component (ProjectPickerList.ts) replacing the previous
+   native <select>. */
 .task-time-tracker-edit-modal-project-row {
 	display: flex;
 	align-items: center;
@@ -2457,25 +2058,19 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	white-space: nowrap;
 }
 
-/* El modal tiene mas ancho disponible que la barra de navegacion del
-   header — permite un nombre de proyecto algo mas largo antes de
-   truncar (ver max-width en .task-time-tracker-log-filter-btn). min-width:0
-   (bug QA agosto 2026, mobile): sin esto, el boton -siendo item flex de
-   .task-time-tracker-edit-modal-project-row- no se dejaba encoger por
-   debajo del ancho del texto del proyecto (min-width:auto por defecto en
-   items flex), asi que en pantallas mas estrechas que 20em el boton se
-   salia del modal entero (scroll horizontal de pagina) en vez de activar
-   el ellipsis ya presente en .task-time-tracker-log-filter-btn-label. */
+/* min-width:0 — without it, this button (a flex item) wouldn't shrink
+   below its text's width (flex items default to min-width:auto), so on
+   screens narrower than ~20em it overflowed the modal (page-level
+   horizontal scroll) instead of triggering the ellipsis already present on
+   .task-time-tracker-log-filter-btn-label. */
 .task-time-tracker-edit-modal-project-btn {
 	max-width: 20em;
 	min-width: 0;
 }
 
-/* Espacio reservado para el feedback inline tras reasignar proyecto (QA
-   ronda 2 — no Notice global, no footer): altura de una linea fija desde
-   el primer render, vacio por defecto, para que el aviso al aparecer/
-   desvanecerse nunca desplace el resto del modal. El texto se escribe y
-   se limpia dentro de este mismo contenedor (ver EditTaskModal.ts). */
+/* Reserved single-line height from first render, empty by default, so the
+   feedback message appearing/fading never shifts the rest of the modal
+   (see EditTaskModal.ts). */
 .task-time-tracker-edit-modal-project-feedback {
 	min-height: 1.2em;
 	margin: 0.15em 0 0.5em;
@@ -2489,29 +2084,22 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	opacity: 1;
 }
 
-/* Resumen (nº sesiones + total) del historico completo de la tarea, ahora
-   en la misma fila que el encabezado "Sessions" (ver
-   .task-time-tracker-edit-modal-sessions-header arriba) — mismas clases
-   que ya usa la tarjeta del panel para su propio resumen (ver
-   TimeLogView.ts#renderTaskCard), asi que hereda el mismo formato visual
-   sin duplicar CSS. */
+/* Reuses the same classes as the panel card's own summary
+   (TimeLogView.ts#renderTaskCard) so it inherits the same visual formatting
+   without duplicating CSS. */
 .task-time-tracker-edit-modal-summary {
 	flex-shrink: 0;
 }
 
-/* "Project picker list" — componente compartido (ver ProjectPickerList.ts),
-   usado por el filtro del header del Historial y por el selector de
-   Proyecto del modal de Editar. Vive siempre dentro del popover flotante
-   de abajo. */
 .task-time-tracker-project-picker-popover {
 	position: fixed;
 	display: flex;
 	flex-direction: column;
-	/* var(--layer-menu): capa estandar de Obsidian para elementos
-	   flotantes tipo menu, por encima de var(--layer-modal) — el popover
-	   debe verse por encima del modal de Editar cuando se abre desde ahi,
-	   no solo del panel del Historial. El fallback numerico (70) cubre el
-	   caso, poco probable, de que la variable no este definida. */
+	/* var(--layer-menu): Obsidian's standard layer for floating menu-like
+	   elements, above var(--layer-modal) — needed since this popover must
+	   render above the Edit modal when opened from there, not just above
+	   the panel. Numeric fallback (70) covers the unlikely case the
+	   variable is undefined. */
 	z-index: var(--layer-menu, 70);
 	background-color: var(--background-primary);
 	border: 1px solid var(--background-modifier-border);
@@ -2541,11 +2129,9 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	max-height: 320px;
 }
 
-/* Fila plana: check (columna de ancho fijo) + nombre/cliente en dos
-   lineas (ver renderRow() en ProjectPickerList.ts). El alto de fila es
-   variable: mas baja sin cliente (una sola linea), mas alta con cliente
-   (dos) — align-items: center centra el check contra el alto real de
-   cada fila. */
+/* Row height varies (shorter without a client, taller with one on a second
+   line, see renderRow() in ProjectPickerList.ts); align-items:center
+   centers the check against each row's actual height. */
 .task-time-tracker-project-picker-row {
 	display: flex;
 	align-items: center;
@@ -2574,13 +2160,9 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	height: 0.9em;
 }
 
-/* Dos lineas — nombre arriba, cliente debajo (si lo hay): revertido tras
-   QA con datos reales (agosto 2026), ver comentario en renderRow() en
-   ProjectPickerList.ts. flex-direction: column + min-width: 0 en el
-   contenedor deja que CADA linea trunque de forma independiente con su
-   propio ellipsis (min-width: 0 en cada hijo, no solo en el padre) — un
-   cliente muy largo ya no puede hacer desaparecer el nombre del proyecto
-   ni al reves. */
+/* Name on one line, client on a second: min-width:0 on both the container
+   and each child lets each line truncate independently — a very long
+   client name can no longer hide the project name, or vice versa. */
 .task-time-tracker-project-picker-label {
 	display: flex;
 	flex-direction: column;
@@ -2606,9 +2188,6 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	font-size: 0.85em;
 }
 
-/* Fila fija "Sin proyecto" (solo si showClearOption): cursiva + muted
-   para diferenciarla de una fila de proyecto real, con un separador
-   propio antes del resto de la lista alfabetica. */
 .task-time-tracker-project-picker-row-clear {
 	font-style: italic;
 	color: var(--text-muted);
@@ -2618,9 +2197,9 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	padding-bottom: 0.6em;
 }
 
-/* .name fija su propio color (var(--text-normal), ver arriba) para la
-   fila de proyecto normal — aqui se restaura la herencia del muted de
-   .row-clear, que nunca tiene cliente y depende de heredar su color. */
+/* .name fixes its own color for a normal project row (above); this
+   restores inheritance for the always-clientless "clear" row, which relies
+   on inheriting the muted color. */
 .task-time-tracker-project-picker-row-clear .task-time-tracker-project-picker-name {
 	color: inherit;
 }
@@ -2631,8 +2210,6 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	font-size: 0.9em;
 }
 
-/* Skeleton de carga: mismo alto/padding que una fila real, sin texto ni
-   icono — solo un bloque atenuado a modo de placeholder. */
 .task-time-tracker-project-picker-skeleton {
 	cursor: default;
 	height: 1.5em;
@@ -2648,10 +2225,9 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	opacity: 0.6;
 }
 
-/* Selector de fecha (ver DatePickerPopover.ts): mismo patron de popover
-   flotante que .task-time-tracker-project-picker-popover de arriba
-   (position: fixed, misma capa, mismo tratamiento visual), pero con una
-   grilla de mes en vez de una lista. */
+/* Same floating-popover pattern as .task-time-tracker-project-picker-
+   popover above (position:fixed, same layer, same visual treatment), but
+   with a month grid instead of a list. */
 .task-time-tracker-datepicker-popover {
 	position: fixed;
 	z-index: var(--layer-menu, 70);
@@ -2679,13 +2255,9 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	flex: 1 1 auto;
 }
 
-/* 8 columnas: numero de semana ISO + los 7 dias (lunes a domingo) — ver
-   "Numero de semana seleccionable" en la nota "Selector de fecha en el
-   panel Time Tracker". La cabecera de nombres de dia y cada fila de
-   semana son grids INDEPENDIENTES (ver .task-time-tracker-datepicker-
-   weekday-header y -week-row abajo) con la misma plantilla de columnas
-   cada una — alinean por coincidencia de anchos, no por compartir un
-   unico contenedor grid. */
+/* 8 columns: ISO week number + the 7 weekdays. The weekday-name header and
+   each week row are independent grids sharing the same column template —
+   they align by matching widths, not by sharing one grid container. */
 .task-time-tracker-datepicker-weekday-header,
 .task-time-tracker-datepicker-week-row {
 	display: grid;
@@ -2715,24 +2287,22 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	box-sizing: border-box;
 	height: 30px;
 	font-size: 0.85em;
-	/* Sin esto, el min-width implicito de un <button> (su propio contenido
-	   minimo) puede superar el ancho del track ("38px" o "1fr") y forzar la
-	   columna entera mas ancha de lo definido — bug corregido agosto 2026:
-	   la columna de numero de semana crecia con "10"+ frente a "1"-"9" y
-	   desalineaba/desbordaba el resto de la fila (la columna del sabado
-	   quedaba cortada en sidebar estrecha). min-width: 0 fuerza a que el
-	   grid respete el ancho de columna definido, no el contenido. */
+	/* Without this, a <button>'s implicit min-width (its own content's
+	   minimum) can exceed the track width ("38px" or "1fr") and force the
+	   whole column wider than defined — the week-number column would grow
+	   for "10"+ vs "1"-"9" and misalign/overflow the rest of the row.
+	   min-width:0 makes the grid respect the defined column width instead
+	   of the content. */
 	min-width: 0;
 	overflow: hidden;
-	/* !important en las propiedades de "aspecto de boton" (fondo, borde,
-	   sombra, padding) — QA agosto 2026: "all: unset" solista no bastaba,
-	   los dias seguian viendose como botones elevados con relieve propio.
-	   El tema activo de Obsidian aparentemente estiliza <button> con un
-	   selector de especificidad igual o mayor a una sola clase, asi que
-	   una regla normal pierde el empate segun el tema instalado. No se usa
-	   !important en propiedades de layout (display, box-sizing, etc.) —
-	   esas no las toca ningun tema, y asi .is-selected/.is-in-range mas
-	   abajo pueden seguir pisando el fondo sin pelear con !important. */
+	/* !important on the "button look" properties (background, border,
+	   shadow, padding) — "all: unset" alone wasn't enough, days still
+	   looked like raised buttons. The active theme apparently styles
+	   <button> with a selector of equal or higher specificity than a
+	   single class, so a plain rule can lose depending on the installed
+	   theme. Not used on layout properties (display, box-sizing, etc.) —
+	   themes don't touch those, so .is-selected/.is-in-range below can
+	   still override the background without fighting !important. */
 	background: none !important;
 	border: none !important;
 	box-shadow: none !important;
@@ -2758,11 +2328,8 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	font-size: 0.8em;
 }
 
-/* Punto 4 (QA agosto 2026) — el numero de semana debe leerse como una
-   unidad distinta de un dia, no como "un dia mas" de la fila: mas
-   pequeño, en mayuscula tipografica (negrita real) y con letter-spacing,
-   igual que el diseño de referencia (Date Filter.dc.html). El prefijo
-   "W" se añade en DatePickerPopover.ts, no aqui. */
+/* The week number reads as a distinct unit from a day, not "one more day"
+   in the row. The "W" prefix is added in DatePickerPopover.ts, not here. */
 .task-time-tracker-datepicker-weeknum {
 	cursor: pointer;
 	border-radius: var(--radius-s);
@@ -2772,44 +2339,36 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	letter-spacing: 0.02em;
 }
 
-/* Punto 2 — mismo token que el diseño de referencia (--interactive-hover,
-   no --background-modifier-hover) y el texto pasa a --text-normal en
-   hover: antes un dia atenuado (outside-month) o en acento (today) se
-   quedaba con su propio color al pasar el mouse, que se leia como que el
-   hover "no hacia nada" ahi. No se aplica a los estados de seleccion
-   (is-selected/is-in-range), que tienen su propio hover mas abajo. */
+/* Uses --interactive-hover (not --background-modifier-hover) and switches
+   text to --text-normal on hover — otherwise a dimmed (outside-month) or
+   accented (today) day kept its own color on hover, reading as if hover
+   "did nothing". Doesn't apply to selection states (is-selected/
+   is-in-range), which have their own hover below. */
 .task-time-tracker-datepicker-weeknum:not(.is-selected):hover,
 .task-time-tracker-datepicker-day:not(.is-selected):not(.is-in-range):hover {
-	/* !important: gana el empate contra el "background: none !important" de
-	   base (ver .task-time-tracker-datepicker-cell) — sin esto el hover no
-	   se veria. */
+	/* !important needed to win over the base "background: none !important"
+	   (see .task-time-tracker-datepicker-cell). */
 	background-color: var(--interactive-hover) !important;
 	color: var(--text-normal);
 }
 
-/* Dias del mes anterior/siguiente que rellenan la primera/ultima semana
-   visible: atenuados pero seleccionables (clic salta a ese dia igual que
-   cualquier otro), para no forzar al usuario a cambiar de mes solo para
-   elegir un dia de la primera o ultima semana visible. */
 .task-time-tracker-datepicker-day.is-outside-month {
 	color: var(--text-faint);
 }
 
-/* Borde, no relleno ni solo color de texto (QA agosto 2026 — el texto en
-   acento sobre el fondo de la celda apenas contrastaba). box-shadow inset
-   en vez de un border real: no cambia el box model ni desalinea la
-   celda con sus vecinas. */
+/* Border, not a fill or text-color-only — accent text on the cell's
+   background didn't contrast enough. box-shadow inset instead of a real
+   border so it doesn't change the box model or misalign the cell against
+   its neighbors. */
 .task-time-tracker-datepicker-day.is-today {
 	box-shadow: inset 0 0 0 1px var(--interactive-accent) !important;
 	color: var(--interactive-accent);
 }
 
-/* Punto 3 — extremos de la seleccion (dia suelto, o los dos bordes de un
-   rango): fondo solido, mismo tratamiento "esto es lo elegido ahora" que
-   el resto del plugin. Con su propio hover (interactive-accent-hover,
-   variable estandar de Obsidian) en vez de heredar el hover neutro de
-   arriba, para que siga leyendose como "seleccionado" al pasar el mouse,
-   no como una fila cualquiera. */
+/* Selection extremes (a single day, or both ends of a range): solid fill,
+   same "this is the current choice" treatment as elsewhere. Own hover
+   (--interactive-accent-hover) instead of the neutral hover above, so it
+   still reads as "selected" on mouseover. */
 .task-time-tracker-datepicker-day.is-selected {
 	background-color: var(--interactive-accent) !important;
 	color: var(--text-on-accent);
@@ -2820,20 +2379,18 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	background-color: var(--interactive-accent-hover) !important;
 }
 
-/* Semana seleccionada: tinte translucido + texto en acento, DISTINTO del
-   solido blanco-sobre-morado de un dia seleccionado (punto 4 — asi se
-   lee como "toda esta fila es la unidad elegida", no como si fuera un
-   dia mas). Sin hover propio (igual que el diseño de referencia): una
-   semana ya seleccionada no cambia al pasar el mouse. */
+/* Translucent tint + accent text, deliberately different from a selected
+   day's solid fill — reads as "this whole row is the chosen unit", not
+   just another day. No hover of its own — an already-selected week doesn't
+   change on mouseover. */
 .task-time-tracker-datepicker-weeknum.is-selected {
 	background-color: color-mix(in srgb, var(--interactive-accent) 26%, transparent) !important;
 	color: var(--text-accent);
 }
 
-/* Punto 3 — dias intermedios de un rango (entre el primer y segundo clic
-   en dias distintos): tinte translucido + texto en acento, mas suave que
-   los extremos solidos, para que se lea como "el tramo entre ambos
-   puntos". Hover propio (mas opaco) en vez del hover neutro de arriba. */
+/* Days between the two ends of a range: translucent tint + accent text,
+   softer than the solid extremes, reading as "the stretch between both
+   points". Own hover (more opaque) rather than the neutral hover above. */
 .task-time-tracker-datepicker-day.is-in-range {
 	background-color: color-mix(in srgb, var(--interactive-accent) 20%, transparent) !important;
 	color: var(--text-accent);
@@ -2869,10 +2426,9 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	flex-shrink: 0;
 }
 
-/* all: unset — mismo motivo que .task-time-tracker-datepicker-cell mas
-   arriba: sin esto estos botones se quedaban con el padding/appearance
-   por defecto de Obsidian pese a pisar background/border/box-shadow uno
-   por uno (punto 1, QA agosto 2026). */
+/* all:unset — same reason as .task-time-tracker-datepicker-cell above:
+   without it these buttons kept Obsidian's default padding/appearance
+   despite overriding background/border/shadow individually. */
 .task-time-tracker-datepicker-footer-actions button {
 	all: unset;
 	cursor: pointer;
@@ -2888,10 +2444,9 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	color: var(--text-normal);
 }
 
-/* Dashboard (src/ui/DashboardView.ts) — ventana fija de 30 dias, sin
-   selector de rango. Vive en una pestana del workspace principal, con el
-   padding por defecto del view-content de Obsidian (no se anade padding
-   propio al contenedor raiz). */
+/* Dashboard (src/ui/DashboardView.ts) — fixed 30-day window, no range
+   picker. Lives in a workspace tab, with Obsidian's default view-content
+   padding (no extra padding added on the root container). */
 .task-time-tracker-dashboard-header {
 	display: flex;
 	align-items: flex-end;
@@ -2911,10 +2466,9 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	gap: 0.6em;
 }
 
-/* Total global de la ventana de 30 dias — unico total que se muestra ya
-   en la vista (Fix QA 0.0.30: los 4 bloques dejaron de repetirlo cada
-   uno en su cabecera). Mismo formato HH:MM:SS que formatDuration() usa
-   en el resto del plugin. */
+/* Only total shown in this view — the four blocks below no longer each
+   repeat it in their own header. Same HH:MM:SS format as formatDuration()
+   elsewhere. */
 .task-time-tracker-dashboard-total {
 	font-family: var(--font-monospace);
 	font-size: 1.5em;
@@ -2979,9 +2533,8 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	color: var(--text-muted);
 }
 
-/* Fix QA 0.0.30 — Por tarea, nota de origen borrada: solo cursiva, sin
-   atenuar el color (la tarea si existe, a diferencia de "sin
-   proyecto/cliente" que usa is-muted). */
+/* Deleted source note: italic only, no color dimming (the task itself
+   still exists, unlike "no project/client" which uses is-muted). */
 .task-time-tracker-dashboard-row-name.is-italic {
 	font-style: italic;
 }
