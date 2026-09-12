@@ -1,17 +1,15 @@
 // export/adapters/ClockifyCsvAdapter.ts
-// Fase 9 — Exportacion CSV para el importador de Timesheets de Clockify.
-// Responsabilidad: convertir filas de exportacion ya resueltas a texto CSV
-// con las columnas que espera ese importador. No llama a la API de
-// Clockify en ningun momento.
+// Responsibility: convert already-resolved export rows to CSV text with
+// the columns that importer expects. Never calls the Clockify API.
 //
-// A diferencia de Toggl, ningun formato de fecha/hora/duracion depende de
-// un ajuste de Settings — son fijos, confirmados con pruebas reales (ver
-// docs/Vault/Tareas/Clockify.md): Clockify pregunta el formato de fecha en
-// el propio flujo de import (no hace falta adivinarlo aqui, solo generar
-// uno fijo y decirselo al usuario en el modal), su importador de
-// Timesheets no ofrece alternancia 12h/24h (siempre 24h, mismo criterio
-// que el fix ya aplicado en TogglCsvAdapter.ts), y acepta la duracion en
-// formato HH:mm sin depender de la config de duracion del workspace.
+// Unlike Toggl, no date/time/duration format depends on a Settings
+// value — they're fixed, confirmed with real tests: Clockify asks for
+// the date format during the import flow itself (no need to guess it
+// here, just generate a fixed one and tell the user in the modal), its
+// Timesheets importer doesn't offer 12h/24h alternation (always 24h,
+// same criterion as the fix already applied in TogglCsvAdapter.ts), and
+// it accepts duration in HH:mm format without depending on the
+// workspace's duration config.
 
 import { formatDuration } from "../../core/TrackingEngine";
 
@@ -21,13 +19,11 @@ export interface ClockifyExportRow {
 	startDate: string;
 	startTime: string;
 	duration: string;
-	// Fase 9 — Proyecto/Cliente asignado a la tarea (mismo origen que
-	// CsvAdapter.ts#ExportRow y TogglCsvAdapter.ts#TogglExportRow), cadena
-	// vacia si no tiene ninguno asignado. Rectificado el 22 de agosto de
-	// 2026 (ver docs/Vault/Tareas/Clockify.md): Project NO es obligatorio
-	// para el importador de CSV de Clockify (el hallazgo original venia del
-	// formulario manual "Add time", no del importador) — se comporta igual
-	// que Client, columna opt-in, ver buildClockifyCsv().
+	// Project/Client assigned to the task (same source as
+	// CsvAdapter.ts#ExportRow and TogglCsvAdapter.ts#TogglExportRow),
+	// empty string if none is assigned. Project is NOT actually required
+	// by Clockify's CSV importer (see docs/DECISIONS.md) — it behaves
+	// just like Client, an opt-in column, see buildClockifyCsv().
 	projectName: string;
 	clientName: string;
 }
@@ -50,10 +46,10 @@ export function formatClockifyTime(ms: number): string {
 	return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-// HH:mm, sin segundos (a diferencia de formatDuration(), pensado para una
-// sesion individual en el Historial) — se reutiliza su mismo calculo por
-// truncamiento en vez de reimplementarlo, solo se descarta la parte de
-// segundos del resultado.
+// HH:mm, no seconds (unlike formatDuration(), meant for an individual
+// session in the Historial) — its same calculation is reused by
+// truncation instead of reimplementing it, only the seconds part of the
+// result is discarded.
 export function formatClockifyDuration(ms: number): string {
 	return formatDuration(ms).slice(0, 5);
 }
@@ -69,11 +65,10 @@ function toCsvLine(fields: string[]): string {
 	return fields.map(escapeCsvField).join(",");
 }
 
-// includeProject e includeClient conmutan cada columna por separado,
-// independientes entre si (ver ClockifyExportRow arriba y
-// docs/Vault/Tareas/Clockify.md): ambas son opt-in, ninguna obligatoria
-// para el importador de CSV de Clockify. Orden fijo cuando ambas estan
-// activas: Project antes que Client.
+// includeProject and includeClient toggle each column separately,
+// independent of each other (see ClockifyExportRow above and
+// docs/DECISIONS.md): both are opt-in, neither required by Clockify's
+// CSV importer. Fixed order when both are on: Project before Client.
 export function buildClockifyCsv(rows: ClockifyExportRow[], includeProject: boolean, includeClient: boolean): string {
 	const headers = [...BASE_HEADERS];
 	if (includeProject) headers.push(PROJECT_HEADER);

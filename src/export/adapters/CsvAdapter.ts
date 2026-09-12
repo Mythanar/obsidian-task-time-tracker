@@ -1,7 +1,6 @@
 // export/adapters/CsvAdapter.ts
-// Fase 3 — Exportacion CSV (primer adapter).
-// Responsabilidad: convertir filas de exportacion ya resueltas a texto
-// CSV valido (sin conocer nada de TimeEntry, TaskIdentifier ni del vault).
+// Responsibility: convert already-resolved export rows to valid CSV text
+// (without knowing anything about TimeEntry, TaskIdentifier, or the vault).
 
 import { t } from "../../i18n";
 
@@ -11,23 +10,22 @@ export interface ExportRow {
 	endTime: string;
 	duration: string;
 	taskName: string;
-	// Fase 8 — Proyecto/Cliente asignado a la tarea (ver ProjectManager),
-	// cadena vacia si no tiene ninguno asignado: nunca bloquea la
-	// exportacion. clientName vacio tambien cuando el proyecto no tiene
-	// cliente, aunque si tenga nombre.
+	// Project/Client assigned to the task (see ProjectManager), empty
+	// string if none is assigned: never blocks the export. clientName is
+	// also empty when the project has no client, even if it has a name.
 	projectName: string;
 	clientName: string;
 	sourceNote: string;
 	taskId: string;
 }
 
-// Traducidas segun el idioma de Obsidian (decision revisada, agosto
-// 2026): a diferencia del CSV de Toggl, este CSV no lo lee un
-// importador externo con nombres de columna fijos — es de proposito
-// general, abrir en cualquier hoja de calculo, asi que tiene sentido que
-// hable el idioma de quien lo genera. "tt-id" queda fuera de la
-// traduccion (literal, no via t()): es un identificador tecnico, no
-// texto de interfaz.
+// Translated per Obsidian's language (see
+// docs/glosario-traduccion-i18n.md): unlike the Toggl CSV, this one
+// isn't read by an external importer with fixed column names — it's
+// general-purpose, meant to be opened in any spreadsheet, so it makes
+// sense for it to speak the generator's language. "tt-id" stays out of
+// translation (literal, not via t()): it's a technical identifier, not
+// interface text.
 const HEADERS = [
 	t("export.csv.headerDate"),
 	t("export.csv.headerStartTime"),

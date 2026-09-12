@@ -1,17 +1,15 @@
 // export/ExportManager.ts
-// Fase 3 — Exportacion CSV generica. Fase 4 — Exportacion CSV para Toggl.
-// Responsabilidad: orquestar la exportacion — filtrar sesiones cerradas
-// por rango de fechas (segun la fecha de inicio, sin dividir sesiones que
-// cruzan medianoche), resolver cada tarea por su tt-id:: y escribir el
-// CSV resultante dentro del vault. Unico punto que toca el vault para
-// exportar; nunca se llama desde el hot path de start/stop.
+// Responsibility: orchestrate exporting — filter closed sessions by date
+// range (by start date, without splitting sessions that cross midnight),
+// resolve each task by its tt-id::, and write the resulting CSV inside
+// the vault. The only place that touches the vault for exporting; never
+// called from the start/stop hot path.
 //
-// La idempotencia vía externalId no aplica a ningun adapter de este
-// archivo: cada exportacion genera un archivo nuevo, sin comprobar
-// duplicados contra exportaciones anteriores (ver docs/DECISIONS.md).
-// Ningun adapter llama a una API externa — Fase 4 se redefinio para
-// generar archivos compatibles con el importador nativo de cada
-// plataforma en vez de hacer push contra su API.
+// Idempotence via externalId doesn't apply to any adapter in this file:
+// each export generates a new file, without checking for duplicates
+// against previous exports (see docs/DECISIONS.md). No adapter calls an
+// external API — files compatible with each platform's native importer
+// are generated instead of pushing to its API.
 
 import { App } from "obsidian";
 import { formatDuration } from "../core/TrackingEngine";
@@ -28,8 +26,9 @@ import {
 	formatClockifyTime,
 } from "./adapters/ClockifyCsvAdapter";
 
-// Respaldo si el ajuste de settings llegara vacio (no deberia ocurrir:
-// DEFAULT_SETTINGS.exportsFolder ya cubre ese caso desde main.ts#onload).
+// Fallback if the settings value ever arrived empty (shouldn't happen:
+// DEFAULT_SETTINGS.exportsFolder already covers that case from
+// main.ts#onload).
 const FALLBACK_EXPORTS_FOLDER = "task-tracker-exports";
 
 function pad(n: number): string {
@@ -55,21 +54,21 @@ export class ExportManager {
 		private projectManager: ProjectManager,
 	) {}
 
-	// Exporta a un CSV nuevo las sesiones cerradas cuya fecha de inicio
-	// cae entre fromMs y toMs (inclusive). Devuelve la ruta del archivo
-	// creado dentro del vault. exportsFolder es el ajuste configurable de
-	// Settings (Fase 5); cambiarlo solo afecta a partir de la proxima
-	// exportacion, nunca mueve archivos ya generados en la carpeta anterior.
+	// Exports to a new CSV the closed sessions whose start date falls
+	// between fromMs and toMs (inclusive). Returns the created file's
+	// path inside the vault. exportsFolder is the configurable Settings
+	// value; changing it only affects the next export onward, never
+	// moves files already generated in the previous folder.
 	async exportToCsv(entries: TimeEntry[], fromMs: number, toMs: number, exportsFolder: string): Promise<string> {
 		const inRange = this.getEntriesInRange(entries, fromMs, toMs);
 
 		const rows: ExportRow[] = [];
 		for (const entry of inRange) {
-			// Vinculo vivo por tt-id (ver ProjectManager#getProjectForTask),
-			// no snapshot: si la tarea se reasigna despues de una sesion ya
-			// exportada, la proxima exportacion refleja la asignacion actual.
-			// Cadena vacia (no bloquea la exportacion) si no hay proyecto, o
-			// si el proyecto no tiene cliente.
+			// Live link by tt-id (see ProjectManager#getProjectForTask), not
+			// a snapshot: if the task is reassigned after a session was
+			// already exported, the next export reflects the current
+			// assignment. Empty string (never blocks the export) if there's
+			// no project, or if the project has no client.
 			const project = this.projectManager.getProjectForTask(entry.taskId);
 			rows.push({
 				date: formatDate(entry.start),
@@ -79,10 +78,10 @@ export class ExportManager {
 				taskName: await this.resolveTaskName(entry),
 				projectName: project?.name ?? "",
 				clientName: project?.client ?? "",
-				// La nota de origen es el snapshot inmutable de la sesion
-				// (donde estaba la tarea cuando se inicio el tracking), no la
-				// ubicacion actual del tt-id:: — esa puede haber cambiado
-				// desde entonces y no debe reescribir el historico.
+				// The source note is the session's immutable snapshot (where
+				// the task was when tracking started), not the tt-id::'s
+				// current location — that may have changed since then and
+				// must not rewrite the history.
 				sourceNote: entry.filePath,
 				taskId: entry.taskId,
 			});
@@ -92,14 +91,14 @@ export class ExportManager {
 		return this.writeCsvFile(buildCsv(rows), "task-tracker-export", exportsFolder);
 	}
 
-	// Exporta a un CSV nuevo, con las columnas que espera el importador de
-	// Toggl (Email, Description, Start date, Start time, Duration), las
-	// sesiones cerradas cuya fecha de inicio cae entre fromMs y toMs
-	// (inclusive). Fecha y hora salen siempre en el formato fijo que exige
-	// el importador de Toggl (YYYY-MM-DD, HH:MM:SS 24h) — no configurable,
-	// ver TogglCsvAdapter.ts. Mismo exportsFolder configurable que
-	// exportToCsv — un unico ajuste para ambos formatos, no hace falta uno
-	// distinto por plataforma.
+	// Exports to a new CSV, with the columns Toggl's importer expects
+	// (Email, Description, Start date, Start time, Duration), the closed
+	// sessions whose start date falls between fromMs and toMs (inclusive).
+	// Date and time always come out in the fixed format Toggl's importer
+	// requires (YYYY-MM-DD, 24h HH:MM:SS) — not configurable, see
+	// TogglCsvAdapter.ts. Same configurable exportsFolder as exportToCsv —
+	// a single setting for both formats, no need for a separate one per
+	// platform.
 	async exportToTogglCsv(
 		entries: TimeEntry[],
 		fromMs: number,
@@ -111,11 +110,12 @@ export class ExportManager {
 
 		const rows: TogglExportRow[] = [];
 		for (const entry of inRange) {
-			// Mismo origen que exportToCsv (ver ProjectManager#getProjectForTask):
-			// vinculo vivo por tt-id, cadena vacia si no hay proyecto asignado o
-			// si el proyecto no tiene cliente. Se resuelve siempre, aunque el
-			// ajuste "Incluir Proyecto y Cliente" este desactivado — es
-			// buildTogglCsv() quien decide si esas columnas se escriben.
+			// Same source as exportToCsv (see
+			// ProjectManager#getProjectForTask): live link by tt-id, empty
+			// string if no project is assigned or the project has no
+			// client. Always resolved, even if the "Include Project and
+			// Client" setting is off — it's buildTogglCsv() that decides
+			// whether those columns get written.
 			const project = this.projectManager.getProjectForTask(entry.taskId);
 			rows.push({
 				email: togglSettings.email,
@@ -136,16 +136,16 @@ export class ExportManager {
 		);
 	}
 
-	// Exporta a un CSV nuevo, con las columnas que espera el importador de
-	// Timesheets de Clockify (Email, Description, Start date, Start time,
-	// Duration siempre; Project y Client cada una si su ajuste lo activa),
-	// las sesiones cerradas cuya fecha de inicio cae entre fromMs y toMs
-	// (inclusive). Fecha, hora (24h) y duracion (HH:mm) salen siempre en
-	// formato fijo — no configurable, ver ClockifyCsvAdapter.ts. Ninguna
-	// columna es obligatoria para el importador de Clockify (rectificado
-	// 22 de agosto de 2026, ver docs/Vault/Tareas/Clockify.md), asi que una
-	// sesion sin proyecto asignado nunca bloquea la exportacion. Mismo
-	// exportsFolder configurable que los otros dos formatos.
+	// Exports to a new CSV, with the columns Clockify's Timesheets
+	// importer expects (Email, Description, Start date, Start time,
+	// Duration always; Project and Client each only if its setting is
+	// on), the closed sessions whose start date falls between fromMs and
+	// toMs (inclusive). Date, time (24h) and duration (HH:mm) always come
+	// out in a fixed format — not configurable, see
+	// ClockifyCsvAdapter.ts. No column is actually required by Clockify's
+	// importer (see docs/DECISIONS.md), so a session with no project
+	// assigned never blocks the export. Same configurable exportsFolder
+	// as the other two formats.
 	async exportToClockifyCsv(
 		entries: TimeEntry[],
 		fromMs: number,
@@ -157,12 +157,12 @@ export class ExportManager {
 
 		const rows: ClockifyExportRow[] = [];
 		for (const entry of inRange) {
-			// Mismo origen que exportToCsv/exportToTogglCsv (ver
-			// ProjectManager#getProjectForTask): vinculo vivo por tt-id, cadena
-			// vacia si no hay proyecto asignado o si el proyecto no tiene
-			// cliente. Se resuelve siempre, aunque el ajuste "Include Client"
-			// este desactivado — es buildClockifyCsv() quien decide si esa
-			// columna se escribe.
+			// Same source as exportToCsv/exportToTogglCsv (see
+			// ProjectManager#getProjectForTask): live link by tt-id, empty
+			// string if no project is assigned or the project has no
+			// client. Always resolved, even if the "Include Client" setting
+			// is off — it's buildClockifyCsv() that decides whether that
+			// column gets written.
 			const project = this.projectManager.getProjectForTask(entry.taskId);
 			rows.push({
 				email: clockifySettings.email,
@@ -189,9 +189,9 @@ export class ExportManager {
 		);
 	}
 
-	// Nombre de tarea a exportar: la descripcion actual de la linea (via
-	// tt-id::) si todavia existe en el vault, o el snapshot tomado al
-	// iniciar la sesion si la linea ya no existe.
+	// Task name to export: the line's current description (via tt-id::)
+	// if it still exists in the vault, or the snapshot taken when the
+	// session started if the line no longer exists.
 	private async resolveTaskName(entry: TimeEntry): Promise<string> {
 		const resolved = await this.taskIdentifier.resolve(entry.taskId);
 		return resolved ? (parseCheckboxLine(resolved.lineText) ?? resolved.lineText) : entry.taskText;
