@@ -1,18 +1,18 @@
 // settings/SettingsTab.ts
-// Fase 4 — ajustes de Toggl (email) que necesita TogglCsvAdapter.ts. Sin
-// campos de token/credenciales: este adapter no llama a ninguna API, solo
-// genera un archivo.
-// Fase 5 — sección "General" para ajustes globales del plugin; por ahora
-// es un placeholder sin contenido funcional.
-// Fix urgente pre-release — se eliminaron los selectores de formato de
-// fecha/hora de Toggl: el importador real exige un formato fijo, no
-// admite el que el usuario eligiera aqui (ver TogglCsvAdapter.ts).
-// Post-release — getSettingDefinitions() añade la vista declarativa que
-// Obsidian >=1.13 usa para el buscador global de Ajustes. Cada ajuste vive
-// en un metodo configureX(setting) que display() y getSettingDefinitions()
-// llaman por igual: misma logica, dos vistas. display() sigue intacto como
-// fallback para Obsidian <1.13 (esa version no conoce getSettingDefinitions
-// y sigue llamando a display() como siempre); no se sube minAppVersion.
+// Toggl settings (email) that TogglCsvAdapter.ts needs. No token/
+// credential fields: this adapter doesn't call any API, it only
+// generates a file. The "General" section holds global plugin settings;
+// for now it's a placeholder with no functional content. Toggl's date/
+// time format selectors were removed: the real importer requires a
+// fixed format, it doesn't accept a user-chosen one (see
+// TogglCsvAdapter.ts and docs/DECISIONS.md).
+// getSettingDefinitions() adds the declarative view Obsidian >=1.13 uses
+// for the global Settings search. Each setting lives in a
+// configureX(setting) method that display() and getSettingDefinitions()
+// call alike: same logic, two views. display() stays intact as a
+// fallback for Obsidian <1.13 (that version doesn't know
+// getSettingDefinitions and keeps calling display() as always);
+// minAppVersion isn't bumped.
 
 import {
 	AbstractInputSuggest,
@@ -43,11 +43,11 @@ function taskIdFormatOptions(): Record<string, string> {
 	};
 }
 
-// Fase 5 — autocompletado de carpetas ya existentes en la vault para el
-// ajuste de carpeta de exportacion, mismo patron de UI que usa Obsidian
-// para configurar la carpeta de adjuntos por defecto. Permite escribir
-// una ruta que todavia no existe (ExportManager.ts la autocrea al
-// exportar) — el autocompletado es solo una ayuda, no una restriccion.
+// Autocomplete of folders already existing in the vault for the export
+// folder setting, same UI pattern Obsidian uses to configure the
+// default attachment folder. Allows typing a path that doesn't exist
+// yet (ExportManager.ts auto-creates it when exporting) — autocomplete
+// is only a help, not a restriction.
 class FolderSuggest extends AbstractInputSuggest<TFolder> {
 	constructor(
 		app: App,
@@ -81,9 +81,9 @@ export class SettingsTab extends PluginSettingTab {
 		super(app, plugin);
 	}
 
-	// Bloque 2 — ubicacion del panel de Historial: cambiar esto no mueve un
-	// panel ya abierto, solo aplica la proxima vez que se abra (ver
-	// activateLogView() en main.ts).
+	// Historial panel location: changing this doesn't move an
+	// already-open panel, it only applies the next time one is opened
+	// (see activateLogView() in main.ts).
 	private configureLogLocation(setting: Setting): void {
 		setting
 			.setName(t("settings.logLocation.name"))
@@ -99,13 +99,13 @@ export class SettingsTab extends PluginSettingTab {
 			});
 	}
 
-	// Fase 7 — como se ve el inline field tt-id:: cuando Dataview lo
-	// renderiza (Reading mode / Live Preview sin el cursor en la linea).
-	// Puramente visual (clase en document.body, ver
-	// applyTaskIdFormatClass() en main.ts); no tiene ningun efecto sin
-	// Dataview instalado (Obsidian no genera los atributos data-dv-key
-	// que el CSS necesita) y no afecta a otros inline fields del
-	// usuario ni a las queries de Dataview sobre tt-id.
+	// How the tt-id:: inline field looks when Dataview renders it
+	// (Reading mode / Live Preview without the cursor on the line).
+	// Purely visual (class on document.body, see
+	// applyTaskIdFormatClass() in main.ts); has no effect at all without
+	// Dataview installed (Obsidian doesn't generate the data-dv-key
+	// attributes the CSS needs) and doesn't affect the user's other
+	// inline fields or Dataview queries over tt-id.
 	private configureTaskIdFormat(setting: Setting): void {
 		setting
 			.setName(t("settings.taskIdFormat.name"))
@@ -122,10 +122,10 @@ export class SettingsTab extends PluginSettingTab {
 			});
 	}
 
-	// Fase 5 — carpeta de destino de ambos formatos de exportacion (CSV
-	// generico y CSV para Toggl). Cambiar esto no mueve exportaciones ya
-	// hechas en la carpeta anterior, solo aplica desde la proxima
-	// exportacion (ver ExportManager.ts).
+	// Destination folder for both export formats (generic CSV and Toggl
+	// CSV). Changing this doesn't move exports already made in the
+	// previous folder, it only applies from the next export onward (see
+	// ExportManager.ts).
 	private configureExportFolder(setting: Setting): void {
 		setting
 			.setName(t("settings.exportFolder.name"))
@@ -144,15 +144,12 @@ export class SettingsTab extends PluginSettingTab {
 			});
 	}
 
-	// Fase 5 — se origino como salvaguarda ante una desinstalacion (la
-	// API de Obsidian no permite interceptar ese momento exacto), pero
-	// el texto visible no menciona desinstalar: Obsidian preserva
-	// data.json por defecto al desinstalar un plugin (decision ya
-	// cerrada en Fase 1), asi que ese aviso seria inexacto. Se presenta
-	// como buena practica general en vez de advertencia sobre un caso
-	// concreto. Un solo clic, sin modal: CSV generico (nunca Toggl),
-	// rango completo desde la primera sesion hasta ahora, misma carpeta
-	// configurada arriba (ver exportAllEntriesToCsv() en main.ts).
+	// The visible text doesn't mention uninstalling: Obsidian preserves
+	// data.json by default when a plugin is uninstalled, so a warning
+	// framed around that case would be inaccurate. It's presented as
+	// general good practice instead. One click, no modal: generic CSV
+	// (never Toggl), full range from the first session to now, same
+	// folder configured above (see exportAllEntriesToCsv() in main.ts).
 	private configureExportAll(setting: Setting): void {
 		setting
 			.setName(t("settings.exportAll.name"))
@@ -162,14 +159,13 @@ export class SettingsTab extends PluginSettingTab {
 			);
 	}
 
-	// Bug del tt-id vs Tasks — boton bajo demanda que corrige, de una vez,
-	// las tareas trackeadas con una version anterior del plugin que
-	// dejaron el tt-id detras de sus metadatos (Tasks deja de reconocerlos
-	// en ese caso, ver TaskIdentifier.ts). Reutiliza la misma logica ya
-	// verificada de appendTaskId(), no hace falta ningun algoritmo nuevo
-	// aqui. Fix QA — el titulo va en setName() de esta misma fila, no en
-	// un encabezado de seccion aparte (ver display()); "Reparar tareas"
-	// es solo la etiqueta del boton, nunca el titulo del bloque.
+	// On-demand button that fixes, in one pass, tasks tracked with an
+	// older plugin version that left the tt-id behind its metadata
+	// (Tasks stops recognizing them in that case, see TaskIdentifier.ts).
+	// Reuses appendTaskId()'s existing logic as is, no new algorithm
+	// needed here. The title goes in this same row's setName(), not a
+	// separate section heading (see display()); "Reparar tareas" is only
+	// the button's label, never the block's title.
 	private configureTasksCompat(setting: Setting): void {
 		setting
 			.setName(t("settings.tasksCompat.heading"))
@@ -179,22 +175,21 @@ export class SettingsTab extends PluginSettingTab {
 			);
 	}
 
-	// Fase 8 — proyectos/clientes: base para futuros adapters de
-	// exportacion (Clockify y otros esperan columnas Project/Client en
-	// su importador). Componente autocontenido, ver ProjectsSection.ts.
+	// Projects/clients: base for future export adapters (Clockify and
+	// others expect Project/Client columns in their importer).
+	// Self-contained component, see ProjectsSection.ts.
 	private renderProjectsSection(containerEl: HTMLElement): void {
 		new ProjectsSection(containerEl.createDiv(), this.plugin.projectManager, () => this.plugin.refreshLogViews()).render();
 	}
 
-	// Post-release — una fila `render` de getSettingDefinitions() sigue
-	// siendo un Setting con su columna de nombre/descripcion y su columna
-	// de control lado a lado (layout de dos columnas). El banner y el
-	// bloque de "Projects & clients" (tabs, formulario, lista) necesitan
-	// todo el ancho de la fila, no una columna — de ahi que se vacie el
-	// settingEl y se fuerce layout de bloque (ver
-	// .task-time-tracker-settings-fullwidth-row en styles.css) antes de
-	// pintar contenido propio dentro. Solo aplica a la vista declarativa;
-	// display() nunca crea un Setting para este contenido.
+	// A getSettingDefinitions() `render` row is still a Setting with its
+	// name/description column and its control column side by side
+	// (two-column layout). The banner and the "Projects & clients" block
+	// (tabs, form, list) need the row's full width, not one column —
+	// hence emptying settingEl and forcing block layout (see
+	// .task-time-tracker-settings-fullwidth-row in styles.css) before
+	// painting its own content inside. Only applies to the declarative
+	// view; display() never creates a Setting for this content.
 	private makeFullWidthRow(setting: Setting): HTMLElement {
 		setting.settingEl.empty();
 		setting.settingEl.addClass("task-time-tracker-settings-fullwidth-row");
@@ -205,11 +200,11 @@ export class SettingsTab extends PluginSettingTab {
 		renderProjectsBanner(this.makeFullWidthRow(setting));
 	}
 
-	// includeBanner=false: el banner ya se pinta en su propia fila (ver
-	// renderProjectsBannerRow) — evita que reaparezca aqui debajo cada vez
-	// que ProjectsSection se re-renderiza a si misma tras una interaccion
-	// (agregar/editar/borrar), ya que ese re-render vuelve a llamar a su
-	// propio render() completo.
+	// includeBanner=false: the banner is already painted in its own row
+	// (see renderProjectsBannerRow) — avoids it reappearing here below
+	// every time ProjectsSection re-renders itself after an interaction
+	// (add/edit/delete), since that re-render calls its own full
+	// render() again.
 	private renderProjectsContentRow(setting: Setting): void {
 		new ProjectsSection(
 			this.makeFullWidthRow(setting),
@@ -219,11 +214,10 @@ export class SettingsTab extends PluginSettingTab {
 		).render();
 	}
 
-	// Fase 9 — validacion de email compartida entre Toggl y Clockify (misma
-	// logica de isValidEmail, ver types.ts): cada plataforma solo aporta su
-	// propio objeto de settings y sus claves de traduccion (placeholder,
-	// texto valido), el estado de error/valido se calcula una unica vez
-	// aqui para las dos.
+	// Email validation shared between Toggl and Clockify (same
+	// isValidEmail logic, see types.ts): each platform only contributes
+	// its own settings object and its translation keys (placeholder,
+	// valid text); the error/valid state is computed here once for both.
 	private configureEmailField(
 		setting: Setting,
 		// A reader and a writer instead of a reference to the settings
@@ -267,11 +261,11 @@ export class SettingsTab extends PluginSettingTab {
 		);
 	}
 
-	// Fase 8 — opt-in para incluir columnas Project/Client en el CSV de
-	// Toggl (la generacion de esas columnas es una tarea posterior,
-	// bloqueada por este ajuste). Misma fuente de verdad que la casilla
-	// del modal de exportacion (ver ExportModal.ts): cambiarla aqui se
-	// refleja alli y viceversa.
+	// Opt-in for including Project/Client columns in the Toggl CSV
+	// (generating those columns is a later task, gated by this setting).
+	// Same source of truth as the checkbox in the export modal (see
+	// ExportModal.ts): changing it here is reflected there and vice
+	// versa.
 	private configureTogglIncludeProjectClient(setting: Setting): void {
 		setting
 			.setName(t("settings.toggl.includeProjectClient.name"))
@@ -285,18 +279,18 @@ export class SettingsTab extends PluginSettingTab {
 			);
 	}
 
-	// Correccion QA — el aviso de muro de pago (importar entradas de tiempo
-	// exige plan de pago o trial; el CSV se genera igual en plan gratuito,
-	// ver docs/Vault/Tareas/Clockify.md) NO es un estado de error (nada
-	// falla ni bloquea), asi que no debe reusar
-	// task-time-tracker-settings-error (rojo, reservado para el email
-	// invalido de configureEmailField — ese si es un error real). Banner
-	// icono+texto en color warning del tema (var(--text-warning), nunca un
-	// hex fijo) con icono "info" (no uno de error/alerta), mismo patron
-	// visual que renderProjectsBanner() en ProjectsSection.ts pero con
-	// tokens de warning en vez de accent. Full-width via makeFullWidthRow():
-	// funciona igual en display() y en la vista declarativa, ambas le pasan
-	// ya un Setting real.
+	// The payment-wall notice (importing time entries requires a paid
+	// plan or trial; the CSV is generated the same on the free plan, see
+	// docs/DECISIONS.md) is NOT an error state (nothing fails or
+	// blocks), so it must not reuse task-time-tracker-settings-error
+	// (red, reserved for configureEmailField's invalid email — that one
+	// is a real error). Icon+text banner in the theme's warning color
+	// (var(--text-warning), never a fixed hex) with an "info" icon (not
+	// an error/alert one), same visual pattern as
+	// renderProjectsBanner() in ProjectsSection.ts but with warning
+	// tokens instead of accent. Full-width via makeFullWidthRow(): works
+	// the same in display() and in the declarative view, both already
+	// pass it a real Setting.
 	private configureClockifyPaymentWallInfo(setting: Setting): void {
 		const container = this.makeFullWidthRow(setting);
 		const banner = container.createDiv({ cls: "task-time-tracker-settings-warning-banner" });
@@ -318,12 +312,10 @@ export class SettingsTab extends PluginSettingTab {
 		);
 	}
 
-	// Fase 9 — checkbox "Include Project": rectificado el 22 de agosto de
-	// 2026 (ver docs/Vault/Tareas/Clockify.md) — el hallazgo original que
-	// decia que Project era obligatorio para el importador de CSV era
-	// incorrecto (venia del formulario manual "Add time" de Clockify, no
-	// del importador), asi que se comporta igual que Include Client:
-	// opt-in, independiente, desmarcado por defecto.
+	// "Include Project" checkbox: Project is not actually required by
+	// Clockify's CSV importer (see docs/DECISIONS.md), so it behaves
+	// just like Include Client: opt-in, independent, unchecked by
+	// default.
 	private configureClockifyIncludeProject(setting: Setting): void {
 		setting
 			.setName(t("settings.clockify.includeProject.name"))
@@ -337,9 +329,9 @@ export class SettingsTab extends PluginSettingTab {
 			);
 	}
 
-	// Fase 9 — checkbox "Include Client": independiente de Include Project
-	// (ver arriba), desmarcado por defecto, mismo criterio "vault limpia
-	// por defecto" que Toggl.
+	// "Include Client" checkbox: independent of Include Project (see
+	// above), unchecked by default, same "clean vault by default"
+	// criterion as Toggl.
 	private configureClockifyIncludeClient(setting: Setting): void {
 		setting
 			.setName(t("settings.clockify.includeClient.name"))
@@ -357,8 +349,8 @@ export class SettingsTab extends PluginSettingTab {
 		const { containerEl } = this;
 		containerEl.empty();
 
-		// Seccion general (Fase 5): sin encabezado propio a proposito, sigue
-		// la convencion de Obsidian de dejar la primera seccion sin titulo.
+		// General section: no heading of its own on purpose, follows
+		// Obsidian's convention of leaving the first section untitled.
 		this.configureLogLocation(new Setting(containerEl));
 		this.configureTaskIdFormat(new Setting(containerEl));
 		this.configureExportFolder(new Setting(containerEl));
@@ -380,16 +372,15 @@ export class SettingsTab extends PluginSettingTab {
 		this.configureClockifyIncludeClient(new Setting(containerEl));
 	}
 
-	// Vista declarativa (Obsidian >=1.13): mismos ajustes que display(),
-	// reutilizando los mismos metodos configureX/renderX — no hay una
-	// segunda implementacion de la logica de ningun ajuste, solo un
-	// segundo punto de entrada que el buscador global de Ajustes indexa.
-	// Obsidian <1.13 no conoce este metodo y sigue usando display() tal
-	// cual (ver comentario en display()).
-	// 3 bloques (SettingDefinitionGroup, heading opcional), mismo patron
-	// visual "tarjeta con esquinas redondeadas + separador fino entre
-	// filas" que usa Obsidian de forma nativa en pantallas como Settings >
-	// Advanced.
+	// Declarative view (Obsidian >=1.13): same settings as display(),
+	// reusing the same configureX/renderX methods — there's no second
+	// implementation of any setting's logic, only a second entry point
+	// the global Settings search indexes. Obsidian <1.13 doesn't know
+	// this method and keeps using display() as is (see the comment on
+	// display()).
+	// Groups (SettingDefinitionGroup, optional heading), same "rounded-
+	// corner card + thin separator between rows" visual pattern Obsidian
+	// uses natively on screens like Settings > Advanced.
 	getSettingDefinitions(): SettingDefinitionItem[] {
 		return [
 			{

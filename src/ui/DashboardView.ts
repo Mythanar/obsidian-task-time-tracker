@@ -1,8 +1,8 @@
 // ui/DashboardView.ts
-// Dashboard — panel de solo lectura con totales de una ventana fija de 30
-// dias naturales (hoy + los 29 anteriores), sin selector de rango ni
-// filtro (ver brief "Dashboard"). Vive en una pestana propia del
-// workspace principal, nunca en el sidepanel del Historial.
+// Dashboard — read-only panel with totals for a fixed 30-calendar-day
+// window (today + the previous 29), no range selector or filter (see
+// the "Dashboard" brief). Lives in its own tab in the main workspace,
+// never in the Historial's sidepanel.
 
 import { ItemView, Notice, WorkspaceLeaf } from "obsidian";
 import { formatDuration } from "../core/TrackingEngine";
@@ -36,17 +36,17 @@ interface AggBucket {
 	totalMs: number;
 	count: number;
 	muted: boolean;
-	// Fix QA 0.0.30 — distinto de `muted`: se usa cuando el label es el
-	// taskText snapshot de una tarea cuya nota de origen ya no existe. Solo
-	// cursiva, sin el color atenuado de `muted` (esa tarea si existe, solo
-	// falta la nota — no es lo mismo que "sin proyecto/cliente").
+	// Different from `muted`: used when the label is the taskText
+	// snapshot of a task whose source note no longer exists. Italic only,
+	// without `muted`'s dimmed color (that task does exist, only the
+	// note is missing — not the same as "no project/client").
 	italic?: boolean;
 }
 
-// Agrupa por la clave que devuelva classify(); el total de todos los
-// buckets siempre suma exactamente sum(entries) porque cada entry cae en
-// exactamente un bucket (ver brief: "every session belongs to exactly
-// one project/client/day/task").
+// Groups by whatever key classify() returns; the total across all
+// buckets always sums to exactly sum(entries) because every entry falls
+// into exactly one bucket (see the brief: "every session belongs to
+// exactly one project/client/day/task").
 function aggregateByKey(
 	entries: TimeEntry[],
 	classify: (entry: TimeEntry) => { key: string; label: string; muted?: boolean; italic?: boolean },
@@ -73,9 +73,9 @@ interface DayBucket {
 	count: number;
 }
 
-// Bloque "By day": bucket por dia calendario LOCAL de entry.start (nunca
-// de entry.end) — una sesion que cruza medianoche se cuenta entera en el
-// dia en que empezo, mismo criterio que ExportManager.ts y TimeLogView.ts.
+// "By day" block: bucketed by entry.start's LOCAL calendar day (never
+// entry.end) — a session that crosses midnight counts entirely on the
+// day it started, same criterion as ExportManager.ts and TimeLogView.ts.
 function aggregateByDay(entries: TimeEntry[]): DayBucket[] {
 	const buckets = new Map<number, DayBucket>();
 	for (const entry of entries) {
@@ -104,10 +104,10 @@ function formatDayLabel(dayStart: number): string {
 export class DashboardView extends ItemView {
 	private dayShown = INITIAL_ROWS;
 	private taskShown = INITIAL_ROWS;
-	// Mismo guard que TimeLogView.renderToken: render() es async (resuelve
-	// tt-id de "By task" leyendo el vault) y puede dispararse mas de una
-	// vez seguida (refresh tras una mutacion mientras una llamada anterior
-	// todavia esta resolviendo tareas).
+	// Same guard as TimeLogView.renderToken: render() is async (resolves
+	// "By task" tt-ids by reading the vault) and can fire more than once
+	// in a row (a refresh after a mutation while a previous call is
+	// still resolving tasks).
 	private renderToken = 0;
 
 	constructor(
@@ -202,11 +202,11 @@ export class DashboardView extends ItemView {
 
 		this.renderDayBlock(container, aggregateByDay(windowEntries));
 
-		// Fix QA 0.0.30 — Por tarea: si la nota de origen ya no existe, el
-		// bloque muestra igual el nombre de la tarea (taskText, snapshot
-		// inmutable guardado en cada TimeEntry, ver types.ts) en cursiva, en
-		// vez del generico "Tarea no encontrada" (ese texto solo sigue
-		// disponible en TimeLogView.ts, fuera de este encargo).
+		// By task: if the source note no longer exists, the block still
+		// shows the task's name (taskText, the immutable snapshot saved
+		// on every TimeEntry, see types.ts) in italics, instead of the
+		// generic "Task not found" (that text is only used in
+		// TimeLogView.ts).
 		const taskLabels = await this.resolveTaskLabels(windowEntries);
 		if (token !== this.renderToken) return;
 		const taskBuckets = aggregateByKey(windowEntries, (entry) => {
@@ -221,10 +221,10 @@ export class DashboardView extends ItemView {
 		return `${t("dashboard.last30Days")} · ${count} ${sessionWord}`;
 	}
 
-	// Fix QA 0.0.30 — la nota puede haberse borrado sin que la tarea deje de
-	// existir para el Dashboard: `found: false` no implica "sin label", el
-	// caller cae al taskText de cada entry (siempre disponible, ver
-	// types.ts) en vez de a un generico "no encontrada".
+	// The note may have been deleted without the task ceasing to exist
+	// for the Dashboard: `found: false` doesn't imply "no label", the
+	// caller falls back to each entry's taskText (always available, see
+	// types.ts) instead of a generic "not found".
 	private async resolveTaskLabels(entries: TimeEntry[]): Promise<Map<string, { label: string; found: boolean }>> {
 		const uniqueIds = [...new Set(entries.map((entry) => entry.taskId))];
 		const labels = new Map<string, { label: string; found: boolean }>();
@@ -309,11 +309,11 @@ export class DashboardView extends ItemView {
 		row.createSpan({ cls: "task-time-tracker-dashboard-row-count", text: `${bucket.count} ${sessionWord}` });
 	}
 
-	// Igual que "Load more" de Resultados (ver TimeLogView.ts): el click
-	// vuelve a llamar a render() completo con el cap ampliado en vez de
-	// anadir filas sueltas al DOM — mismo resultado visible (nunca navega
-	// ni reemplaza lo ya mostrado), pero sin mantener un segundo camino de
-	// construccion de filas.
+	// Same as Resultados's "Load more" (see TimeLogView.ts): the click
+	// calls the whole render() again with the expanded cap instead of
+	// appending loose rows to the DOM — same visible result (never
+	// navigates or replaces what's already shown), but without keeping a
+	// second row-building code path.
 	private renderLoadMore(
 		container: Element,
 		shown: number,

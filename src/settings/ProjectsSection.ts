@@ -1,13 +1,12 @@
 // settings/ProjectsSection.ts
-// Fase 8 — Settings > "Projects & clients": alta/baja de proyectos y
-// clientes (base para futuros adapters de exportacion). Componente
-// autocontenido (mismo espiritu que TimeLogView.ts): gestiona su propio
-// estado transitorio (pestaña activa, borradores de formulario, errores,
-// confirmacion de borrado pendiente) y se re-renderiza a si mismo en cada
-// cambio, sin tocar el resto de SettingsTab.ts. Una instancia nueva por
-// cada apertura de la pestaña de Settings (ver SettingsTab.ts#display) —
-// perder el borrador al cerrar Settings es aceptable, ningun otro
-// formulario del plugin lo persiste tampoco.
+// Settings > "Projects & clients": adding/removing projects and clients
+// (base for future export adapters). Self-contained component (same
+// spirit as TimeLogView.ts): manages its own transient state (active
+// tab, form drafts, errors, pending delete confirmation) and re-renders
+// itself on every change, without touching the rest of SettingsTab.ts.
+// A new instance per opening of the Settings tab (see
+// SettingsTab.ts#display) — losing the draft when Settings closes is
+// acceptable, no other form in the plugin persists one either.
 
 import { setIcon } from "obsidian";
 import { t } from "../i18n";
@@ -18,12 +17,11 @@ type ProjectsTab = "one" | "paste";
 type OneByOneError = "empty" | "duplicate" | null;
 type EditableField = "name" | "client";
 
-// Extraida de la clase (sin estado propio) para que la vista declarativa de
-// Settings (ver SettingsTab.ts#getSettingDefinitions) pueda pintar el
-// banner en su propia fila de ancho completo, separada de la fila con el
-// resto del contenido — evita que ambos compartan la columna de control
-// estandar de un Setting (layout roto, ver comentario en render() mas
-// abajo).
+// Extracted from the class (no state of its own) so the declarative
+// Settings view (see SettingsTab.ts#getSettingDefinitions) can paint the
+// banner in its own full-width row, separate from the row with the rest
+// of the content — avoids both sharing a Setting's standard control
+// column (broken layout, see the comment on render() below).
 export function renderProjectsBanner(el: HTMLElement): void {
 	const banner = el.createDiv({ cls: "task-time-tracker-projects-banner" });
 	const icon = banner.createDiv({ cls: "task-time-tracker-projects-banner-icon" });
@@ -43,15 +41,14 @@ export class ProjectsSection {
 
 	private deleteConfirmId: string | null = null;
 
-	// Edicion inline por fila (Settings > Projects & clients): un unico
-	// campo editable a la vez en todo el listado (nunca dos filas ni dos
-	// campos de la misma fila simultaneos). editingField cambia de
-	// referencia en cada startEdit()/cancelEdit()/saveEdit() — el blur
-	// handler de cada input capturado por closure compara contra esa
-	// referencia para distinguir un blur real (usuario sale del campo)
-	// de un blur autoinducido por nuestro propio render() al guardar o
-	// cambiar de campo, evitando un cancelEdit() duplicado. Ver
-	// bindEditInputEvents().
+	// Inline per-row editing (Settings > Projects & clients): a single
+	// editable field at a time across the whole list (never two rows or
+	// two fields of the same row at once). editingField changes
+	// reference on every startEdit()/cancelEdit()/saveEdit() — each
+	// input's blur handler, captured by closure, compares against that
+	// reference to tell a real blur (user leaves the field) apart from
+	// one self-induced by our own render() on save or field change,
+	// avoiding a duplicate cancelEdit(). See bindEditInputEvents().
 	private editingField: { projectId: string; field: EditableField } | null = null;
 	private editDraft = "";
 	private editError: OneByOneError = null;
@@ -59,20 +56,20 @@ export class ProjectsSection {
 	constructor(
 		private containerEl: HTMLElement,
 		private manager: ProjectManager,
-		// Tras borrar un proyecto en uso, las tareas que lo tenian asignado
-		// vuelven a "sin proyecto" en el modelo de datos al instante (ver
-		// ProjectManager#removeProject), pero el Historial ya puede tener
-		// tarjetas renderizadas mostrando ese proyecto — este callback
-		// refresca esas vistas para que no se queden desactualizadas hasta
-		// el proximo refresco externo.
+		// After removing a project in use, the tasks that had it assigned
+		// go back to "no project" in the data model instantly (see
+		// ProjectManager#removeProject), but the Historial may already
+		// have cards rendered showing that project — this callback
+		// refreshes those views so they don't stay stale until the next
+		// external refresh.
 		private onProjectsChanged: () => void,
-		// La vista declarativa de Settings (Obsidian >=1.13) pinta el banner
-		// en su propia fila separada (ver renderProjectsBanner arriba) para
-		// que no comparta columna con este bloque; display() (vista clasica,
-		// <1.13) sigue usando el valor por defecto y ambos van juntos como
-		// siempre. El resto de la logica (guardado, tabs, edicion) es
-		// identica en los dos casos — esto solo decide si esta instancia
-		// tambien dibuja el banner o no.
+		// The declarative Settings view (Obsidian >=1.13) paints the
+		// banner in its own separate row (see renderProjectsBanner above)
+		// so it doesn't share a column with this block; display() (the
+		// classic view, <1.13) keeps using the default value and both go
+		// together as always. The rest of the logic (saving, tabs,
+		// editing) is identical in both cases — this only decides whether
+		// this instance also draws the banner or not.
 		private includeBanner = true,
 	) {}
 
@@ -113,13 +110,12 @@ export class ProjectsSection {
 	private renderOneByOneForm(el: HTMLElement): void {
 		const form = el.createDiv({ cls: "task-time-tracker-projects-form" });
 
-		// Container query (ver styles.css): a partir de cierto ancho del
-		// panel de Settings (no del viewport — este bloque puede vivir en
-		// sidebar o en tab central, ver CLAUDE.md), los tres campos
-		// comparten fila; por debajo, cada uno cae en su propia fila
-		// completa. Un unico wrapper para los tres en vez de agrupar
-		// nombre aparte de cliente+boton, para que el punto de corte
-		// controle los tres a la vez.
+		// Container query (see styles.css): past a certain width of the
+		// Settings panel (not the viewport — this block can live in the
+		// sidebar or the center tab, see CLAUDE.md), the three fields
+		// share a row; below it, each falls to its own full row. A single
+		// wrapper for all three instead of grouping name separately from
+		// client+button, so the breakpoint controls all three at once.
 		const fields = form.createDiv({ cls: "task-time-tracker-projects-form-fields" });
 
 		const nameInput = fields.createEl("input", { cls: "task-time-tracker-log-edit-input" });
@@ -215,11 +211,11 @@ export class ProjectsSection {
 		}
 	}
 
-	// Ancho suficiente: nombre, cliente y papelera en una linea. Ancho
-	// reducido: nombre arriba, cliente+papelera agrupados debajo (ver
-	// container query en styles.css) — por eso cliente y papelera van
-	// juntos en su propio wrapper (task-time-tracker-projects-row-meta) en
-	// vez de que la papelera cuelgue suelta del row.
+	// Wide enough: name, client, and trash icon on one line. Narrow:
+	// name on top, client+trash grouped below (see the container query
+	// in styles.css) — that's why client and trash go together in their
+	// own wrapper (task-time-tracker-projects-row-meta) instead of the
+	// trash icon hanging loose off the row.
 	private renderProjectRow(list: HTMLElement, project: Project): void {
 		const row = list.createDiv({ cls: "task-time-tracker-projects-row" });
 		const editingField = this.editingField?.projectId === project.id ? this.editingField.field : null;
@@ -235,9 +231,10 @@ export class ProjectsSection {
 			});
 			setIcon(saveBtn, "check");
 			saveBtn.setAttribute("aria-label", t("settings.projects.saveAriaLabel"));
-			// preventDefault en mousedown: evita que el input pierda el foco
-			// (y por tanto su blur, que cancelaria la edicion) al clicar este
-			// boton — el guardado se ejecuta en el click normal que sigue.
+			// preventDefault on mousedown: keeps the input from losing focus
+			// (and thus firing its blur, which would cancel the edit) when
+			// clicking this button — the save runs on the normal click that
+			// follows.
 			saveBtn.addEventListener("mousedown", (evt) => evt.preventDefault());
 			saveBtn.addEventListener("click", () => void this.saveEdit());
 			return;
@@ -249,9 +246,10 @@ export class ProjectsSection {
 		setIcon(deleteBtn, "trash-2");
 		deleteBtn.setAttribute("aria-label", t("settings.projects.deleteAriaLabel"));
 		deleteBtn.addEventListener("click", () => {
-			// Sin tareas asignadas (conteo 0): se borra directo, sin dialogo
-			// (fricción sin motivo real). Con alguna asignada, la confirmacion
-			// de abajo avisa cuantas se quedaran "sin proyecto" en silencio.
+			// No tasks assigned (count 0): deleted directly, no dialog (no
+			// real reason for the friction). With some assigned, the
+			// confirmation below warns how many will silently become "no
+			// project".
 			const count = this.manager.countTasksUsingProject(project.id);
 			if (count === 0) {
 				void this.manager.removeProject(project.id).then(() => {
@@ -275,10 +273,10 @@ export class ProjectsSection {
 			text: project.name,
 			cls: "task-time-tracker-projects-row-name task-time-tracker-projects-row-editable",
 		});
-		// preventDefault en mousedown: si otro campo de la fila estuviera en
-		// edicion, evita el blur nativo de su input (que dispararia su
-		// propio cancelEdit) — el cambio de campo se resuelve entero, de
-		// forma atomica, dentro de startEdit() al recibir el click.
+		// preventDefault on mousedown: if another field in the row were
+		// being edited, this avoids its input's native blur (which would
+		// fire its own cancelEdit) — the field switch is resolved wholly,
+		// atomically, inside startEdit() when the click is received.
 		span.addEventListener("mousedown", (evt) => evt.preventDefault());
 		span.addEventListener("click", () => this.startEdit(project.id, "name", project.name));
 	}
@@ -299,10 +297,10 @@ export class ProjectsSection {
 		span.addEventListener("click", () => this.startEdit(project.id, "client", project.client ?? ""));
 	}
 
-	// Input compartido por ambos campos editables. Mismo texto de ayuda
-	// que el formulario de alta (nameRequired / duplicateError), siempre
-	// visible bajo el campo cuando hay error — nunca tooltip (ver
-	// CLAUDE.md y brief).
+	// Input shared by both editable fields. Same help text as the
+	// creation form (nameRequired / duplicateError), always visible
+	// under the field when there's an error — never a tooltip (see
+	// CLAUDE.md and the brief).
 	private renderEditInput(container: HTMLElement, value: string, placeholder?: string): void {
 		const wrapper = container.createDiv({ cls: "task-time-tracker-projects-row-edit-field" });
 		const input = wrapper.createEl("input", { cls: "task-time-tracker-log-edit-input" });
@@ -320,11 +318,11 @@ export class ProjectsSection {
 		}
 	}
 
-	// Enter guarda (igual que el boton "Guardar"), Esc cancela sin
-	// guardar. El blur solo cancela si sigue siendo el mismo "session" de
-	// edicion que cuando se creo este input — ver el comentario junto a
-	// editingField sobre por que hace falta esa comparacion por
-	// referencia en vez de un simple "editingField !== null".
+	// Enter saves (same as the "Save" button), Esc cancels without
+	// saving. Blur only cancels if it's still the same editing
+	// "session" as when this input was created — see the comment next
+	// to editingField about why that reference comparison is needed
+	// instead of a simple "editingField !== null".
 	private bindEditInputEvents(input: HTMLInputElement): void {
 		const session = this.editingField;
 		input.addEventListener("keydown", (evt) => {
@@ -372,10 +370,10 @@ export class ProjectsSection {
 		const result = await this.manager.updateProject(editing.projectId, name, client);
 		if (!result.ok) {
 			this.editError = result.error === "empty-name" ? "empty" : "duplicate";
-			// Referencia nueva (mismo campo): invalida el "session" que
-			// capturo el input anterior, para que su blur (disparado por el
-			// re-render de abajo) no cancele la edicion que acabamos de
-			// reabrir con el error visible.
+			// New reference (same field): invalidates the "session" the
+			// previous input captured, so its blur (fired by the re-render
+			// below) doesn't cancel the edit we just reopened with the
+			// error visible.
 			this.editingField = { ...editing };
 			this.render();
 			return;

@@ -253,6 +253,26 @@ una entrada aquí.
   respaldo. Motivo: cumplir literalmente "debe aparecer deshabilitada"
   y no solo fallar tarde con un aviso de error.
 
+## Toggl settings — dateFormat/timeFormat removed pre-release
+
+- **`TogglSettings` originally let the user pick a date/time format;
+  those fields were removed before release.** Toggl's real CSV importer
+  requires a fixed format (YYYY-MM-DD, 24h HH:MM:SS) and doesn't accept
+  a user-chosen one, so the format is now fixed in
+  `TogglCsvAdapter.ts`, not configurable. An older `data.json` carrying
+  `dateFormat`/`timeFormat` keys leaves them as unused orphaned
+  properties: not read, don't break loading, not migrated.
+
+## Clockify settings — Project column is not actually required
+
+- **The original research behind `ClockifySettings.includeProject` said
+  Project was mandatory for Clockify's CSV importer; that finding was
+  wrong** (corrected 2026-08-22, see `docs/Vault/Tareas/Clockify.md`).
+  It came from Clockify's manual "Add time" form, not from the
+  importer itself. `includeProject` exists on equal footing with
+  `includeClient` — both opt-in, independent of each other, unchecked
+  by default, same "clean vault by default" criterion as Toggl.
+
 
 ## Fase 5
 
@@ -831,6 +851,21 @@ una entrada aquí.
   con la nota duplicada en paneles. Anotado para si vuelve a aparecer;
   no forma parte de este fix.
 
+## TaskIdentifier — cold-start "Task not found" (empty editor buffer)
+
+- **Same bug family as "paneles duplicados" above, different trigger:**
+  right after Obsidian starts, a `MarkdownView` can exist with its `file`
+  already assigned but its editor not yet loaded with real content (an
+  empty buffer for an instant). `searchFiles()` in `TaskIdentifier.ts`
+  must not treat that empty live-editor candidate as proof the `tt-id`
+  isn't on that note — otherwise a task tracked today, checked right at
+  startup, would wrongly resolve as "Task not found" even though the
+  underlying data was correct.
+- **Fix already in place:** `searchFiles()` always falls through to
+  `vault.cachedRead()` when no live editor candidate matches, regardless
+  of whether the file appears open — absence in a live buffer is never
+  treated as absence in the note.
+
 ## Fase 5 — icono de nota en tarjetas "Task not found"
 
 - **Bug de alineación — el icono de nota delante del título desaparecía
@@ -1195,6 +1230,54 @@ resultado final.
   fecha. Se elimina también la clave de traducción
   `log.datePickerClear`, sin más usos en el codebase.
 
+## Shared popover anchoring (positionPopover.ts)
+
+- **Extracted from ProjectPickerList.ts into its own module after a bug
+  where the date-picker got clipped in a narrow sidebar:**
+  `DatePickerPopover.ts` had reimplemented its own anchoring instead of
+  reusing ProjectPickerList's, which already solved the same problem in
+  production. `positionPopover()` is now the single anchoring
+  implementation both popovers share.
+
+## ProjectPickerList — two-line row instead of "name · client"
+
+- **Reverted to a two-line row (name on top, client below) after QA
+  with real data:** the original single-line "name · client" format
+  made the whole project disappear for long client names, and
+  truncated both fields even in the normal case. Each line now
+  truncates independently (see CSS), so the project name shows in
+  full or truncated regardless of how long the client name is, and
+  vice versa.
+
+## sessionEdit.ts — silent Date overflow on invalid day (critical, 0.0.29)
+
+- **Critical bug: an out-of-range day (e.g. "2026-08-88", or
+  "2026-02-29" in a non-leap year) in the session edit form's date
+  field was saved as a different date with no warning.** The `Date`
+  constructor alone doesn't reject an invalid day, it silently
+  overflows into following months/years (`new Date(2026, 7, 88)` gives
+  October). Fix: `parseDateInput()` rebuilds the date from its
+  components and compares it against what was typed — if `Date`
+  reinterpreted it, the mismatch is caught and the input is rejected
+  instead of silently saving the wrong day.
+
+## DatePickerPopover — two reopening/re-render bugs
+
+- **`selectedRangeEnd` added to `DatePickerPopoverOptions`:** reopening
+  the picker with a week or a results range already applied only
+  marked `selectedDate` as a lone day, losing the rest of the range in
+  the grid even though the filter was still active. The option is
+  optional — omitting it keeps the old lone-day behavior for Day/Week
+  when the caller has no range to preserve.
+- **`reanchorDatePickerPopover()` added:** TimeLogView rebuilds its
+  whole navigation bar from scratch on every render, including the
+  calendar button. Without reanchoring the open popover to the fresh
+  button, a second click on the new button read simultaneously as
+  "outside" (the old button's listener closed it) and "open" (the new
+  button's own handler), so the picker never seemed to actually close.
+  The caller now calls `reanchorDatePickerPopover()` after every render
+  with the fresh button reference.
+
 ## Seguridad frente a sync multi-dispositivo (leer-antes-de-escribir)
 
 - **El estado en memoria deja de ser la fuente de verdad al escribir.**
@@ -1258,6 +1341,30 @@ resultado final.
   no comparten soporte nativo de TypeScript. El "disco" simulado hace un
   ida y vuelta por JSON en cada `load`/`save`, así que memoria y disco
   nunca comparten referencias y una prueba no puede pasar por accidente.
+
+## Historial header — v2 redesign (full-width stepper)
+
+- **Replaces the earlier 400px container-query header redesign** (see
+  the "Fase 5 — fix responsive de la cabecera del Historial" entry
+  above) after several rounds of patches on that approach, using specs
+  and prototypes the user provided ("Cabecera Time Tracker.dc.html" and
+  "Header Responsive Wireframes.dc.html", the "1c — full-width
+  stepper" strategy).
+- **Single 480px container breakpoint, shared by all three view modes
+  (Day/Week/Resultados).** Wide format (>=480px): a single-row
+  "auto 1fr auto" grid — toggle/Volver on the left, arrows+date (or the
+  Resultados range box) in the center, calendar+Filter anchored right.
+  Compact format (<480px): two rows — toggle/Volver + calendar+Filter
+  on row 1, a full-width framed control on row 2 (a real stepper in
+  Day/Week, a non-interactive centered box in Resultados).
+- **The "Hoy" button is removed from this bar entirely, in every
+  format.** The date-picker's footer (see
+  DatePickerPopover.ts#goToToday) becomes the single entry point to
+  "today", replacing the standalone button the previous header
+  redesign had added.
+- **Resultados range gets its own framed box** (border + background,
+  `.task-time-tracker-log-results-rangebox`) instead of plain text, to
+  match "Volver" and calendar+Filter, which are also framed controls.
 
 ## Historial — retomar tracking de una tarea ya registrada
 

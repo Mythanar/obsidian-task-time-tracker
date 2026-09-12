@@ -1,46 +1,45 @@
 // core/TaskIdentifier.ts
-// Fase 2 — Vinculacion robusta a tareas.
-// Responsabilidad: generar/leer el identificador inline ([tt-id:: id]) en
-// la linea de la tarea, y resolver su ubicacion actual en el vault (o
-// detectar que ya no existe).
+// Responsibility: generate/read the inline identifier ([tt-id:: id]) on
+// the task's line, and resolve its current location in the vault (or
+// detect that it no longer exists).
 //
-// Formato con corchetes: es la sintaxis de inline field que Dataview
-// necesita para reconocer tt-id como campo estructurado (sin corchetes,
-// Dataview no lo detecta como campo).
+// Bracketed format: it's the inline-field syntax Dataview needs to
+// recognize tt-id as a structured field (without brackets, Dataview
+// doesn't detect it as a field).
 
 import { App, MarkdownView, TFile } from "obsidian";
 
 const TASK_ID_REGEX = /\[tt-id::\s*([0-9A-Za-z]+)\]/;
-// Prefijo de callout/blockquote: cero o mas ">" (cada uno con su propio
-// espacio en blanco opcional antes y despues), para que una tarea dentro
-// de un callout -o de un callout anidado, "> > "- se reconozca igual que
-// una fuera de uno. Obsidian antepone ese ">" literal a cada linea del
-// callout en el documento subyacente; no se retira de line.text solo
-// porque Live Preview lo dibuje como una barra decorativa.
+// Callout/blockquote prefix: zero or more ">" (each with its own optional
+// whitespace before and after), so a task inside a callout — or a nested
+// callout, "> > " — is recognized the same as one outside one. Obsidian
+// prepends that literal ">" to every line of the callout in the underlying
+// document; it isn't stripped from line.text just because Live Preview
+// renders it as a decorative bar.
 const BLOCKQUOTE_PREFIX = "(?:\\s*>)*";
-// Viñeta: "-", "*", "+" o lista numerada ("1.", "2.", ...). El \s* inicial
-// cubre la indentacion, asi que las tareas anidadas se detectan igual.
+// Bullet: "-", "*", "+" or a numbered list ("1.", "2.", ...). The leading
+// \s* covers indentation, so nested tasks are detected the same way.
 const CHECKBOX_LINE_REGEX = new RegExp(`^${BLOCKQUOTE_PREFIX}\\s*(?:[-*+]|\\d+\\.)\\s*\\[.\\]\\s*(.+?)\\s*$`);
 const CHECKBOX_STATE_REGEX = new RegExp(`^${BLOCKQUOTE_PREFIX}\\s*(?:[-*+]|\\d+\\.)\\s*\\[(.)\\]`);
 
 const NANOID_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const NANOID_LENGTH = 8;
 
-// Bug conocido de Tasks (issue #1505, ver docs/DECISIONS.md y la nota de
-// bug en el vault): Tasks solo reconoce sus propios campos si quedan
-// DESPUES del tt-id en la linea; si el tt-id queda detras de ellos, Tasks
-// deja de reconocerlos todos por igual. La unica solucion fiable (no
-// depende de que Tasks cambie nada) es controlar donde insertamos el
-// tt-id: siempre antes de cualquier campo de Tasks presente en la linea.
-// Lista completa de campos por emoji, segun el Tasks Emoji Format oficial.
+// Known Tasks bug (issue #1505, see docs/DECISIONS.md and the bug note in
+// the vault): Tasks only recognizes its own fields if they come AFTER the
+// tt-id on the line; if the tt-id ends up behind them, Tasks stops
+// recognizing all of them alike. The only reliable fix (doesn't depend on
+// Tasks changing anything) is controlling where we insert the tt-id:
+// always before any Tasks field present on the line.
+// Full list of fields by emoji, per the official Tasks Emoji Format.
 const TASKS_DATE_MARKERS = ["➕", "📅", "⏳", "🛫", "✅", "❌"];
 const TASKS_PRIORITY_MARKERS = ["🔺", "⏫", "🔼", "🔽", "⏬"];
 
-// Cada patron reconoce UN campo de Tasks anclado al final de la cadena
-// (ver findTasksMetadataStart): solo importa si ese campo es el ultimo
-// tramo de la linea, no donde mas aparezca. El separador `(?:^|\s)` se
-// incluye en el match a proposito, para que el corte tambien absorba el
-// espacio que lo separaba del contenido anterior.
+// Each pattern recognizes ONE Tasks field anchored to the end of the
+// string (see findTasksMetadataStart): it only matters whether that field
+// is the line's last stretch, not wherever else it appears. The
+// `(?:^|\s)` separator is included in the match on purpose, so the cut
+// also absorbs the space that separated it from the preceding content.
 const TASKS_TRAILING_FIELD_PATTERNS: RegExp[] = [
 	new RegExp(`(?:^|\\s)(?:${TASKS_DATE_MARKERS.join("|")})\\s?\\d{4}-\\d{2}-\\d{2}$`, "u"),
 	new RegExp(`(?:^|\\s)(?:${TASKS_PRIORITY_MARKERS.join("|")})$`, "u"),
@@ -50,10 +49,10 @@ const TASKS_TRAILING_FIELD_PATTERNS: RegExp[] = [
 	/(?:^|\s)🔁\s?.+$/u,
 ];
 
-// Recorre `text` desde el final hacia atras, igual que Tasks internamente,
-// para encontrar donde empieza el bloque contiguo final de campos
-// reconocidos. Devuelve el indice de corte (longitud de `text` si no hay
-// ningun campo de Tasks al final).
+// Walks `text` from the end backward, same as Tasks does internally, to
+// find where the final contiguous block of recognized fields begins.
+// Returns the cut index (length of `text` if there's no Tasks field at
+// the end).
 function findTasksMetadataStart(text: string): number {
 	const isWhitespace = (index: number) => /\s/.test(text[index] ?? "");
 
@@ -91,10 +90,10 @@ export function extractTaskId(line: string): string | null {
 	return line.match(TASK_ID_REGEX)?.[1] ?? null;
 }
 
-// Inserta (o recoloca, si ya tenia uno mal colocado por una version
-// anterior del plugin) el tt-id justo antes del bloque de metadatos de
-// Tasks al final de la linea, o al final si no hay ninguno. Idempotente:
-// si `line` ya tiene el tt-id bien colocado, devuelve una linea identica.
+// Inserts (or repositions, if a previous plugin version left it
+// misplaced) the tt-id right before the Tasks metadata block at the end
+// of the line, or at the end if there is none. Idempotent: if `line`
+// already has the tt-id correctly placed, returns an identical line.
 export function appendTaskId(line: string, taskId: string): string {
 	const withoutId = line.replace(TASK_ID_REGEX, "").trimEnd();
 	const boundary = findTasksMetadataStart(withoutId);
@@ -104,10 +103,10 @@ export function appendTaskId(line: string, taskId: string): string {
 	return metadata.length > 0 ? `${before} ${idToken} ${metadata}` : `${before} ${idToken}`;
 }
 
-// Punto de entrada compartido por los sitios que empiezan a trackear una
-// tarea: reutiliza el tt-id si ya existia (recolocandolo si hacia falta) o
-// genera uno nuevo. `updatedLine === line` cuando no hizo falta ningun
-// cambio, para que el llamador evite escribir en la nota sin necesidad.
+// Shared entry point for the places that start tracking a task: reuses
+// the tt-id if it already existed (repositioning it if needed) or
+// generates a new one. `updatedLine === line` when no change was needed,
+// so the caller can avoid writing to the note unnecessarily.
 export function ensureTaskId(line: string): { taskId: string; updatedLine: string } {
 	const taskId = extractTaskId(line) ?? generateTaskId();
 	return { taskId, updatedLine: appendTaskId(line, taskId) };
@@ -117,10 +116,10 @@ export function stripTaskId(text: string): string {
 	return text.replace(TASK_ID_REGEX, "").trim();
 }
 
-// Estado del checkbox (el caracter dentro de "[ ]"), o null si la linea
-// no es un checkbox. "x" (hecha) y "-" (cancelada) son los unicos estados
-// que Fase 5 trata como "cerrados"; cualquier otro (incluido " " vacio y
-// estados personalizados de Tasks como "/") se trata como abierto.
+// Checkbox state (the character inside "[ ]"), or null if the line isn't
+// a checkbox. "x" (done) and "-" (cancelled) are the only states the
+// plugin treats as "closed"; any other (including empty " " and custom
+// Tasks states like "/") is treated as open.
 export function extractCheckboxState(line: string): string | null {
 	return line.match(CHECKBOX_STATE_REGEX)?.[1] ?? null;
 }
@@ -129,9 +128,10 @@ export function isClosedCheckboxState(state: string | null): boolean {
 	return state === "x" || state === "-";
 }
 
-// Extrae la descripcion de una linea de tarea tipo Tasks (checkbox con
-// viñeta "-", "*", "+" o numerada, indentada o no), sin el marcador de
-// checkbox ni el tt-id::. Devuelve null si la linea no es un checkbox.
+// Extracts the description from a Tasks-style task line (checkbox with
+// "-", "*", "+" or numbered bullet, indented or not), without the
+// checkbox marker or the tt-id::. Returns null if the line isn't a
+// checkbox.
 export function parseCheckboxLine(line: string): string | null {
 	const match = line.match(CHECKBOX_LINE_REGEX);
 	if (!match) return null;
@@ -152,23 +152,23 @@ export interface FixMisplacedTaskIdsResult {
 export class TaskIdentifier {
 	constructor(private app: App) {}
 
-	// Busca en el vault la primera linea que contenga el tt-id dado.
-	// Si el mismo id aparece en mas de una linea (copiado a otra nota o
-	// duplicado), se toma la primera coincidencia; no hace falta resolver
-	// ese conflicto en esta fase, todas cuentan como la misma tarea a
-	// efectos de tiempo acumulado.
+	// Searches the vault for the first line containing the given tt-id.
+	// If the same id appears on more than one line (copied to another
+	// note, or duplicated), the first match is taken; that conflict
+	// doesn't need resolving — all of them count as the same task for
+	// accumulated time.
 	async resolve(taskId: string): Promise<ResolvedTask | null> {
 		return this.searchFiles(taskId, this.app.vault.getMarkdownFiles());
 	}
 
-	// Fase 5 UX — panel de Historial: variante de resolve() para el link
-	// "abrir nota" de una tarjeta de tarea. Si el mismo tt-id aparece en
-	// varias notas (duplicados, ver resolve()), prioriza la nota de la
-	// sesion mas reciente (preferredPath, el mismo criterio que ya usa la
-	// exportacion a CSV para "nota de origen": el snapshot de la sesion,
-	// no una busqueda en vivo) antes de caer al criterio generico de
-	// Fase 2 (primera coincidencia en todo el vault) si esa nota ya no
-	// contiene el tt-id (p.ej. la tarea se movio a otra nota).
+	// Historial panel: variant of resolve() for a task card's "open note"
+	// link. If the same tt-id appears in several notes (duplicates, see
+	// resolve()), prioritizes the most recent session's note
+	// (preferredPath, the same criterion CSV export already uses for
+	// "source note": the session's snapshot, not a live search) before
+	// falling back to the generic first-match-in-the-vault criterion if
+	// that note no longer contains the tt-id (e.g. the task moved to
+	// another note).
 	async resolvePreferring(taskId: string, preferredPath: string): Promise<ResolvedTask | null> {
 		const preferred = this.app.vault.getAbstractFileByPath(preferredPath);
 		if (preferred instanceof TFile) {
@@ -178,16 +178,15 @@ export class TaskIdentifier {
 		return this.resolve(taskId);
 	}
 
-	// Fix pendiente de la pieza 1 — al detener el tracking (comando,
-	// RecoveryModal, control inline o auto-stop al cerrar el checkbox), se
-	// aprovecha ese mismo punto para recolocar el tt-id si quedo mal
-	// puesto mientras la tarea estaba en marcha (p.ej. el usuario edito la
-	// linea a mano). Misma logica de appendTaskId() ya verificada en la
-	// pieza 1, sin nada nuevo: esta funcion solo decide DONDE escribir el
-	// resultado. Si la nota esta abierta, escribe via el Editor en vivo
-	// (evita que esa vista se desincronice de un vault.process() por
-	// detras, mismo motivo que ya gobierna searchFiles() de arriba); si
-	// no, cae a vault.process() (atomico, igual que fixMisplacedTaskIds()).
+	// When tracking stops (command, RecoveryModal, inline control, or
+	// auto-stop on closing the checkbox), that same point is used to
+	// reposition the tt-id if it ended up misplaced while the task was
+	// running (e.g. the user hand-edited the line). Reuses appendTaskId()
+	// as is; this function only decides WHERE to write the result. If the
+	// note is open, it writes via the live Editor (avoids that view going
+	// out of sync from a vault.process() behind its back, same reason
+	// that governs searchFiles() above); otherwise it falls back to
+	// vault.process() (atomic, same as fixMisplacedTaskIds()).
 	async repositionTaskId(taskId: string): Promise<void> {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			if (!(leaf.view instanceof MarkdownView) || !leaf.view.file) continue;
@@ -224,23 +223,22 @@ export class TaskIdentifier {
 		const liveContents = this.getLiveEditorContents();
 
 		for (const file of files) {
-			// La misma nota puede estar abierta en varios leaves (paneles
-			// divididos, Edicion + Lectura a la vez) con contenido
-			// momentaneamente distinto entre si — cada uno tiene su propia
-			// instancia de editor, y no se sincronizan entre ellos al
-			// instante. Probar todos los candidatos en vivo (no solo uno)
-			// antes de caer a cachedRead(): basta con que UNO de los
-			// paneles ya tenga el tt-id en memoria (p.ej. el que acaba de
-			// iniciar tracking) para resolverlo, sin depender de cual se
-			// itere ultimo.
-			// Si ninguno matchea, se cae a cachedRead() igualmente (no se
-			// da por buena la ausencia solo porque el archivo este abierto):
-			// en el arranque en frio, un MarkdownView puede existir con su
-			// `file` ya asignado pero el editor todavia sin cargar el
-			// contenido real (buffer vacio un instante), y ese candidato en
-			// vivo no debe tratarse como prueba de que el tt-id no esta ahi
-			// (bug de QA, agosto 2026 — "Task not found" con sesiones de
-			// hoy en frio, misma familia que el bug de paneles duplicados).
+			// The same note can be open in several leaves (split panes,
+			// Edit + Read at once) with momentarily different content
+			// between them — each has its own editor instance, and they
+			// don't sync with each other instantly. All live candidates
+			// are tried (not just one) before falling back to
+			// cachedRead(): it's enough for ONE of the panes to already
+			// have the tt-id in memory (e.g. the one that just started
+			// tracking) to resolve it, without depending on which one is
+			// iterated last.
+			// If none match, it still falls back to cachedRead() (absence
+			// isn't taken as proof just because the file is open): on cold
+			// start, a MarkdownView can exist with its `file` already
+			// assigned but the editor not yet loaded with real content
+			// (an empty buffer for an instant), and that live candidate
+			// must not be treated as proof the tt-id isn't there (see
+			// docs/DECISIONS.md, "paneles duplicados").
 			const candidates = liveContents.get(file.path) ?? [];
 			const found = this.findInContents(taskId, file.path, candidates);
 			if (found) return found;
@@ -252,16 +250,16 @@ export class TaskIdentifier {
 		return null;
 	}
 
-	// Boton "Actualizar tareas" en Settings — corrige de una vez las tareas
-	// trackeadas con una version anterior del plugin, que pudieron quedar
-	// con el tt-id detras de los metadatos de Tasks (ver appendTaskId()).
-	// Reutiliza esa misma logica ya verificada, sin ningun algoritmo nuevo.
-	// Primero se comprueba con cachedRead() si una nota necesita algun
-	// cambio antes de tocarla: asi las notas ya correctas no se escriben
-	// nunca (ni un vault.process() de mas), acorde a "la vault del usuario
-	// es su casa". Solo las que de verdad lo necesitan se reescriben, y
-	// siempre con vault.process() (atomico, evita pisar una edicion
-	// simultanea del usuario o de otro plugin sobre la misma nota).
+	// "Update tasks" button in Settings — fixes, in one pass, tasks
+	// tracked with an older plugin version that may have ended up with
+	// the tt-id behind Tasks' metadata (see appendTaskId()). Reuses that
+	// same logic as is, no new algorithm. First checks with cachedRead()
+	// whether a note needs any change before touching it: notes that are
+	// already correct are never written (not even one extra
+	// vault.process()), per "the user's vault is their home". Only the
+	// ones that truly need it are rewritten, always with vault.process()
+	// (atomic, avoids clobbering a simultaneous edit by the user or
+	// another plugin on the same note).
 	async fixMisplacedTaskIds(): Promise<FixMisplacedTaskIdsResult> {
 		let reviewed = 0;
 		let fixed = 0;
@@ -312,15 +310,14 @@ export class TaskIdentifier {
 		return null;
 	}
 
-	// Los cambios hechos vía la API de Editor (p.ej. insertar el tt-id::
-	// al iniciar tracking) tardan un momento en volcarse a disco, y
-	// vault.cachedRead() no los ve hasta entonces. Para notas abiertas
-	// se lee el contenido en vivo del editor para no marcar como
-	// "no encontrada" una tarea que se está trackeando activamente.
-	// Devuelve TODOS los contenidos en vivo por ruta, no uno solo: si la
-	// misma nota esta abierta en mas de un leaf, cada uno puede tener un
-	// estado distinto en un instante dado (ver bug documentado en
-	// DECISIONS.md, "paneles duplicados").
+	// Changes made via the Editor API (e.g. inserting tt-id:: when
+	// tracking starts) take a moment to flush to disk, and
+	// vault.cachedRead() doesn't see them until then. For open notes, the
+	// editor's live content is read instead, so an actively tracked task
+	// isn't marked as "not found". Returns ALL live contents per path,
+	// not just one: if the same note is open in more than one leaf, each
+	// can hold a different state at a given instant (see the bug
+	// documented in DECISIONS.md, "paneles duplicados").
 	private getLiveEditorContents(): Map<string, string[]> {
 		const contents = new Map<string, string[]>();
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {

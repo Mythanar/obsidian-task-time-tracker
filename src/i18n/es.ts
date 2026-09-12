@@ -1,13 +1,13 @@
 // i18n/es.ts
-// Fase 6 — diccionario en espanol. Tipado contra TranslationKey (derivado
-// de en.ts): si falta una clave o sobra una, el build falla en vez de
-// dejar un hueco de traduccion silencioso. Contenido y claves fijados en
+// Spanish dictionary. Typed against TranslationKey (derived from en.ts):
+// if a key is missing or extra, the build fails instead of leaving a
+// silent translation gap. Content and keys fixed in
 // docs/glosario-traduccion-i18n.md.
 
 import { TranslationKey } from "./en";
 
 export const es: Record<TranslationKey, string> = {
-	// 1. Paleta de comandos (src/main.ts)
+	// 1. Command palette (src/main.ts)
 	"cmd.start": "Iniciar tracking en la tarea actual",
 	"cmd.stop": "Detener tracking activo",
 	"cmd.openLog": "Abrir panel de historial",
@@ -17,11 +17,11 @@ export const es: Record<TranslationKey, string> = {
 	// 2. Status bar (src/ui/StatusBarWidget.ts)
 	"statusbar.idle": "Sin tracking activo",
 
-	// 2b. Menu del icono de la barra lateral (src/main.ts)
+	// 2b. Ribbon icon menu (src/main.ts)
 	"ribbon.tooltip": "Task Time Tracker",
 	"ribbon.dashboardItem": "Dashboard",
 
-	// 4. Modal de recuperacion (src/ui/RecoveryModal.ts)
+	// 4. Recovery modal (src/ui/RecoveryModal.ts)
 	"recovery.title": "Sesión de tracking sin cerrar",
 	"recovery.body": 'Tenías "{taskText}" corriendo desde {datetime}. ¿Qué quieres hacer?',
 	"recovery.closeNow": "Cerrar ahora",
@@ -62,7 +62,7 @@ export const es: Record<TranslationKey, string> = {
 		"Importar sesiones que ya están en Clockify crea entradas duplicadas — no las fusiona ni te avisa.",
 	"export.exportButton": "Exportar",
 
-	// 5b. Cabeceras del CSV generico (src/export/adapters/CsvAdapter.ts)
+	// 5b. Generic CSV headers (src/export/adapters/CsvAdapter.ts)
 	"export.csv.headerDate": "Fecha",
 	"export.csv.headerStartTime": "Hora inicio",
 	"export.csv.headerEndTime": "Hora fin",
@@ -134,7 +134,7 @@ export const es: Record<TranslationKey, string> = {
 		"Versiones anteriores podían dejar el identificador de seguimiento (tt-id) en una posición que Tasks no reconocía en sus queries. Este botón revisa tus tareas y lo corrige — solo mueve el identificador, nada más, y puedes repetirlo cuando quieras.",
 	"settings.tasksCompat.button": "Reparar tareas",
 
-	// 7. Historial (src/ui/TimeLogView.ts)
+	// 7. Historial panel (src/ui/TimeLogView.ts)
 	"log.title": "Time Tracker",
 	"log.taskNotFound": "Tarea no encontrada",
 	"log.noteNotFound": "Nota no encontrada",
@@ -237,7 +237,7 @@ export const es: Record<TranslationKey, string> = {
 		"Tus sesiones anteriores siguen ahí — la última fue el {date}, fuera de esta ventana. Trackea algo y aparecerá aquí.",
 	"dashboard.emptyRecentButton": "Abrir historial",
 
-	// 8. Notices adicionales (src/main.ts, src/ui/TimeLogView.ts)
+	// 8. Additional notices (src/main.ts, src/ui/TimeLogView.ts)
 	"notice.noActiveSession": "No hay ninguna sesión de tracking activa.",
 	"notice.notATask": "La línea actual no es una tarea (checkbox).",
 	"notice.taskClosed": "Esta tarea ya está cerrada; no se puede trackear.",

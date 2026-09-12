@@ -1,8 +1,7 @@
 // ui/RecoveryModal.ts
-// Fase 1 — recuperacion al reabrir Obsidian (US6).
-// Responsabilidad: si al cargar el plugin queda una sesion marcada como
-// activa de un cierre anterior, preguntar que hacer. Nunca recupera en
-// silencio ni descarta el dato.
+// Responsibility: if a session is still marked active from a previous
+// close when the plugin loads, ask what to do. Never recovers silently
+// or discards the data.
 
 import { App, Modal } from "obsidian";
 import { t } from "../i18n";

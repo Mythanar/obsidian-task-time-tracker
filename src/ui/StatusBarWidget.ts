@@ -1,18 +1,16 @@
 // ui/StatusBarWidget.ts
-// Fase 1 — MVP de tracking local.
-// Responsabilidad: mostrar en el status bar de Obsidian la tarea activa
-// y el tiempo transcurrido (addStatusBarItem de la API publica).
-// Fase 5 UX (punto 3 del backlog): siempre muestra contenido, tambien en
-// reposo; recorta el nombre de la tarea; el clic abre el panel de
-// Historial (mismo destino en ambos estados).
+// Responsibility: show the active task and elapsed time in Obsidian's
+// status bar (addStatusBarItem from the public API). Always shows
+// content, even at rest; truncates the task name; clicking opens the
+// Historial panel (same destination in both states).
 
 import { Plugin } from "obsidian";
 import { formatDuration } from "../core/TrackingEngine";
 import { t } from "../i18n";
 import { TimeEntry } from "../types";
 
-// Corte a 40 caracteres con "..." al final para indicar que sigue; no
-// hace falta tooltip con el nombre completo (decision explicita).
+// Cut at 40 characters with "..." at the end to signal it continues; no
+// tooltip with the full name needed (an explicit choice).
 const MAX_TASK_TEXT_LENGTH = 40;
 
 export class StatusBarWidget {

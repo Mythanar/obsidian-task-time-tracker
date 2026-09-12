@@ -1,16 +1,12 @@
 // ui/positionPopover.ts
-// Mecanismo de anclaje compartido por los popovers flotantes del panel
-// (ProjectPickerList.ts, DatePickerPopover.ts): anclado por posicion
-// (getBoundingClientRect), no por ancho del contenedor padre — debe verse
-// igual en sidebar estrecho (~300px) y en tab ancho. Preferido debajo del
-// boton, alineado a su borde izquierdo; si no cabe verticalmente se
-// voltea encima, y horizontalmente se recorta contra los bordes de la
-// ventana con un margen fijo.
-//
-// Extraido de ProjectPickerList.ts (agosto 2026) tras el bug del
-// date-picker cortandose en sidebar estrecha: DatePickerPopover.ts habia
-// reimplementado su propio anclaje en vez de reutilizar este, que ya
-// resolvia el mismo problema en produccion.
+// Anchoring mechanism shared by the panel's floating popovers
+// (ProjectPickerList.ts, DatePickerPopover.ts): anchored by position
+// (getBoundingClientRect), not by the parent container's width — must
+// look the same in a narrow sidebar (~300px) and a wide tab. Preferred
+// below the button, aligned to its left edge; flips above if it doesn't
+// fit vertically, and clips against the window edges horizontally with a
+// fixed margin. Shared by both popovers on purpose (see docs/DECISIONS.md)
+// instead of each reimplementing its own anchoring.
 export function positionPopover(popoverEl: HTMLElement, anchorEl: HTMLElement, maxWidth = 300): void {
 	const rect = anchorEl.getBoundingClientRect();
 	const margin = 8;

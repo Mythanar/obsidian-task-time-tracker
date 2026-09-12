@@ -1,13 +1,10 @@
 // export/adapters/TogglCsvAdapter.ts
-// Fase 4 — Exportacion CSV para el importador nativo de Toggl.
-// Responsabilidad: convertir filas de exportacion ya resueltas a texto
-// CSV con las columnas exactas que espera el importador de Toggl. No
-// llama a la API de Toggl en ningun momento.
-// Fix urgente (pre-release) — Start date y Start time salen SIEMPRE en el
-// formato fijo que exige el importador de Toggl (YYYY-MM-DD y HH:MM:SS en
-// 24h), sin leer ningun ajuste de Settings: el importador real no admite
-// otro formato, asi que dejo de ser "configurable" y paso a ser un
-// requisito fijo del adapter. Ver
+// Responsibility: convert already-resolved export rows to CSV text with
+// the exact columns Toggl's importer expects. Never calls the Toggl API.
+// Start date and Start time ALWAYS come out in the fixed format Toggl's
+// importer requires (YYYY-MM-DD and 24h HH:MM:SS), without reading any
+// Settings value (see docs/DECISIONS.md): the real importer doesn't
+// accept any other format. See
 // https://support.toggl.com/en-us/article/toggl-track-csv-import-guide-yx49tl/#ITE
 
 export interface TogglExportRow {
@@ -16,16 +13,16 @@ export interface TogglExportRow {
 	startDate: string;
 	startTime: string;
 	duration: string;
-	// Fase 8 — Proyecto/Cliente asignado a la tarea (mismo origen que
-	// CsvAdapter.ts#ExportRow), cadena vacia si no tiene ninguno asignado.
-	// Siempre presentes en la fila; buildTogglCsv() decide si se escriben
-	// segun el ajuste "Incluir Proyecto y Cliente".
+	// Project/Client assigned to the task (same source as
+	// CsvAdapter.ts#ExportRow), empty string if none is assigned. Always
+	// present on the row; buildTogglCsv() decides whether they get
+	// written based on the "Include Project and Client" setting.
 	projectName: string;
 	clientName: string;
 }
 
 const BASE_HEADERS = ["Email", "Description", "Start date", "Start time", "Duration"];
-// Nombres exactos que espera el importador de Toggl (case-sensitive), ver
+// Exact names Toggl's importer expects (case-sensitive), see
 // https://support.toggl.com/en-us/article/toggl-track-csv-import-guide-yx49tl/#ITE
 const PROJECT_CLIENT_HEADERS = ["Project", "Client"];
 
@@ -54,10 +51,9 @@ function toCsvLine(fields: string[]): string {
 	return fields.map(escapeCsvField).join(",");
 }
 
-// includeProjectClient conmuta ambas columnas a la vez, nunca una sola —
-// mismo ajuste que Settings > Toggl > "Incluir Proyecto y Cliente" (ver
-// ExportManager.ts). Desactivado: comportamiento identico al anterior, 5
-// columnas.
+// includeProjectClient toggles both columns at once, never just one —
+// same setting as Settings > Toggl > "Include Project and Client" (see
+// ExportManager.ts). Off: identical behavior to before, 5 columns.
 export function buildTogglCsv(rows: TogglExportRow[], includeProjectClient: boolean): string {
 	const headers = includeProjectClient ? [...BASE_HEADERS, ...PROJECT_CLIENT_HEADERS] : BASE_HEADERS;
 	const lines = [

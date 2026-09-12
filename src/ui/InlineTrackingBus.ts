@@ -1,10 +1,9 @@
 // ui/InlineTrackingBus.ts
-// Fase 5 — UX: icono inline junto al checkbox.
-// Pub/sub minimo para avisar a los controles inline (montados en modo
-// Edicion via CodeMirror y en modo Lectura via post-processor) de que deben
-// releer el estado de tracking y redibujarse. No lleva payload: cada
-// suscriptor relee el estado fresco (getActiveEntry/getAccumulatedMs) en
-// vez de recibirlo por el evento, para no duplicar logica de calculo.
+// Minimal pub/sub to tell inline controls (mounted in Edit mode via
+// CodeMirror and in Read mode via post-processor) they must re-read the
+// tracking state and redraw. Carries no payload: each subscriber
+// re-reads the fresh state (getActiveEntry/getAccumulatedMs) instead of
+// receiving it through the event, to avoid duplicating calculation logic.
 export class InlineTrackingBus {
 	private listeners = new Set<() => void>();
 
