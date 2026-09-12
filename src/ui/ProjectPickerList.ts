@@ -1,11 +1,10 @@
 // ui/ProjectPickerList.ts
-// "Project picker list" — componente compartido (buscador + lista plana de
-// proyectos/clientes + seleccion), extraido del selector de Proyecto del
-// modal "Editar tarea" para reutilizarlo tambien en el filtro por proyecto
-// del header del Historial (ver TimeLogView.ts#renderProjectFilter y
-// EditTaskModal.ts). Vive siempre dentro de un popover flotante (ver
-// openProjectPickerPopover mas abajo): ningun caller lo monta suelto en
-// linea.
+// "Project picker list" — shared component (search box + flat list of
+// projects/clients + selection), extracted from the Project selector in
+// the "Edit task" modal to also reuse it in the Historial header's
+// project filter (see TimeLogView.ts#renderProjectFilter and
+// EditTaskModal.ts). Always lives inside a floating popover (see
+// openProjectPickerPopover below): no caller mounts it standalone inline.
 
 import { setIcon } from "obsidian";
 import { t } from "../i18n";
@@ -13,22 +12,22 @@ import { Project } from "../types";
 import { positionPopover } from "./positionPopover";
 
 export interface ProjectPickerListOptions {
-	// null: proyectos aun no disponibles, se muestra el skeleton (ver
-	// renderSkeleton()). Ningun caller actual pasa null hoy (ProjectManager
-	// resuelve de forma sincrona), pero el componente lo soporta como parte
-	// de su contrato.
+	// null: projects not yet available, the skeleton is shown (see
+	// renderSkeleton()). No current caller passes null today
+	// (ProjectManager resolves synchronously), but the component supports
+	// it as part of its contract.
 	projects: Project[] | null;
 	selectedId: string | null;
 	showClearOption: boolean;
-	// Fila fija "No project" para el filtro del header (ver
-	// TimeLogView.ts#renderProjectFilter): visualmente identica a la fila
-	// "Sin proyecto" de showClearOption, pero con semantica distinta (
-	// filtrar por ausencia de proyecto, no asignarla) y por eso con su
-	// propio estado de seleccion, independiente de selectedId — en el
-	// filtro selectedId===null es ambiguo entre "sin filtro" y "filtro No
-	// project", asi que ese estado se resuelve aparte. Mutuamente
-	// excluyente con showClearOption en la practica (ningun caller activa
-	// las dos), aunque el componente no lo impone.
+	// Fixed "No project" row for the header filter (see
+	// TimeLogView.ts#renderProjectFilter): visually identical to
+	// showClearOption's "No project" row, but with different semantics
+	// (filtering by absence of a project, not assigning it) and so with
+	// its own selection state, independent of selectedId — in the filter,
+	// selectedId===null is ambiguous between "no filter" and "No project
+	// filter", so that state is resolved separately. Mutually exclusive
+	// with showClearOption in practice (no caller enables both), though
+	// the component doesn't enforce it.
 	showNoProjectFilterOption?: boolean;
 	noProjectFilterSelected?: boolean;
 	onSelect: (projectId: string | null) => void;
@@ -64,9 +63,9 @@ export class ProjectPickerList {
 		this.renderList();
 	}
 
-	// Foco automatico al montar (ver acceptance criteria) — separado de
-	// render() para que el caller lo dispare solo una vez el popover ya
-	// esta posicionado y visible (ver openProjectPickerPopover).
+	// Automatic focus on mount (see acceptance criteria) — separate from
+	// render() so the caller only triggers it once the popover is
+	// already positioned and visible (see openProjectPickerPopover).
 	focusSearch(): void {
 		this.searchInput?.focus();
 	}
@@ -86,8 +85,8 @@ export class ProjectPickerList {
 			return;
 		}
 
-		// "Sin proyecto" queda fuera del orden alfabetico y del filtro de
-		// busqueda: es una accion fija, no un proyecto real que buscar.
+		// "No project" stays outside alphabetical order and the search
+		// filter: it's a fixed action, not a real project to search for.
 		if (showClearOption) {
 			this.renderRow(listEl, {
 				label: t("log.editModalNoProject"),
@@ -144,19 +143,17 @@ export class ProjectPickerList {
 		rowEl.toggleClass("task-time-tracker-project-picker-row-clear", row.isClear);
 		rowEl.toggleClass("is-selected", row.selected);
 
-		// Columna de ancho fijo siempre presente (con o sin check dentro):
-		// mantiene la misma altura/alineacion en todas las filas, con o sin
-		// seleccion activa.
+		// Fixed-width column always present (with or without a check
+		// inside): keeps the same height/alignment across all rows, with
+		// or without an active selection.
 		const check = rowEl.createSpan({ cls: "task-time-tracker-project-picker-check" });
 		if (row.selected) setIcon(check, "check");
 
-		// Dos lineas (nombre arriba, cliente debajo si lo hay): revertido
-		// tras QA con datos reales (agosto 2026) — el formato de una linea
-		// ("nombre · cliente") hacia desaparecer el proyecto entero con
-		// clientes de nombre largo, y truncaba ambos campos incluso en el
-		// caso normal. Cada linea trunca de forma independiente (ver CSS),
-		// asi que el nombre del proyecto se ve completo o truncado sin
-		// depender de lo largo que sea el cliente, y viceversa.
+		// Two lines (name on top, client below if any) rather than one
+		// "name · client" line (see docs/DECISIONS.md): each line
+		// truncates independently (see CSS), so the project name shows
+		// in full or truncated without depending on how long the client
+		// name is, and vice versa.
 		const label = rowEl.createDiv({ cls: "task-time-tracker-project-picker-label" });
 		label.createDiv({ text: row.label, cls: "task-time-tracker-project-picker-name" });
 		if (row.clientName) {
@@ -175,26 +172,26 @@ export interface ProjectPickerPopoverOptions {
 	showNoProjectFilterOption?: boolean;
 	noProjectFilterSelected?: boolean;
 	onSelect: (projectId: string | null) => void;
-	// Notifica al caller cuando el popover se cierra, por el motivo que
-	// sea (seleccion, click fuera, Escape). EditTaskModal lo usa para
-	// soltar su propio guard anti-cierre mientras el popover esta abierto
-	// (ver el comentario junto a outsideMousedownGuardUntil en
-	// EditTaskModal.ts) — el popover vive fuera de modalEl (appendeado a
-	// document.body para poder posicionarse con position: fixed sin
-	// depender del contenedor padre), asi que sin ese guard interactuar
-	// con el (buscar, clicar una fila) se veria como un click "fuera del
-	// modal" y lo cerraria de golpe.
+	// Notifies the caller when the popover closes, for whatever reason
+	// (selection, outside click, Escape). EditTaskModal uses it to
+	// release its own anti-close guard while the popover is open (see
+	// the comment next to outsideMousedownGuardUntil in
+	// EditTaskModal.ts) — the popover lives outside modalEl (appended to
+	// document.body so it can be positioned with position: fixed without
+	// depending on the parent container), so without that guard
+	// interacting with it (searching, clicking a row) would look like a
+	// click "outside the modal" and close it abruptly.
 	onClose?: () => void;
 }
 
-// Como mucho un popover de este componente abierto a la vez en toda la
-// app (un unico picker de proyecto visible en cada momento, igual que el
-// timer activo unico del MVP) — abrir uno nuevo cierra el anterior.
+// At most one popover of this component open at a time across the whole
+// app (a single project picker visible at any moment, same as the MVP's
+// single active timer) — opening a new one closes the previous one.
 let activePopover: { anchorEl: HTMLElement; close: () => void } | null = null;
 
 export function openProjectPickerPopover(options: ProjectPickerPopoverOptions): void {
-	// Clic en el mismo boton que ya tiene su popover abierto: lo cierra
-	// (toggle) en vez de abrir uno identico encima.
+	// Click on the same button that already has its popover open: closes
+	// it (toggle) instead of opening an identical one on top.
 	if (activePopover && activePopover.anchorEl === options.anchorEl) {
 		activePopover.close();
 		return;
@@ -234,10 +231,10 @@ export function openProjectPickerPopover(options: ProjectPickerPopoverOptions): 
 		options.onClose?.();
 	}
 
-	// El mousedown del propio clic que abrio este popover ya ocurrio antes
-	// de que este codigo se ejecute (mousedown -> mouseup -> click), asi
-	// que registrar el listener ahora no lo cierra de inmediato consigo
-	// mismo.
+	// The mousedown of the very click that opened this popover already
+	// happened before this code runs (mousedown -> mouseup -> click), so
+	// registering the listener now doesn't immediately close it on
+	// itself.
 	document.addEventListener("mousedown", onOutsideMousedown, true);
 	document.addEventListener("keydown", onKeydown, true);
 

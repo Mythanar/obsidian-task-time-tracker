@@ -1,19 +1,17 @@
 // ui/InlineTaskControlExtension.ts
-// Fase 5 — UX: icono play/stop junto al checkbox en modo Edicion
-// (Live Preview / CodeMirror 6). Dibuja un widget por cada linea de tarea
-// trackeable visible en el viewport; la presentacion la delega en
-// InlineTaskControlView, y la reactividad en vivo (numero subiendo cada
-// segundo, cambio de icono al iniciar/detener) en InlineTrackingBus — el
-// widget se suscribe una vez al montarse y no depende de que CodeMirror
-// vuelva a redibujar nada.
+// Play/stop icon next to the checkbox in Edit mode (Live Preview /
+// CodeMirror 6). Draws a widget for every trackable task line visible in
+// the viewport; delegates presentation to InlineTaskControlView, and
+// live reactivity (the number ticking up every second, icon change on
+// start/stop) to InlineTrackingBus — the widget subscribes once when it
+// mounts and doesn't depend on CodeMirror redrawing anything.
 //
-// El widget siempre se monta para cualquier linea de checkbox (abierta o
-// cerrada); es InlineTaskControlView quien decide si se ve algo o no
-// (p.ej. tarea cerrada sin historial = nada). Asi, cuando una sesion se
-// cierra y una tarea cerrada pasa a tener tiempo acumulado, no hace falta
-// forzar una reconstruccion de decoraciones: el propio bus.notify() (que ya
-// se dispara al detener el tracking) hace que el widget existente actualice
-// su badge.
+// The widget is always mounted for any checkbox line (open or closed);
+// it's InlineTaskControlView that decides whether anything is shown
+// (e.g. closed task with no history = nothing). So when a session closes
+// and a closed task gains accumulated time, there's no need to force a
+// rebuild of decorations: bus.notify() itself (already fired when
+// tracking stops) makes the existing widget update its badge.
 import { editorInfoField, TFile } from "obsidian";
 import { Extension, RangeSetBuilder } from "@codemirror/state";
 import { Decoration, DecorationSet, EditorView, ViewPlugin, ViewUpdate, WidgetType } from "@codemirror/view";
@@ -64,12 +62,12 @@ class InlineTaskControlWidget extends WidgetType {
 		(dom as HTMLElement & { _ttUnsubscribe?: () => void })._ttUnsubscribe?.();
 	}
 
-	// Busca la posicion y el contenido actuales de la linea en el momento
-	// del clic (via posAtDOM), en vez de confiar en this.lineText o en un
-	// numero de linea capturado al montar el widget: si hubo ediciones por
-	// encima de esta linea entre el montaje y el clic, la posicion podria
-	// haber cambiado aunque el widget se haya reutilizado (eq() solo mira
-	// el texto de la propia linea, no su posicion).
+	// Looks up the line's current position and content at the moment of
+	// the click (via posAtDOM), instead of trusting this.lineText or a
+	// line number captured when the widget mounted: if edits happened
+	// above this line between mounting and the click, the position could
+	// have changed even though the widget was reused (eq() only looks at
+	// the line's own text, not its position).
 	private handleStart(view: EditorView, control: InlineTaskControlView): void {
 		const pos = view.posAtDOM(control.el);
 		const line = view.state.doc.lineAt(pos);
@@ -100,9 +98,9 @@ function buildDecorations(view: EditorView, deps: InlineEditorControlDeps): Deco
 		while (pos <= to) {
 			const line = view.state.doc.lineAt(pos);
 			if (parseCheckboxLine(line.text) !== null) {
-				// Anclado al final de la linea (despues de cualquier
-				// contenido, incluido el tt-id::), nunca al principio: asi
-				// el checkbox y el texto de la tarea no se desplazan.
+				// Anchored to the end of the line (after any content,
+				// including the tt-id::), never at the start: this way the
+				// checkbox and the task's text never shift.
 				const widgetPos = line.to;
 				builder.add(
 					widgetPos,

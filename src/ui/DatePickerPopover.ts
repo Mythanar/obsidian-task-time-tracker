@@ -1,38 +1,26 @@
 // ui/DatePickerPopover.ts
-// Selector de fecha (ver nota "Selector de fecha en el panel Time
-// Tracker"): icono de calendario junto al navegador de fecha del
-// Historial, abre este popover para saltar directamente a un dia o una
-// semana concretos, sin recorrer las flechas dia a dia / semana a semana.
-// Mismo mecanismo de anclaje que ProjectPickerList.ts (ver
-// positionPopover.ts).
+// Date picker (see the "Selector de fecha en el panel Time Tracker"
+// note): calendar icon next to the Historial's date navigator, opens
+// this popover to jump straight to a specific day or week, without
+// stepping through the arrows day by day / week by week. Same anchoring
+// mechanism as ProjectPickerList.ts (see positionPopover.ts).
 //
-// Diseno definitivo (agosto 2026, ver Date Filter.dc.html aportado por el
-// usuario) — reemplaza el modelo de "seleccion pendiente + boton Aplicar"
-// de una iteracion anterior: cada clic (dia, semana, o "Hoy" del pie)
-// aplica de inmediato llamando a onChange, sin esperar confirmacion. El
-// picker NO se cierra al aplicar, solo con clic fuera (o Escape). Un
-// segundo clic en OTRO dia mientras hay un dia pendiente completa un
-// rango entre ambos puntos (con su propio aviso en el pie mientras se
-// espera ese segundo clic); un clic en un numero de semana siempre
-// reemplaza la seleccion por esa semana completa, nunca se une a un dia
-// previo para formar rango.
+// Every click (day, week, or the footer's "Today") applies immediately
+// by calling onChange, without waiting for confirmation. The picker does
+// NOT close on apply, only on an outside click (or Escape). A second
+// click on ANOTHER day while a day is pending completes a range between
+// both points (with its own hint in the footer while that second click
+// is awaited); a click on a week number always replaces the selection
+// with that full week, it never joins a previous day to form a range.
 //
-// onChange(start, end) es siempre un par: un dia suelto se emite como
-// (day, day). El caller (TimeLogView) decide que hacer con el rango:
-// start === end -> vista Dia; un rango que coincide exactamente con una
-// semana lunes-domingo -> vista Semana (el picker no distingue esto de
-// un click directo en el numero de semana, ni falta que hace); cualquier
-// otro rango arbitrario no navega todavia — pendiente de "Vista de
-// resultados por rango".
-//
-// El pie tenia hasta agosto 2026 un segundo boton "Limpiar" ademas de
-// "Hoy". El filtro de fecha no tiene un "apagado" real (a diferencia del
-// filtro de proyecto, la navegacion por fecha siempre muestra algun
-// dia/semana, nunca "ninguno"), asi que tras dos iteraciones de QA
-// "Limpiar" acabo siendo funcionalmente identico a "Hoy" (mismo
-// goToToday()) — dos botones para una sola accion. Eliminado por
-// redundante (decision del usuario, fix responsive de cabecera, agosto
-// 2026): "Hoy" es ahora el unico punto de salida del filtro de fecha.
+// onChange(start, end) is always a pair: a lone day is emitted as (day,
+// day). The caller (TimeLogView) decides what to do with the range:
+// start === end -> Day view; a range that matches a Monday-Sunday week
+// exactly -> Week view (the picker doesn't distinguish this from a
+// direct click on the week number, nor does it need to); any other
+// arbitrary range doesn't navigate yet — pending "Vista de resultados
+// por rango". The footer's removed "Limpiar" button is documented in
+// docs/DECISIONS.md.
 
 import { setIcon } from "obsidian";
 import { t } from "../i18n";
@@ -40,20 +28,18 @@ import { positionPopover } from "./positionPopover";
 
 export interface DatePickerPopoverOptions {
 	anchorEl: HTMLElement;
-	// Dia mostrado como seleccion inicial (normalmente el anchorDate del
-	// panel) y mes mostrado al abrir.
+	// Day shown as the initial selection (normally the panel's
+	// anchorDate) and month shown on open.
 	selectedDate: number;
-	// Fin del rango ya activo en el panel (fix QA agosto 2026 — release
-	// 0.0.29: antes de esto, reabrir el picker con una semana o un rango de
-	// resultados ya aplicado solo marcaba selectedDate como un dia suelto,
-	// perdiendo el resto del rango en el grid aunque el filtro siguiera
-	// activo). Opcional: si se omite, se asume selectedDate === fin (dia
-	// suelto), que es el comportamiento de siempre para Dia/Semana cuando
-	// el caller no tiene un rango que preservar.
+	// End of the range already active in the panel (see
+	// docs/DECISIONS.md). Optional: if omitted, selectedDate === end is
+	// assumed (a lone day), which is the usual behavior for Day/Week
+	// when the caller has no range to preserve.
 	selectedRangeEnd?: number;
-	// Se llama en cada clic que resuelve algo (dia, semana o "Hoy"), nunca
-	// en el clic que solo arranca un rango a medias — ver comentario de
-	// cabecera. start/end en ms (startOfDay); start <= end siempre.
+	// Called on every click that resolves something (day, week, or
+	// "Today"), never on the click that only starts a half-finished
+	// range — see the header comment. start/end in ms (startOfDay);
+	// start <= end always.
 	onChange: (start: number, end: number) => void;
 	onClose?: () => void;
 }
@@ -68,12 +54,12 @@ function startOfDay(ms: number): number {
 	return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0).getTime();
 }
 
-// Semana de lunes a domingo — mismo criterio que TimeLogView.ts#startOfWeek
-// (duplicado localmente: son cuatro lineas, no justifica un modulo
-// compartido solo para esto).
+// Monday-to-Sunday week — same criterion as
+// TimeLogView.ts#startOfWeek (duplicated locally: it's four lines, not
+// enough to justify a shared module just for this).
 function startOfWeek(ms: number): number {
 	const dayStart = startOfDay(ms);
-	const weekday = new Date(dayStart).getDay(); // 0 = domingo ... 6 = sabado
+	const weekday = new Date(dayStart).getDay(); // 0 = Sunday ... 6 = Saturday
 	const diffToMonday = weekday === 0 ? -6 : 1 - weekday;
 	return addDays(dayStart, diffToMonday);
 }
@@ -88,10 +74,9 @@ function addMonths(ms: number, months: number): number {
 	return new Date(d.getFullYear(), d.getMonth() + months, 1, 0, 0, 0, 0).getTime();
 }
 
-// Numero de semana ISO 8601: se define por el jueves de esa semana (lunes-
-// domingo) — el año que contiene ese jueves es el "año ISO", y el numero
-// de semana es el dia-del-año del jueves dividido entre 7, redondeado
-// hacia arriba.
+// ISO 8601 week number: defined by that week's (Monday-Sunday) Thursday
+// — the year containing that Thursday is the "ISO year", and the week
+// number is the Thursday's day-of-year divided by 7, rounded up.
 function isoWeekNumber(weekStartMonday: number): number {
 	const thursday = new Date(addDays(weekStartMonday, 3));
 	const firstJan = new Date(thursday.getFullYear(), 0, 1);
@@ -103,10 +88,10 @@ function formatShortDate(ms: number): string {
 	return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
-// Etiqueta del pie: mismo criterio que el label() del diseño definitivo
-// (Date Filter.dc.html) — dia suelto ("12 ago"), semana completa
-// ("Semana 34 · 12 ago – 18 ago"), rango dentro del mismo mes
-// ("12 – 18 ago") o cruzando mes ("12 ago – 18 sep").
+// Footer label: same criterion as the reference design's label() (Date
+// Filter.dc.html) — a lone day ("12 ago"), a full week ("Semana 34 · 12
+// ago – 18 ago"), a range within the same month ("12 – 18 ago"), or one
+// crossing months ("12 ago – 18 sep").
 function formatSelectionLabel(start: number, end: number): string {
 	if (start === end) return formatShortDate(start);
 
@@ -126,12 +111,12 @@ function formatSelectionLabel(start: number, end: number): string {
 	return `${formatShortDate(start)} – ${formatShortDate(end)}`;
 }
 
-// Como mucho un popover de este componente abierto a la vez (igual
-// criterio que ProjectPickerList.ts) — abrir uno nuevo cierra el
-// anterior. Independiente del singleton de ProjectPickerList: son dos
-// tipos de popover distintos, pero cada uno se cierra solo con que el
-// click caiga fuera de si mismo, asi que abrir uno mientras el otro esta
-// abierto ya lo cierra por el listener de "click fuera" del otro.
+// At most one popover of this component open at a time (same criterion
+// as ProjectPickerList.ts) — opening a new one closes the previous one.
+// Independent of ProjectPickerList's singleton: they're two different
+// popover types, but each closes as soon as a click falls outside
+// itself, so opening one while the other is open already closes it via
+// the other's "outside click" listener.
 let activePopover: {
 	anchorEl: HTMLElement;
 	popoverEl: HTMLElement;
@@ -139,20 +124,17 @@ let activePopover: {
 	close: () => void;
 } | null = null;
 
-// Reancla el popover activo a un nuevo elemento boton, sin cerrarlo ni
-// perder su estado interno (mes mostrado, seleccion pendiente de rango).
-// Necesario porque TimeLogView reconstruye su barra de navegacion entera
-// desde cero en cada render (container.empty()) — incluido el boton de
-// calendario, y ese render se dispara tambien desde el propio onChange de
-// este picker al aplicar una seleccion (dia/semana/rango). Sin reanclar,
-// tanto el listener de "clic fuera" como el singleton de apertura/cierre
-// seguian comparando contra el boton viejo, ya desmontado del DOM: un
-// segundo clic en el boton NUEVO se leia a la vez como "fuera" (el
-// listener del boton viejo lo cerraba) y como "abrir" (el propio handler
-// del boton nuevo), dando la sensacion de que el picker nunca llegaba a
-// cerrarse (bug QA agosto 2026). El caller debe llamar a esto tras cada
-// render con la referencia fresca al boton — no-op si no hay popover
-// abierto.
+// Reanchors the active popover to a new button element, without closing
+// it or losing its internal state (month shown, pending range
+// selection). Needed because TimeLogView rebuilds its whole navigation
+// bar from scratch on every render (container.empty()) — including the
+// calendar button, and that render is also triggered by this picker's
+// own onChange when a selection (day/week/range) is applied. Without
+// reanchoring, both the "outside click" listener and the open/close
+// singleton kept comparing against the old button, already unmounted
+// from the DOM (see docs/DECISIONS.md). The caller must call this after
+// every render with the fresh button reference — a no-op if no popover
+// is open.
 export function reanchorDatePickerPopover(newAnchorEl: HTMLElement): void {
 	if (!activePopover) return;
 	activePopover.anchorEl = newAnchorEl;
@@ -171,10 +153,10 @@ export function openDatePickerPopover(options: DatePickerPopoverOptions): void {
 	let displayMonth = startOfMonth(options.selectedDate);
 	let start = startOfDay(options.selectedDate);
 	let end = startOfDay(options.selectedRangeEnd ?? options.selectedDate);
-	// true entre el primer y el segundo clic de un rango de dias — el pie
-	// muestra un aviso mientras tanto (ver formatFooterLabel). Un clic en
-	// semana o en "Hoy" siempre lo deja en false: resuelven de inmediato,
-	// no son el primer paso de un rango.
+	// true between the first and second click of a day range — the
+	// footer shows a hint meanwhile (see formatFooterLabel). A click on
+	// a week or on "Today" always leaves it false: they resolve
+	// immediately, they're never the first step of a range.
 	let pending = false;
 
 	const headerEl = popoverEl.createDiv({ cls: "task-time-tracker-datepicker-header" });
@@ -196,9 +178,9 @@ export function openDatePickerPopover(options: DatePickerPopoverOptions): void {
 		renderGrid();
 	});
 
-	// Fila de nombres de dia: grid propio con la misma plantilla de
-	// columnas que cada fila de semana (ver renderGrid) — alinean por
-	// coincidencia de anchos, no por compartir un unico contenedor.
+	// Weekday name row: its own grid with the same column template as
+	// each week row (see renderGrid) — they align by matching widths, not
+	// by sharing a single container.
 	const weekdayHeaderEl = popoverEl.createDiv({ cls: "task-time-tracker-datepicker-weekday-header" });
 	weekdayHeaderEl.createDiv({ cls: "task-time-tracker-datepicker-cell task-time-tracker-datepicker-weekcol-header" });
 	const firstMondayOfWeekRow = startOfWeek(displayMonth);
@@ -216,10 +198,10 @@ export function openDatePickerPopover(options: DatePickerPopoverOptions): void {
 	todayBtn.addEventListener("click", () => goToToday());
 
 	function onDayClick(dayStart: number): void {
-		// Segundo clic en OTRO dia mientras hay un dia pendiente: completa
-		// el rango. Cualquier otro caso (sin pendiente, reclic sobre el
-		// mismo dia, o ya habia un rango resuelto) arranca un nuevo dia
-		// pendiente — solo dia+dia encadenados forman rango.
+		// Second click on ANOTHER day while a day is pending: completes
+		// the range. Any other case (no pending, re-click on the same
+		// day, or a range was already resolved) starts a new pending day
+		// — only chained day+day clicks form a range.
 		if (pending && dayStart !== start) {
 			const a = Math.min(start, dayStart);
 			const b = Math.max(start, dayStart);
@@ -263,10 +245,10 @@ export function openDatePickerPopover(options: DatePickerPopoverOptions): void {
 		const firstMonday = startOfWeek(displayMonth);
 		const lastOfMonth = addDays(addMonths(displayMonth, 1), -1);
 
-		// Numero de semanas variable segun el mes real (4 a 6), no un
-		// numero fijo — cada fila es su propio grid con la misma plantilla
-		// de columnas que la cabecera de dias, separadas por un borde
-		// superior.
+		// Variable number of weeks depending on the real month (4 to 6),
+		// not a fixed number — each row is its own grid with the same
+		// column template as the weekday header, separated by a top
+		// border.
 		let weekStart = firstMonday;
 		while (weekStart <= lastOfMonth) {
 			const thisWeekStart = weekStart;
@@ -277,9 +259,9 @@ export function openDatePickerPopover(options: DatePickerPopoverOptions): void {
 			const rowEl = gridEl.createDiv({ cls: "task-time-tracker-datepicker-week-row" });
 
 			const weekBtn = rowEl.createEl("button", {
-				// Prefijo "W" (ver diseño de referencia, Date Filter.dc.html):
-				// lo diferencia de un numero de dia a simple vista, no solo por
-				// estilo (punto 4, QA agosto 2026).
+				// "W" prefix (see the reference design, Date Filter.dc.html):
+				// tells it apart from a day number at a glance, not just by
+				// style.
 				text: `W${weekNumber}`,
 				cls: "task-time-tracker-datepicker-cell task-time-tracker-datepicker-weeknum",
 			});
@@ -331,9 +313,9 @@ export function openDatePickerPopover(options: DatePickerPopoverOptions): void {
 		options.onClose?.();
 	}
 
-	// Igual que en ProjectPickerList.ts: el mousedown que abrio este popover
-	// ya ocurrio antes de que este codigo se ejecute, asi que registrar el
-	// listener ahora no lo cierra de inmediato consigo mismo.
+	// Same as in ProjectPickerList.ts: the mousedown that opened this
+	// popover already happened before this code runs, so registering the
+	// listener now doesn't immediately close it on itself.
 	document.addEventListener("mousedown", onOutsideMousedown, true);
 	document.addEventListener("keydown", onKeydown, true);
 

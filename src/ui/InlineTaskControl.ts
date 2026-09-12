@@ -1,9 +1,9 @@
 // ui/InlineTaskControl.ts
-// Fase 5 — UX: badge tipo tag junto al checkbox de una tarea trackeable,
-// con icono play/stop y el tiempo total acumulado. Solo modo Edicion
-// (CodeMirror, ver InlineTaskControlExtension.ts): esta clase no sabe nada
-// de CM6, solo dibuja el estado y delega el clic a los callbacks que le
-// pasa la integracion.
+// Tag-like badge next to a trackable task's checkbox, with a play/stop
+// icon and the total accumulated time. Edit mode only (CodeMirror, see
+// InlineTaskControlExtension.ts): this class knows nothing about CM6, it
+// only draws the state and delegates the click to the callbacks the
+// integration passes it.
 
 import { Platform, setIcon } from "obsidian";
 import { formatDuration } from "../core/TrackingEngine";
@@ -19,10 +19,10 @@ export interface InlineTaskControlHandlers {
 	onStop: () => void;
 }
 
-// taskId y closed se toman como una foto fija tomada al montar el control:
-// el control solo se remonta cuando el texto de la linea cambia (ver eq()
-// en InlineTaskControlExtension.ts), asi que siguen siendo validos
-// mientras el DOM viva.
+// taskId and closed are taken as a fixed snapshot taken when the control
+// mounts: the control only remounts when the line's text changes (see
+// eq() in InlineTaskControlExtension.ts), so they stay valid for as long
+// as the DOM lives.
 export class InlineTaskControlView {
 	readonly el: HTMLElement;
 	private iconEl: HTMLElement;
@@ -36,22 +36,21 @@ export class InlineTaskControlView {
 		private handlers: InlineTaskControlHandlers,
 	) {
 		this.el = createSpan({ cls: "task-time-tracker-inline-control" });
-		// El icono de play (tarea abierta, sin historial, no activa) solo
-		// se revela por CSS al hacer :hover sobre la linea (ver
-		// styles.css) — en mobile no existe hover, asi que sin esto se
-		// quedaria invisible sin ninguna via para iniciar el tracking.
-		// Platform.isMobile no cambia en caliente, se fija una vez al
-		// montar el widget.
+		// The play icon (open task, no history, not active) is only
+		// revealed by CSS on :hover over the line (see styles.css) — on
+		// mobile there's no hover, so without this it would stay
+		// invisible with no way to start tracking. Platform.isMobile
+		// doesn't change live, it's fixed once when the widget mounts.
 		this.el.toggleClass("is-mobile", Platform.isMobile);
 		this.iconEl = this.el.createSpan({ cls: "task-time-tracker-inline-icon" });
-		// Punto pulsante, solo visible (via CSS, ver .is-active en
-		// styles.css) mientras esta tarea es la que tiene tracking activo.
+		// Pulsing dot, only visible (via CSS, see .is-active in
+		// styles.css) while this task is the one with active tracking.
 		this.dotEl = this.el.createSpan({ cls: "task-time-tracker-inline-dot" });
 		this.badgeEl = this.el.createSpan({ cls: "task-time-tracker-inline-badge" });
 
-		// Evita que el mousedown mueva el cursor del editor antes de que
-		// nuestro click se procese (mismo truco que usa Obsidian para sus
-		// propios checkboxes interactivos en Live Preview).
+		// Keeps mousedown from moving the editor's cursor before our
+		// click is processed (same trick Obsidian uses for its own
+		// interactive checkboxes in Live Preview).
 		this.el.addEventListener("mousedown", (evt) => evt.preventDefault());
 		this.el.addEventListener("click", (evt) => {
 			evt.preventDefault();
@@ -76,10 +75,10 @@ export class InlineTaskControlView {
 		const hasHistory = accumulatedMs > 0;
 
 		this.el.toggleClass("is-active", isActiveTask);
-		// Con al menos una sesion guardada, el badge (icono + contador) se
-		// mantiene siempre visible en vez de solo al hacer hover (ver
-		// styles.css); no aplica a is-static (cerrada), que ya es siempre
-		// visible por su cuenta.
+		// With at least one saved session, the badge (icon + counter)
+		// stays always visible instead of only on hover (see styles.css);
+		// doesn't apply to is-static (closed), which is already always
+		// visible on its own.
 		this.el.toggleClass("has-history", hasHistory);
 
 		if (isActiveTask && active) {
@@ -102,10 +101,10 @@ export class InlineTaskControlView {
 			return;
 		}
 
-		// Tarea abierta, no activa: icono de play siempre visible; el
-		// badge con el contador solo si ya tiene tiempo acumulado de
-		// sesiones anteriores (en cuyo caso has-history lo mantiene
-		// visible sin necesidad de hover).
+		// Open task, not active: play icon always visible; the badge
+		// with the counter only if it already has accumulated time from
+		// previous sessions (in which case has-history keeps it visible
+		// without needing hover).
 		this.el.toggleClass("is-static", false);
 		this.el.toggleClass("is-hidden", false);
 		this.iconEl.toggleClass("is-hidden", false);

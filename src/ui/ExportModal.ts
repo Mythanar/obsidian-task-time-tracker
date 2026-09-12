@@ -1,20 +1,16 @@
 // ui/ExportModal.ts
-// Fase 3 — Exportacion CSV (primer adapter).
-// Fase 4 — selector de formato de salida (CSV generico / CSV para Toggl).
-// Fase 5 — rediseno: "CSV para Toggl" deja de bloquearse en el selector.
-// Si el email de Toggl no es valido, el modal muestra un campo editable
-// ahi mismo (en vez de derivar a Settings) y lo persiste como el mismo
-// ajuste de Settings al exportar — no es un valor "solo para esta
-// exportacion".
-// Fase 9 — tercer formato "CSV para Clockify": mismo patron de email
-// editable in-place que Toggl, mas dos checkboxes propios ("Include
-// Project", "Include Client") — ver ClockifyCsvAdapter.ts. Ninguna columna
-// es obligatoria para el importador de Clockify (rectificado el 22 de
-// agosto de 2026, ver docs/Vault/Tareas/Clockify.md: el hallazgo original
-// venia del formulario manual "Add time", no del importador de CSV), asi
-// que ambos checkboxes son independientes entre si y arrancan desmarcados.
-// Responsabilidad: modal de seleccion de rango de fechas (desde/hasta) y
-// formato de exportacion.
+// Responsibility: modal for selecting the date range (from/to) and
+// export format.
+//
+// "CSV for Toggl" is never blocked in the format selector. If the Toggl
+// email isn't valid, the modal shows an editable field right there
+// (instead of sending the user to Settings) and persists it as the same
+// Settings value on export — it's never a value "just for this export".
+// The third format, "CSV for Clockify", follows the same in-place
+// editable email pattern as Toggl, plus its own two checkboxes ("Include
+// Project", "Include Client") — see ClockifyCsvAdapter.ts. No column is
+// actually required by Clockify's importer (see docs/DECISIONS.md), so
+// both checkboxes are independent of each other and start unchecked.
 
 import { App, ButtonComponent, Modal, Notice, Setting } from "obsidian";
 import { t } from "../i18n";
@@ -31,39 +27,36 @@ export class ExportModal extends Modal {
 	private fromValue: string;
 	private toValue: string;
 	private format: ExportFormat = "generic";
-	// Borrador local del email de Toggl: arranca con el valor ya guardado
-	// en Settings, pero no se escribe ahi hasta confirmar la exportacion
-	// (ver onSubmit del boton "Exportar") — asi un valor a medio escribir
-	// nunca contamina el ajuste real si el usuario cierra el modal sin
-	// exportar.
+	// Local draft of the Toggl email: starts with the value already saved
+	// in Settings, but isn't written there until the export is confirmed
+	// (see onSubmit on the "Export" button) — so a half-typed value never
+	// contaminates the real setting if the user closes the modal without
+	// exporting.
 	private togglEmailDraft: string;
 	private emailSetting: Setting | null = null;
 	private emailMessageEl: HTMLElement | null = null;
 	private exportButton: ButtonComponent | null = null;
-	// Casilla "Incluir Proyecto y Cliente" (Fase 8): a diferencia del email,
-	// no tiene un estado intermedio invalido que proteger, asi que se
-	// persiste de inmediato al cambiarla (via saveIncludeProjectClient), no
-	// se difiere hasta pulsar "Exportar".
+	// "Include Project and Client" checkbox: unlike the email, it has no
+	// invalid intermediate state to protect, so it persists immediately
+	// on change (via saveIncludeProjectClient), it isn't deferred until
+	// "Export" is pressed.
 	private includeProjectClientSetting: Setting | null = null;
 
-	// Fase 9 — mismo patron que los tres campos de Toggl de arriba, para
-	// Clockify: borrador local de email (no se persiste hasta "Exportar") y
-	// casillas "Include Project"/"Include Client" (se persisten al instante,
-	// sin estado intermedio invalido). El resto de mensajes informativos de
-	// este formato viven agrupados en clockifyInfoEl (ver mas abajo).
+	// Same pattern as the three Toggl fields above, for Clockify: a local
+	// email draft (not persisted until "Export") and "Include Project"/
+	// "Include Client" checkboxes (persisted instantly, no invalid
+	// intermediate state). The rest of this format's informational
+	// messages live grouped in clockifyInfoEl (see below).
 	private clockifyEmailDraft: string;
 	private clockifyEmailSetting: Setting | null = null;
 	private clockifyEmailMessageEl: HTMLElement | null = null;
 	private clockifyIncludeProjectSetting: Setting | null = null;
 	private clockifyIncludeClientSetting: Setting | null = null;
-	// Fase 9 rediseno — tres secciones separadas por linea divisoria, cada
-	// una con su propio encabezado: los checkboxes "Include Project"/
-	// "Include Client" (ninguno obligatorio, ver rectificacion del 22 de
-	// agosto de 2026 en docs/Vault/Tareas/Clockify.md), "Date format" y
-	// "Avoid duplicates in Clockify" (ambas notas permanentes, no ligadas al
-	// rango elegido). La antigua seccion "Project (required)" con estado
-	// dinamico warning/success se elimino: ya no aplica, Project se
-	// comporta igual que Client.
+	// Three sections separated by a divider line, each with its own
+	// heading: the "Include Project"/"Include Client" checkboxes (neither
+	// required, see docs/DECISIONS.md), "Date format", and "Avoid
+	// duplicates in Clockify" (both permanent notes, not tied to the
+	// chosen range).
 	private clockifyInfoEl: HTMLElement | null = null;
 
 	constructor(
@@ -89,13 +82,13 @@ export class ExportModal extends Modal {
 
 	onOpen(): void {
 		const { contentEl } = this;
-		// Correccion QA — mismo bug que en EditTaskModal.ts: un <h3> propio
-		// dentro de contentEl queda en su propia linea, por debajo del boton
-		// de cerrar (X) del modal, en vez de alineado con el. Usar el titulo
-		// nativo del Modal (this.setTitle(), publico) resuelve el
-		// desalineamiento de raiz: Obsidian ya lo posiciona en la misma fila
-		// que ese boton dentro de modal-header. Afecta a los tres formatos
-		// por igual (el titulo no depende de this.format).
+		// Same fix as EditTaskModal.ts: a plain <h3> inside contentEl ends
+		// up on its own line, below the modal's close (X) button, instead
+		// of aligned with it. Using the Modal's native title (this.setTitle(),
+		// public) fixes the misalignment at the root: Obsidian already
+		// positions it on the same row as that button inside modal-header.
+		// Affects all three formats alike (the title doesn't depend on
+		// this.format).
 		this.setTitle(t("export.title"));
 
 		new Setting(contentEl).setName(t("export.from")).addText((text) => {
@@ -121,11 +114,11 @@ export class ExportModal extends Modal {
 			});
 		});
 
-		// Visible siempre que el formato sea Toggl, sin importar si el email
-		// ya es valido — ver updateFormatFields() sobre por que la
-		// visibilidad del campo no puede depender de la validez. El aviso de
-		// abajo si reacciona a la validez, reutilizando las mismas clases de
-		// mensaje que el formulario de edicion de sesiones del Historial.
+		// Visible whenever the format is Toggl, regardless of whether the
+		// email is already valid — see updateFormatFields() for why the
+		// field's visibility can't depend on validity. The warning below
+		// does react to validity, reusing the same message classes as the
+		// Historial's session edit form.
 		this.emailSetting = new Setting(contentEl).setName(t("export.togglEmailLabel")).addText((text) =>
 			text
 				.setPlaceholder(t("export.emailPlaceholder"))
@@ -138,11 +131,11 @@ export class ExportModal extends Modal {
 		this.emailSetting.settingEl.addClass("task-time-tracker-export-email-setting");
 		this.emailMessageEl = contentEl.createEl("p", { cls: "task-time-tracker-log-edit-message" });
 
-		// Fase 8 — opt-in para incluir columnas Project/Client en el CSV de
-		// Toggl (la generacion de esas columnas es una tarea posterior). El
-		// texto de ayuda va en setDesc(), igual que en SettingsTab.ts — asi el
-		// propio layout del Setting (fila info+control de Obsidian) lo coloca
-		// debajo de la fila a ancho completo, sin solaparse con el switch.
+		// Opt-in for including Project/Client columns in the Toggl CSV
+		// (generating those columns is a later task). The help text goes
+		// in setDesc(), same as in SettingsTab.ts — so the Setting's own
+		// layout (Obsidian's info+control row) places it below the row at
+		// full width, without overlapping the switch.
 		this.includeProjectClientSetting = new Setting(contentEl)
 			.setName(t("export.includeProjectClientLabel"))
 			.setDesc(t("export.includeProjectClientHelp"))
@@ -154,9 +147,9 @@ export class ExportModal extends Modal {
 			);
 		this.includeProjectClientSetting.settingEl.addClass("task-time-tracker-export-include-project-client-setting");
 
-		// Fase 9 — mismo patron de email editable in-place que Toggl (ver
-		// bloque de arriba); visibilidad tambien depende solo del formato,
-		// nunca de la validez del email, mismo motivo.
+		// Same in-place editable email pattern as Toggl (see the block
+		// above); visibility also depends only on the format, never on
+		// the email's validity, same reason.
 		this.clockifyEmailSetting = new Setting(contentEl).setName(t("export.clockifyEmailLabel")).addText((text) =>
 			text
 				.setPlaceholder(t("export.emailPlaceholder"))
@@ -169,21 +162,20 @@ export class ExportModal extends Modal {
 		this.clockifyEmailSetting.settingEl.addClass("task-time-tracker-export-clockify-email-setting");
 		this.clockifyEmailMessageEl = contentEl.createEl("p", { cls: "task-time-tracker-log-edit-message" });
 
-		// Fase 9 rediseno — tres secciones separadas por linea divisoria en
-		// vez de un unico bloque de texto corrido, cada una con su propio
-		// encabezado. Visibilidad conjunta (todo el bloque depende solo del
-		// formato elegido, ver updateFormatFields()); el contenido de cada
-		// seccion individual se explica junto a su creacion mas abajo.
+		// Three sections separated by a divider line instead of one
+		// running block of text, each with its own heading. Visibility is
+		// shared (the whole block depends only on the chosen format, see
+		// updateFormatFields()); each individual section's content is
+		// explained next to its creation below.
 		this.clockifyInfoEl = contentEl.createDiv({ cls: "task-time-tracker-export-clockify-sections" });
 
-		// Seccion 1 — "Include Project" e "Include Client": los dos unicos
-		// checkboxes de Clockify, independientes entre si, ninguno obligatorio
-		// (rectificado el 22 de agosto de 2026, ver
-		// docs/Vault/Tareas/Clockify.md) — mismo comportamiento y mismo
-		// espiritu que ambos, asi que comparten seccion sin divisor entre
-		// ellos. El nombre de cada Setting hace de encabezado de su propia
-		// fila, sin duplicarlo aparte. Misma fuente de verdad que
-		// Settings > Clockify.
+		// Section 1 — "Include Project" and "Include Client": Clockify's
+		// only two checkboxes, independent of each other, neither
+		// required (see docs/DECISIONS.md) — same behavior and spirit for
+		// both, so they share a section with no divider between them.
+		// Each Setting's name acts as its own row's heading, not
+		// duplicated separately. Same source of truth as Settings >
+		// Clockify.
 		const checkboxesSection = this.clockifyInfoEl.createDiv({
 			cls: "task-time-tracker-export-clockify-section",
 		});
@@ -206,9 +198,9 @@ export class ExportModal extends Modal {
 				}),
 			);
 
-		// Seccion 2 — "Date format": que opcion elegir en el desplegable que
-		// Clockify muestra al importar (nuestro CSV genera siempre YYYY-MM-DD).
-		// Nota permanente, no ligada al rango elegido.
+		// Section 2 — "Date format": which option to pick in the dropdown
+		// Clockify shows on import (our CSV always generates
+		// YYYY-MM-DD). Permanent note, not tied to the chosen range.
 		const dateFormatSection = this.clockifyInfoEl.createDiv({ cls: "task-time-tracker-export-clockify-section" });
 		dateFormatSection.createEl("p", {
 			text: t("export.clockifyDateFormatHeading"),
@@ -219,14 +211,15 @@ export class ExportModal extends Modal {
 			cls: "task-time-tracker-export-clockify-note",
 		});
 
-		// Seccion 3 — "Avoid duplicates in Clockify": importar sesiones que ya
-		// estan en Clockify duplica las entradas, Clockify no fusiona ni
-		// avisa. Correccion QA — a diferencia de "Date format" (nota
-		// discreta, .task-time-tracker-export-clockify-note), esta es el
-		// unico aviso del modal sobre algo que puede fallar de verdad
-		// (duplicar horas sin darse cuenta): estilo warning destacado, mismas
-		// clases que ya usaba el aviso de sesiones sin proyecto antes de
-		// eliminarse esa seccion. Permanente, no ligada al rango elegido.
+		// Section 3 — "Avoid duplicates in Clockify": importing sessions
+		// already in Clockify duplicates the entries, Clockify doesn't
+		// merge or warn. Unlike "Date format" (a discreet note,
+		// .task-time-tracker-export-clockify-note), this is the modal's
+		// only warning about something that can genuinely go wrong
+		// (duplicating hours without noticing): a prominent warning
+		// style, same classes the "sessions with no project" warning used
+		// before that section was removed. Permanent, not tied to the
+		// chosen range.
 		const reimportSection = this.clockifyInfoEl.createDiv({ cls: "task-time-tracker-export-clockify-section" });
 		reimportSection.createEl("p", {
 			text: t("export.clockifyReimportHeading"),
@@ -255,13 +248,13 @@ export class ExportModal extends Modal {
 		return this.format === "clockify" && !isValidEmail(this.clockifyEmailDraft);
 	}
 
-	// La visibilidad de los campos de cada plataforma depende solo del
-	// formato elegido, nunca de la validez de su email: si dependiera de
-	// needsTogglEmail()/needsClockifyEmail(), el campo desaparecia a mitad
-	// de tecleo en cuanto el valor se volvia valido (p. ej. al perder el
-	// foco), justo cuando el usuario recien acababa de escribirlo. Los
-	// avisos y el boton "Exportar" si dependen del contenido actual (email
-	// tecleado, rango de fechas) — esos son los que deben reaccionar.
+	// Each platform's field visibility depends only on the chosen
+	// format, never on its email's validity: if it depended on
+	// needsTogglEmail()/needsClockifyEmail(), the field would disappear
+	// mid-typing as soon as the value became valid (e.g. on losing
+	// focus), right when the user had just finished typing it. The
+	// warnings and the "Export" button do depend on the current content
+	// (typed email, date range) — those are the ones that should react.
 	private updateFormatFields(): void {
 		const showToggl = this.format === "toggl";
 		const showClockify = this.format === "clockify";
@@ -319,9 +312,9 @@ export class ExportModal extends Modal {
 			return;
 		}
 
-		// Unica fuente de verdad: si se tecleo un email nuevo en este modal,
-		// se persiste como el mismo ajuste de Settings > [Plataforma] > Email
-		// antes de exportar, no como un valor exclusivo de esta exportacion.
+		// Single source of truth: if a new email was typed in this modal,
+		// it's persisted as the same Settings > [Platform] > Email setting
+		// before exporting, not as a value exclusive to this export.
 		if (this.format === "toggl" && this.togglEmailDraft !== this.toggl.email) {
 			await this.saveTogglEmail(this.togglEmailDraft);
 		}

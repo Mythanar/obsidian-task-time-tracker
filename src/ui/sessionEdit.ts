@@ -1,25 +1,24 @@
 // ui/sessionEdit.ts
-// Fase 5 UX / rediseno "Editar tarea desde el Historial" — funciones puras
-// de fecha/hora y el renderer de solo lectura de una sesion, compartidos
-// entre TimeLogView.ts (tarjeta, detalle expandido de solo lectura) y
-// EditTaskModal.ts (unica via de edicion de sesiones desde el rediseno).
+// Pure date/time functions and the read-only session renderer, shared
+// between TimeLogView.ts (card, expanded read-only detail) and
+// EditTaskModal.ts (the only way to edit sessions).
 
 import { Platform } from "obsidian";
 import { formatDuration } from "../core/TrackingEngine";
 import { t } from "../i18n";
 import { TimeEntry } from "../types";
 
-// Estado transitorio de edicion de una sesion dentro del modal: solo una a
-// la vez, nunca se persiste. Un clic fuera de la fila no la descarta (solo
-// Guardar/Cancelar/Eliminar lo hacen). Los cuatro campos (fecha inicio,
-// hora inicio, fecha fin, hora fin) son campos de texto simples
-// ("YYYY-MM-DD"/"HH:MM:SS"), incluida la fecha de fin: deja de inferirse
-// por comparacion de horas y pasa a ser un dato mas que el usuario
-// controla directamente. Si se cancela, la sesion original queda intacta.
-// {campo}Evaluated: si ese campo ya paso por blur o alcanzo longitud
-// completa al menos una vez desde el ultimo cambio (ver bindDraftField en
-// EditTaskModal.ts) — mientras no sea asi, un formato invalido no se
-// muestra todavia (el usuario sigue escribiendo).
+// Transient editing state for a session inside the modal: only one at a
+// time, never persisted. A click outside the row doesn't discard it
+// (only Save/Cancel/Delete do). The four fields (start date, start time,
+// end date, end time) are plain text fields ("YYYY-MM-DD"/"HH:MM:SS"),
+// including the end date: it's no longer inferred by comparing times,
+// it's just another value the user controls directly. If cancelled, the
+// original session stays intact.
+// {field}Evaluated: whether that field has gone through blur or reached
+// full length at least once since the last change (see bindDraftField in
+// EditTaskModal.ts) — until then, an invalid format isn't shown yet (the
+// user is still typing).
 export interface EditDraft {
 	entryId: string;
 	startDate: string;
@@ -52,7 +51,7 @@ export function formatDateInput(ms: number): string {
 	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
-// "HH:MM:SS" en hora local (ver EditDraft).
+// "HH:MM:SS" in local time (see EditDraft).
 export function formatHMS(ms: number): string {
 	const d = new Date(ms);
 	return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
@@ -64,15 +63,14 @@ export function parseTimeInput(value: string): ParsedTime | null {
 	return { hours: Number(match[1]), minutes: Number(match[2]), seconds: Number(match[3]) };
 }
 
-// Devuelve la medianoche local de esa fecha, o null si el campo no tiene
-// el formato "YYYY-MM-DD" que produce <input type="date">, o si el dia no
-// existe en ese mes/año (ej. "2026-08-88", o "2026-02-29" en un año no
-// bisiesto). El constructor de Date por si solo NO rechaza esto: hace
-// overflow silencioso hacia meses/años siguientes (new Date(2026, 7, 88)
-// da octubre), asi que se reconstruye la fecha y se compara componente a
-// componente contra lo tecleado — si Date la reinterpreto, alguno no
-// coincide y se rechaza. Bug critico QA 0.0.29: sin este chequeo, un dia
-// fuera de rango se guardaba como una fecha distinta sin ningun aviso.
+// Returns that date's local midnight, or null if the field doesn't have
+// the "YYYY-MM-DD" format <input type="date"> produces, or if the day
+// doesn't exist in that month/year (e.g. "2026-08-88", or "2026-02-29"
+// in a non-leap year). The Date constructor alone does NOT reject this:
+// it silently overflows into following months/years (new Date(2026, 7,
+// 88) gives October), so the date is rebuilt and compared
+// component-by-component against what was typed — if Date reinterpreted
+// it, something won't match and it's rejected (see docs/DECISIONS.md).
 export function parseDateInput(value: string): number | null {
 	const match = value.match(DATE_INPUT_REGEX);
 	if (!match) return null;
@@ -89,12 +87,12 @@ function combineDateAndTime(dateAtMidnightMs: number, time: ParsedTime): number 
 	return new Date(d.getFullYear(), d.getMonth(), d.getDate(), time.hours, time.minutes, time.seconds, 0).getTime();
 }
 
-// Numero de dias naturales de diferencia entre la fecha (parte de fecha,
-// sin hora) de startMs y la de endMs — para el badge "+N" de la fila de
-// sesion estatica. Ambas fechas se normalizan con Date.UTC(y, m, d) — no
-// con resta directa de timestamps ni con dias * 86400000 en hora local —
-// para que el resultado sea siempre un entero exacto incluso si el rango
-// cruza un cambio de horario de verano/invierno entre esas dos fechas.
+// Number of calendar days difference between startMs's date (date part,
+// no time) and endMs's — for the static session row's "+N" badge. Both
+// dates are normalized with Date.UTC(y, m, d) — not a direct timestamp
+// subtraction or days * 86400000 in local time — so the result is
+// always an exact integer even if the range crosses a daylight saving
+// change between those two dates.
 function getDaySpan(startMs: number, endMs: number): number {
 	const s = new Date(startMs);
 	const e = new Date(endMs);
@@ -103,20 +101,20 @@ function getDaySpan(startMs: number, endMs: number): number {
 	return Math.round((endUtc - startUtc) / 86400000);
 }
 
-// Dos rangos [start, end) se solapan si cada uno empieza antes de que el
-// otro termine. Una sesion activa (sin end) se trata como si terminara
-// "ahora" a estos efectos.
+// Two [start, end) ranges overlap if each starts before the other ends.
+// An active session (no end) is treated as if it ended "now" for this
+// purpose.
 export function rangesOverlap(startA: number, endA: number, startB: number, endB: number): boolean {
 	return startA < endB && startB < endA;
 }
 
 export type DraftResolution = { ok: true; start: number; end: number } | { ok: false; error: string };
 
-// Resuelve el rango final a partir de los cuatro campos del borrador, tal
-// cual los dejo el usuario (segundos incluidos, sin forzar nada). Fecha de
-// fin y fecha de inicio son independientes: quien decide si la sesion
-// cruza medianoche (o varios dias) es la propia fecha de fin tecleada, no
-// una inferencia por comparacion de horas.
+// Resolves the final range from the draft's four fields, exactly as the
+// user left them (seconds included, nothing forced). End date and start
+// date are independent: what decides whether the session crosses
+// midnight (or several days) is the typed end date itself, not an
+// inference by comparing times.
 export function resolveDraftTimestamps(draft: EditDraft): DraftResolution {
 	const startDateMs = parseDateInput(draft.startDate);
 	const endDateMs = parseDateInput(draft.endDate);
@@ -133,10 +131,10 @@ export function resolveDraftTimestamps(draft: EditDraft): DraftResolution {
 	};
 }
 
-// Para la punta que no se ha tocado (su texto sigue siendo el mismo con el
-// que se abrio la edicion, tanto fecha como hora), se usa el timestamp
-// real de la sesion en vez del reconstruido por resolveDraftTimestamps() —
-// evita cualquier diferencia de precision entre ambos calculos.
+// For the end that hasn't been touched (its text is still the same it
+// had when editing opened, both date and time), the session's real
+// timestamp is used instead of the one resolveDraftTimestamps()
+// rebuilt — avoids any precision difference between the two calculations.
 export function effectiveRange(draft: EditDraft, entry: TimeEntry, resolved: { start: number; end: number }) {
 	const startUnchanged = draft.startDate === formatDateInput(entry.start) && draft.startTime === formatHMS(entry.start);
 	const endUnchanged =
@@ -147,15 +145,15 @@ export function effectiveRange(draft: EditDraft, entry: TimeEntry, resolved: { s
 	};
 }
 
-// Fecha + hora inicio + hora fin (con indicador "+N" si abarca mas de un
-// dia natural) + duracion. Solo lectura: unico renderer de una fila de
-// sesion, usado tanto por la tarjeta (detalle expandido) como por el modal
-// de Editar (filas no seleccionadas para edicion). onLiveTick, si se pasa,
-// se invoca con el elemento del contador de una sesion en curso para que
-// el llamador la registre en su propio mecanismo de tick por segundo (la
-// tarjeta ya tiene uno via el bus de tracking; el modal, al ser una
-// superficie transitoria, no necesita uno propio y deja el valor estatico
-// tal cual estaba al abrir).
+// Date + start time + end time (with a "+N" indicator if it spans more
+// than one calendar day) + duration. Read-only: the single renderer for
+// a session row, used both by the card (expanded detail) and by the Edit
+// modal (rows not selected for editing). onLiveTick, if passed, is
+// invoked with an ongoing session's counter element so the caller can
+// register it in its own per-second tick mechanism (the card already has
+// one via the tracking bus; the modal, being a transient surface,
+// doesn't need its own and leaves the value static as it was when it
+// opened).
 export function renderSessionInfo(
 	container: Element,
 	entry: TimeEntry,
@@ -163,10 +161,9 @@ export function renderSessionInfo(
 ): void {
 	const info = container.createDiv({ cls: "task-time-tracker-log-session-info" });
 
-	// Columna izquierda (fecha + rango horario): agrupada aparte de la
-	// duracion para que esta ultima quede siempre alineada a la derecha,
-	// con un min-width fijo en la fecha para que actue como columna
-	// consistente entre filas.
+	// Left column (date + time range): grouped apart from the duration
+	// so the latter always stays aligned right, with a fixed min-width
+	// on the date so it acts as a consistent column across rows.
 	const left = info.createDiv({ cls: "task-time-tracker-log-session-left" });
 	const startDate = new Date(entry.start);
 	left.createSpan({ text: startDate.toLocaleDateString(), cls: "task-time-tracker-log-session-date" });
@@ -179,10 +176,10 @@ export function renderSessionInfo(
 		const daySpan = getDaySpan(entry.start, entry.end);
 		if (daySpan > 0) {
 			rangeSpan.createSpan({ text: ` +${daySpan}`, cls: "task-time-tracker-log-nextday-badge" });
-			// Fecha de fin de apoyo, solo junto al badge: en sesiones largas
-			// (+N grande) evita que el usuario tenga que calcular a mano la
-			// fecha final a partir de la de inicio. No se renderiza en
-			// mobile: el ancho de pantalla ahi es mas critico.
+			// Supporting end date, only next to the badge: on long
+			// sessions (large +N) it saves the user from manually
+			// calculating the end date from the start date. Not rendered
+			// on mobile: screen width is more critical there.
 			if (!Platform.isMobile) {
 				rangeSpan.createSpan({
 					text: ` (${new Date(entry.end).toLocaleDateString()})`,
@@ -202,9 +199,9 @@ export function renderSessionInfo(
 		return;
 	}
 
-	// Sesion en curso: mismo punto pulsante + contador que ya usan el badge
-	// junto al checkbox y el boton de stop de la tarjeta activa, en vez de
-	// un guion suelto.
+	// Ongoing session: same pulsing dot + counter already used by the
+	// badge next to the checkbox and the active card's stop button,
+	// instead of a lone dash.
 	const live = info.createDiv({
 		cls: "task-time-tracker-log-session-duration task-time-tracker-log-session-live",
 	});

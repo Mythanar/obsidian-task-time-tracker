@@ -1230,6 +1230,54 @@ resultado final.
   fecha. Se elimina también la clave de traducción
   `log.datePickerClear`, sin más usos en el codebase.
 
+## Shared popover anchoring (positionPopover.ts)
+
+- **Extracted from ProjectPickerList.ts into its own module after a bug
+  where the date-picker got clipped in a narrow sidebar:**
+  `DatePickerPopover.ts` had reimplemented its own anchoring instead of
+  reusing ProjectPickerList's, which already solved the same problem in
+  production. `positionPopover()` is now the single anchoring
+  implementation both popovers share.
+
+## ProjectPickerList — two-line row instead of "name · client"
+
+- **Reverted to a two-line row (name on top, client below) after QA
+  with real data:** the original single-line "name · client" format
+  made the whole project disappear for long client names, and
+  truncated both fields even in the normal case. Each line now
+  truncates independently (see CSS), so the project name shows in
+  full or truncated regardless of how long the client name is, and
+  vice versa.
+
+## sessionEdit.ts — silent Date overflow on invalid day (critical, 0.0.29)
+
+- **Critical bug: an out-of-range day (e.g. "2026-08-88", or
+  "2026-02-29" in a non-leap year) in the session edit form's date
+  field was saved as a different date with no warning.** The `Date`
+  constructor alone doesn't reject an invalid day, it silently
+  overflows into following months/years (`new Date(2026, 7, 88)` gives
+  October). Fix: `parseDateInput()` rebuilds the date from its
+  components and compares it against what was typed — if `Date`
+  reinterpreted it, the mismatch is caught and the input is rejected
+  instead of silently saving the wrong day.
+
+## DatePickerPopover — two reopening/re-render bugs
+
+- **`selectedRangeEnd` added to `DatePickerPopoverOptions`:** reopening
+  the picker with a week or a results range already applied only
+  marked `selectedDate` as a lone day, losing the rest of the range in
+  the grid even though the filter was still active. The option is
+  optional — omitting it keeps the old lone-day behavior for Day/Week
+  when the caller has no range to preserve.
+- **`reanchorDatePickerPopover()` added:** TimeLogView rebuilds its
+  whole navigation bar from scratch on every render, including the
+  calendar button. Without reanchoring the open popover to the fresh
+  button, a second click on the new button read simultaneously as
+  "outside" (the old button's listener closed it) and "open" (the new
+  button's own handler), so the picker never seemed to actually close.
+  The caller now calls `reanchorDatePickerPopover()` after every render
+  with the fresh button reference.
+
 ## Seguridad frente a sync multi-dispositivo (leer-antes-de-escribir)
 
 - **El estado en memoria deja de ser la fuente de verdad al escribir.**
