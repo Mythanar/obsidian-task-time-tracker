@@ -1,12 +1,12 @@
 // i18n/en.ts
-// Fase 6 — diccionario base (idioma por defecto). El tipo TranslationKey
-// de todo el sistema de i18n se deriva de las claves de este objeto (ver
-// index.ts), asi que es.ts queda obligado por TypeScript a declarar
-// exactamente el mismo conjunto de claves, ni una de mas ni una de menos.
-// Contenido y claves fijados en docs/glosario-traduccion-i18n.md.
+// Base dictionary (default language). The TranslationKey type for the
+// whole i18n system is derived from this object's keys (see index.ts),
+// so TypeScript forces es.ts to declare exactly the same set of keys,
+// not one more or one less. Content and keys fixed in
+// docs/glosario-traduccion-i18n.md.
 
 export const en = {
-	// 1. Paleta de comandos (src/main.ts)
+	// 1. Command palette (src/main.ts)
 	"cmd.start": "Start tracking on current task",
 	"cmd.stop": "Stop active tracking",
 	"cmd.openLog": "Open time log panel",
@@ -20,13 +20,13 @@ export const en = {
 	"ribbon.tooltip": "Task Time Tracker",
 	"ribbon.dashboardItem": "Dashboard",
 
-	// 4. Modal de recuperacion (src/ui/RecoveryModal.ts)
+	// 4. Recovery modal (src/ui/RecoveryModal.ts)
 	"recovery.title": "Unclosed tracking session",
 	"recovery.body": 'You had "{taskText}" running since {datetime}. What do you want to do?',
 	"recovery.closeNow": "Close now",
 	"recovery.keepGoing": "Keep tracking",
 
-	// 5. Modal de exportacion (src/ui/ExportModal.ts)
+	// 5. Export modal (src/ui/ExportModal.ts)
 	"export.title": "Export sessions",
 	"export.from": "From",
 	"export.to": "To",
@@ -61,12 +61,12 @@ export const en = {
 		"Importing sessions that are already in Clockify creates duplicate entries — it doesn't merge or warn you.",
 	"export.exportButton": "Export",
 
-	// 5b. Cabeceras del CSV generico (src/export/adapters/CsvAdapter.ts) —
-	// a diferencia de las del CSV de Toggl (fijas, las lee su importador),
-	// estas SI siguen el idioma de Obsidian: es un CSV de proposito
-	// general, sin importador externo que imponga nombres de columna.
-	// "tt-id" queda fuera de esta lista: es un identificador tecnico, no
-	// texto de interfaz (ver docs/glosario-traduccion-i18n.md, seccion 9).
+	// 5b. Generic CSV headers (src/export/adapters/CsvAdapter.ts) —
+	// unlike the Toggl CSV's (fixed, read by its importer), these DO
+	// follow Obsidian's language: it's a general-purpose CSV, with no
+	// external importer imposing column names. "tt-id" is left out of
+	// this list: it's a technical identifier, not interface text (see
+	// docs/glosario-traduccion-i18n.md, section 9).
 	"export.csv.headerDate": "Date",
 	"export.csv.headerStartTime": "Start time",
 	"export.csv.headerEndTime": "End time",
@@ -138,7 +138,7 @@ export const en = {
 		"Earlier versions could leave the tracking identifier (tt-id) in a position Tasks didn't recognize in its queries. This button reviews your tasks and fixes it — it only moves the identifier, nothing else, and you can repeat it whenever you want.",
 	"settings.tasksCompat.button": "Repair tasks",
 
-	// 7. Historial (src/ui/TimeLogView.ts)
+	// 7. Historial panel (src/ui/TimeLogView.ts)
 	"log.title": "Time Tracker",
 	"log.taskNotFound": "Task not found",
 	"log.noteNotFound": "Note not found",
@@ -211,10 +211,10 @@ export const en = {
 	"log.resultsEmptyJoiner": "and",
 	"log.resultsFilterRemoveButton": "Remove filters",
 
-	// 7b. Dashboard (src/ui/DashboardView.ts) — ventana fija de 30 dias
-	// naturales (hoy + los 29 anteriores), sin selector de rango (ver
-	// brief "Dashboard"). "·" y "longest first" no llevan unidad propia
-	// a traducir aparte, mismo criterio que el resto del glosario.
+	// 7b. Dashboard (src/ui/DashboardView.ts) — fixed 30-calendar-day
+	// window (today + the previous 29), no range selector (see the
+	// "Dashboard" brief). "·" and "longest first" carry no separate unit
+	// to translate, same criterion as the rest of the glossary.
 	"dashboard.title": "Dashboard",
 	"dashboard.last30Days": "Last 30 days",
 	"dashboard.byProjectHeading": "By project",
@@ -243,7 +243,7 @@ export const en = {
 		"Your earlier sessions are still there — the last one was on {date}, outside this window. Track something and it will appear here.",
 	"dashboard.emptyRecentButton": "Open history",
 
-	// 8. Notices adicionales (src/main.ts, src/ui/TimeLogView.ts)
+	// 8. Additional notices (src/main.ts, src/ui/TimeLogView.ts)
 	"notice.noActiveSession": "No active tracking session.",
 	"notice.notATask": "The current line isn't a task (checkbox).",
 	"notice.taskClosed": "This task is already closed; it can't be tracked.",
