@@ -253,6 +253,26 @@ una entrada aquí.
   respaldo. Motivo: cumplir literalmente "debe aparecer deshabilitada"
   y no solo fallar tarde con un aviso de error.
 
+## Toggl settings — dateFormat/timeFormat removed pre-release
+
+- **`TogglSettings` originally let the user pick a date/time format;
+  those fields were removed before release.** Toggl's real CSV importer
+  requires a fixed format (YYYY-MM-DD, 24h HH:MM:SS) and doesn't accept
+  a user-chosen one, so the format is now fixed in
+  `TogglCsvAdapter.ts`, not configurable. An older `data.json` carrying
+  `dateFormat`/`timeFormat` keys leaves them as unused orphaned
+  properties: not read, don't break loading, not migrated.
+
+## Clockify settings — Project column is not actually required
+
+- **The original research behind `ClockifySettings.includeProject` said
+  Project was mandatory for Clockify's CSV importer; that finding was
+  wrong** (corrected 2026-08-22, see `docs/Vault/Tareas/Clockify.md`).
+  It came from Clockify's manual "Add time" form, not from the
+  importer itself. `includeProject` exists on equal footing with
+  `includeClient` — both opt-in, independent of each other, unchecked
+  by default, same "clean vault by default" criterion as Toggl.
+
 
 ## Fase 5
 
@@ -830,6 +850,21 @@ una entrada aquí.
   "fantasma" de 0 segundos junto a la sesión real al iniciar tracking
   con la nota duplicada en paneles. Anotado para si vuelve a aparecer;
   no forma parte de este fix.
+
+## TaskIdentifier — cold-start "Task not found" (empty editor buffer)
+
+- **Same bug family as "paneles duplicados" above, different trigger:**
+  right after Obsidian starts, a `MarkdownView` can exist with its `file`
+  already assigned but its editor not yet loaded with real content (an
+  empty buffer for an instant). `searchFiles()` in `TaskIdentifier.ts`
+  must not treat that empty live-editor candidate as proof the `tt-id`
+  isn't on that note — otherwise a task tracked today, checked right at
+  startup, would wrongly resolve as "Task not found" even though the
+  underlying data was correct.
+- **Fix already in place:** `searchFiles()` always falls through to
+  `vault.cachedRead()` when no live editor candidate matches, regardless
+  of whether the file appears open — absence in a live buffer is never
+  treated as absence in the note.
 
 ## Fase 5 — icono de nota en tarjetas "Task not found"
 

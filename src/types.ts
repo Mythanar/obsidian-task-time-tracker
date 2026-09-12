@@ -1,10 +1,10 @@
 // types.ts
-// Modelo de datos compartido.
-// Fase 2 — el vinculo tarea<->sesion es exclusivamente el identificador
-// inline tt-id:: (ver core/TaskIdentifier.ts), nunca el texto ni la ruta.
-// Fase 3 fix — taskText y filePath son snapshots inmutables tomados al
-// iniciar la sesion; nunca se reescriben despues (ni siquiera al cerrar
-// la sesion o al trackear la misma tarea desde otra nota).
+// Shared data model.
+// The task<->session link is exclusively the inline tt-id:: identifier
+// (see core/TaskIdentifier.ts), never the text or the path. taskText and
+// filePath are immutable snapshots taken when the session starts; they
+// are never rewritten afterward (not even when closing the session or
+// tracking the same task from another note).
 
 export interface TimeEntry {
 	id: string;
@@ -15,61 +15,56 @@ export interface TimeEntry {
 	end: number | null;
 }
 
-// Fase 8 — proyectos/clientes para los futuros adapters de exportacion
-// (Clockify y otros esperan columnas Project/Client en su importador). La
-// identidad unica de un proyecto es la pareja (name, client) completa, no
-// el nombre en solitario: dos clientes distintos pueden llamar igual a su
-// proyecto (ver core/ProjectManager.ts). client ausente cuenta como su
-// propio valor a efectos de esa unicidad (no equivale a client: "").
+// Projects/clients for future export adapters (Clockify and others
+// expect Project/Client columns in their importer). A project's unique
+// identity is the full (name, client) pair, not the name alone: two
+// different clients can name their project the same way (see
+// core/ProjectManager.ts). An absent client counts as its own value for
+// that uniqueness (not equivalent to client: "").
 export interface Project {
 	id: string;
 	name: string;
 	client?: string;
 }
 
-// Fase 4 — ajustes de Toggl, campos manuales (nunca se consultan via API).
-// Fix urgente pre-release — dateFormat/timeFormat se eliminaron: el
-// importador real de Toggl exige un formato fijo (YYYY-MM-DD, HH:MM:SS
-// 24h), no admite el que el usuario eligiera aqui. Formato ahora fijo en
-// TogglCsvAdapter.ts, no configurable. Si un data.json anterior trae esas
-// claves, quedan como propiedades huerfanas sin uso: no se leen, no
-// rompen la carga, no se migran.
+// Toggl settings, manual fields (never queried via API). The date/time
+// format is fixed in TogglCsvAdapter.ts, not configurable: Toggl's real
+// importer requires a fixed format (YYYY-MM-DD, 24h HH:MM:SS) and doesn't
+// accept a user-chosen one. If an older data.json carries dateFormat/
+// timeFormat keys, they're left as unused orphaned properties: not read,
+// don't break loading, not migrated.
 //
-// Fase 8 — opt-in para incluir columnas Project/Client en el CSV de Toggl
-// (la generacion de esas columnas es una tarea posterior, bloqueada por
-// este ajuste). Desmarcado por defecto: Toggl crea Proyecto/Cliente nuevos
-// automaticamente si el nombre no coincide exactamente con uno ya
-// existente en la cuenta del usuario, asi que activarlo es una eleccion
-// explicita, no el punto de partida.
+// includeProjectClient is opt-in for including Project/Client columns in
+// the Toggl CSV (generating those columns is a later task, gated by this
+// setting). Unchecked by default: Toggl auto-creates a new Project/Client
+// if the name doesn't exactly match one already in the user's account, so
+// turning it on is an explicit choice, not the starting point.
 export interface TogglSettings {
 	email: string;
 	includeProjectClient: boolean;
 }
 
-// Fase 9 — ajustes de Clockify, mismo espiritu que TogglSettings: campos
-// manuales, nunca se consultan via API. Rectificado el 22 de agosto de
-// 2026 (ver docs/Vault/Tareas/Clockify.md): el hallazgo original que decia
-// que Project era obligatorio para el importador de CSV era incorrecto
-// (venia del formulario manual "Add time" de Clockify, no del importador),
-// asi que includeProject existe igual que includeClient — ambos opt-in,
-// independientes entre si, desmarcados por defecto, mismo criterio "vault
-// limpia por defecto" que Toggl.
+// Clockify settings, same spirit as TogglSettings: manual fields, never
+// queried via API. includeProject exists on equal footing with
+// includeClient — both opt-in, independent of each other, unchecked by
+// default, same "clean vault by default" criterion as Toggl (see
+// docs/DECISIONS.md for why Project isn't actually required).
 export interface ClockifySettings {
 	email: string;
 	includeProject: boolean;
 	includeClient: boolean;
 }
 
-// Fase 5 — dónde se abre el panel de Historial (TimeLogView). Cambiar
-// este ajuste no mueve un panel ya abierto; solo aplica la próxima vez
-// que se abra (ver activateLogView() en main.ts).
+// Where the Historial panel (TimeLogView) opens. Changing this setting
+// doesn't move an already-open panel; it only applies the next time one
+// is opened (see activateLogView() in main.ts).
 export type LogViewLocation = "sidebar" | "tab";
 
-// Fase 7 — como se ve el inline field `tt-id::` cuando Dataview lo
-// renderiza (Reading mode / Live Preview sin el cursor en la linea).
-// Puramente visual (clase en document.body + CSS en styles.css, ver
-// applyTaskIdFormatClass() en main.ts); el texto fuente de la nota
-// nunca cambia, y sin Dataview instalado no tiene ningun efecto (ver
+// How the `tt-id::` inline field looks when Dataview renders it (Reading
+// mode / Live Preview without the cursor on the line). Purely visual
+// (class on document.body + CSS in styles.css, see
+// applyTaskIdFormatClass() in main.ts); the note's source text never
+// changes, and without Dataview installed it has no effect (see
 // SettingsTab.ts).
 export type TaskIdFormat = "normal" | "reduced" | "hidden";
 
@@ -77,10 +72,10 @@ export interface PluginSettings {
 	toggl: TogglSettings;
 	clockify: ClockifySettings;
 	logViewLocation: LogViewLocation;
-	// Fase 5 — carpeta dentro de la vault donde ExportManager escribe los
-	// CSV generados (ambos formatos, generico y Toggl). Cambiar este ajuste
-	// no mueve exportaciones ya hechas en la carpeta anterior; solo aplica
-	// a partir de la proxima exportacion.
+	// Folder inside the vault where ExportManager writes the generated
+	// CSVs (both formats, generic and Toggl). Changing this setting
+	// doesn't move exports already made in the previous folder; it only
+	// applies from the next export onward.
 	exportsFolder: string;
 	taskIdFormat: TaskIdFormat;
 }
@@ -97,24 +92,23 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	},
 	logViewLocation: "sidebar",
 	exportsFolder: "task-tracker-exports",
-	// Fase 7 — "reducido" es el valor por defecto en una instalacion
-	// nueva (decision explicita, no "normal"): la etiqueta completa
-	// "tt-id" que renderiza Dataview por defecto es ruido visual para
-	// la mayoria de usuarios desde el primer momento.
+	// "reduced" is the default on a fresh install (an explicit choice,
+	// not "normal"): the full "tt-id" label Dataview renders by default
+	// is visual noise for most users from the very first moment.
 	taskIdFormat: "reduced",
 };
 
-// Fase 5 — resultado de editar los horarios de una sesión desde el
-// panel de Historial (ver TimeLogView.ts / main.ts#updateEntryTimes). El
-// aviso de solapamiento con otra sesión es puramente informativo y se
-// calcula en vivo del lado de la UI mientras se edita (ver TimeLogView.ts);
-// nunca bloquea el guardado, así que no forma parte de este resultado.
+// Result of editing a session's times from the Historial panel (see
+// TimeLogView.ts / main.ts#updateEntryTimes). The overlap warning with
+// another session is purely informational and computed live on the UI
+// side while editing (see TimeLogView.ts); it never blocks saving, so
+// it's not part of this result.
 export type EntryUpdateResult = { ok: true } | { ok: false; error: "not-found" | "invalid-range" };
 
-// Fase 5 — resultado de borrar una tarea completa (todo su historico de
-// sesiones, por tt-id) desde el panel de Historial (ver TimeLogView.ts /
-// main.ts#deleteTask). Se bloquea si esa tarea tiene la sesion activa en
-// este momento; el usuario debe detener el tracking antes de borrar.
+// Result of deleting a full task (its entire session history, by tt-id)
+// from the Historial panel (see TimeLogView.ts / main.ts#deleteTask).
+// Blocked if that task has the active session right now; the user must
+// stop tracking before deleting.
 export type DeleteTaskResult = { ok: true } | { ok: false; error: "active" };
 
 const EMAIL_REGEX = /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/;
@@ -123,10 +117,10 @@ export function isValidEmail(email: string): boolean {
 	return EMAIL_REGEX.test(email.trim());
 }
 
-// Fase 8 — vinculo tarea<->proyecto, vivo por tt-id (no snapshot): si se
-// reasigna, todo el historico de esa tarea adopta el nuevo proyecto al
-// instante (ver core/ProjectManager.ts#assignProject). Ausencia de clave
-// significa "sin proyecto asignado", no un valor vacio.
+// Task<->project link, live by tt-id (not a snapshot): if reassigned,
+// that task's entire history adopts the new project instantly (see
+// core/ProjectManager.ts#assignProject). Absence of a key means "no
+// project assigned", not an empty value.
 export type TaskProjectAssignments = Record<string, string>;
 
 export interface PluginState {

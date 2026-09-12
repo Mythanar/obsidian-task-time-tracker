@@ -1,6 +1,5 @@
 // core/TrackingEngine.ts
-// Fase 1 — MVP de tracking local.
-// Responsabilidad: start/stop del timer activo. Sin dependencia de red.
+// Responsibility: start/stop of the active timer. No network dependency.
 //
 // Persistence always goes through StateStore (read-before-write, see
 // core/StateStore.ts): the engine never saves its own in-memory copy.
@@ -23,10 +22,10 @@ export class TrackingEngine {
 		return this.store.getState().entries;
 	}
 
-	// Suma de todas las sesiones ya cerradas de una tarea (por su tt-id).
-	// Fase 5 UX — control inline: es la base sobre la que se muestra el
-	// badge de tiempo acumulado (y, si la tarea esta activa, se le suma el
-	// tiempo transcurrido de la sesion en curso aparte, en la UI).
+	// Sum of all already-closed sessions of a task (by its tt-id). This is
+	// the base the accumulated-time badge is built on for the inline
+	// control (and, if the task is active, the UI adds the elapsed time
+	// of the current session on top, separately).
 	getAccumulatedMs(taskId: string): number {
 		return this.store
 			.getState()
@@ -35,12 +34,12 @@ export class TrackingEngine {
 			.reduce((sum, entry) => sum + ((entry.end as number) - entry.start), 0);
 	}
 
-	// Un solo timer activo a la vez: si ya hay una sesion corriendo sobre
-	// otra tarea, se cierra automaticamente (sin confirmacion) antes de
-	// arrancar la nueva. Si la sesion activa es la misma tarea (mismo
-	// tt-id), no hay nada que hacer: se ignora la accion sin tocar nada.
-	// El vinculo con la tarea es el tt-id; taskText y filePath son
-	// snapshots inmutables de esta sesion, no se usan para el vinculo.
+	// Only one active timer at a time: if a session is already running on
+	// another task, it's closed automatically (no confirmation) before
+	// starting the new one. If the active session is the same task (same
+	// tt-id), there's nothing to do: the action is ignored untouched. The
+	// link to the task is the tt-id; taskText and filePath are immutable
+	// snapshots of this session, not used for the link.
 	//
 	// The whole decision is taken INSIDE the mutation, on the state just
 	// read from disk: if another device left a session open and Sync has
@@ -121,21 +120,20 @@ export function formatDuration(ms: number): string {
 	return [hours, minutes, seconds].map((n) => String(n).padStart(2, "0")).join(":");
 }
 
-// Formato compacto para totales AGREGADOS (varias sesiones sumadas: la
-// cabecera de una tarjeta de tarea, o el resumen de la confirmacion de
-// borrado de tarea completa) — nunca para una sesion individual ni para
-// el formulario de edicion, que se quedan en formatDuration() (HH:MM:SS,
-// ancho fijo, segundos relevantes a esa escala). Criterio Toggl: se
-// acumula siempre en horas, sin limite superior y sin la unidad "dias"
-// (127h 49m es un valor esperado, no un error). Sin ceros a la
-// izquierda y sin unidades en cero salvo la mas pequeña que se muestre.
-// Sin segundos salvo que el total sea menor a un minuto (caso raro con
-// tareas recien creadas): mostrarlos siempre habria hecho que el ancho
-// del total cambiara cada segundo mientras hay tracking activo sumando
-// en vivo, y a la escala de un total agregado no aportan precision
-// util. "h"/"m"/"s" no pasan por t() — mismo criterio ya aplicado a
-// HH:MM:SS, "→" y "+1": formato/simbolo universal, no contenido a
-// traducir (ver docs/glosario-traduccion-i18n.md, seccion 7.2).
+// Compact format for AGGREGATE totals (several sessions summed: a task
+// card's header, or the summary in a full-task delete confirmation) —
+// never for an individual session or the edit form, which stay on
+// formatDuration() (HH:MM:SS, fixed width, seconds relevant at that
+// scale). Toggl criterion: always accumulates in hours, no upper limit
+// and no "days" unit (127h 49m is an expected value, not a bug). No
+// leading zeros and no zero units except the smallest one shown. No
+// seconds unless the total is under a minute (rare, for freshly created
+// tasks): always showing them would make the total's width change every
+// second while a live tracking session is adding up, and at an
+// aggregate total's scale they don't add useful precision. "h"/"m"/"s"
+// don't go through t() — same criterion already applied to HH:MM:SS,
+// "→" and "+1": universal format/symbol, not content to translate (see
+// docs/glosario-traduccion-i18n.md, section 7.2).
 export function formatDurationCompact(ms: number): string {
 	const totalSeconds = Math.max(0, Math.floor(ms / 1000));
 	const hours = Math.floor(totalSeconds / 3600);
