@@ -91,13 +91,13 @@ Tasks you tracked with an older version of the plugin may still have the identif
 - **Fits your task format** — works with Tasks-style checkboxes (`- [ ]`, `* [ ]`, `+ [ ]`), numbered lists, nested tasks, and checkboxes inside callouts or blockquotes.
 - **Plays nicely with Dataview, but never depends on it** — an optional, subtle-by-default identifier keeps your history linked to each task and makes it queryable, without cluttering your notes.
 - **A clear history** — a dedicated panel with per-task cards, day/week navigation or any custom date range, and inline editing or deletion of sessions.
-- **Resume tracking without leaving the panel** — start or stop a task's tracking straight from its card in the History panel, without opening the note it lives in.
+- **Resume tracking without leaving the panel** — start or stop a task's tracking straight from its card in the History panel, without opening the note it lives in. If a task is currently being tracked, any other day where it also has past sessions shows a small marker that jumps you straight back to the live session
 - **Organize with projects & clients** — group your tasks under projects (each with an optional client) from Settings, then filter the History panel down to a single one at a time.
 - **A 30-day overview at a glance** — the Dashboard view totals your last 30 days by project, client, day, and task, no filters or setup needed.
 - **Export on your terms** — generate a generic CSV or one formatted for Toggl's official importer. You choose when to export — never automatic, never in the background.
 - **Zero external API calls** — the plugin never connects to any third-party service, at any point in its operation. Your time data stays in your vault.
 
-<img src="docs/images/play-on-panel-32.gif" alt="The History panel, showing a couple of expanded task cards" width="500" style="border-radius:12px;margin:2rem 0;">
+<img src="docs/images/play-on-panel-32.gif" alt="Starting and stopping tracking directly from a task's card in the History panel" width="500" style="border-radius:12px;margin:2rem 0;">
 
 ## Projects & clients
 
