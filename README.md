@@ -4,7 +4,6 @@
 
  <img src="docs/images/ttt-logo-dark.png" width="300" alt="Task Time Tracker logo">
  
-
 A local-first Obsidian plugin for **tracking time directly on the checkboxes in your notes** — compatible with the Tasks plugin format, with no external services involved at any point.
 
 **Obsidian has no native way to track time on your work**. Existing plugins mostly focus on Pomodoro-style sessions, or don't integrate with the checkbox-based task format already used across vaults — and none of them combine tracking with exporting your time to the tools you already use.
@@ -89,15 +88,16 @@ Tasks you tracked with an older version of the plugin may still have the identif
 
 - **Local-first, always available** — tracking works entirely offline. The plugin never depends on network access for day-to-day use.
 - **One timer, no confusion** — only one active timer at a time. Switching tasks closes the previous session automatically, without losing data.
-- **Fits your task format** — works with Tasks-style checkboxes (`- [ ]`, `* [ ]`, `+ [ ]`), numbered lists, and nested tasks.
+- **Fits your task format** — works with Tasks-style checkboxes (`- [ ]`, `* [ ]`, `+ [ ]`), numbered lists, nested tasks, and checkboxes inside callouts or blockquotes.
 - **Plays nicely with Dataview, but never depends on it** — an optional, subtle-by-default identifier keeps your history linked to each task and makes it queryable, without cluttering your notes.
 - **A clear history** — a dedicated panel with per-task cards, day/week navigation or any custom date range, and inline editing or deletion of sessions.
+- **Resume tracking without leaving the panel** — start or stop a task's tracking straight from its card in the History panel, without opening the note it lives in.
 - **Organize with projects & clients** — group your tasks under projects (each with an optional client) from Settings, then filter the History panel down to a single one at a time.
 - **A 30-day overview at a glance** — the Dashboard view totals your last 30 days by project, client, day, and task, no filters or setup needed.
 - **Export on your terms** — generate a generic CSV or one formatted for Toggl's official importer. You choose when to export — never automatic, never in the background.
 - **Zero external API calls** — the plugin never connects to any third-party service, at any point in its operation. Your time data stays in your vault.
 
-<img src="docs/images/history-panel-29.png" alt="The History panel, showing a couple of expanded task cards" width="415" style="border-radius:12px;margin:2rem 0;">
+<img src="docs/images/play-on-panel-32.gif" alt="The History panel, showing a couple of expanded task cards" width="500" style="border-radius:12px;margin:2rem 0;">
 
 ## Projects & clients
 
@@ -126,7 +126,7 @@ Four blocks share the same row format as the rest of the plugin (name + total ti
 
 - **By project** and **by client** — ranked by total time, with a "No project"/"No client" row for anything not assigned.
 - **By day** — chronological (most recent first), not ranked, since it's a timeline rather than a leaderboard.
-- **By task** — ranked by total time; if a task's source note was deleted, its name still shows (in italics) instead of an error.
+- **By task** — ranked by total time; if a task's source note was deleted, its name still shows (in italics on its History card, upright in Edit task) instead of a generic error, with an explicit "Note not found" and a red icon so it's easy to spot.
 
 Day and task blocks show the top 5 by default, with a "Show all" link loading 50 more at a time. The 30-day window is fixed — no range picker or extra filters, since the four blocks already break the same data down by project, client, day, and task.
 
