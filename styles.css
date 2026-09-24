@@ -410,23 +410,48 @@
 	color: var(--text-error);
 }
 
-/* Row whose task currently has active tracking: only applied if that task
-   has a session in the visible date range (see activeEntry in
-   TimeLogView.ts#renderTaskCard) — never forced to appear outside it.
-   box-shadow inset rather than border-color: the row no longer has its own
-   border to recolor since it lives inside the shared
-   .task-time-tracker-log-list container, so the outline is drawn as an
-   inset shadow, without affecting layout or the :not(:first-child) divider
-   on neighboring rows. */
-.task-time-tracker-log-row.is-tracking-active {
-	box-shadow: inset 0 0 0 1px var(--interactive-accent);
-	background-color: color-mix(in srgb, var(--interactive-accent) 4%, var(--background-primary));
+/* "Tarea cerrada" status icon (see TimeLogView.ts#renderTaskCard): purely
+   informational, not a button — cursor:default overrides the pointer it
+   would otherwise inherit from .task-time-tracker-log-card-header, and
+   there's deliberately no :hover rule. Faint, not accent or error: a
+   closed task isn't a warning, it's just no longer trackable. Same 14x16
+   box and margin-top as the note icon it sits next to, so both align on
+   the same baseline regardless of which icon (file-search or file-x)
+   precedes it. */
+.task-time-tracker-log-card-status-icon {
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	width: 14px;
+	height: 16px;
+	flex-shrink: 0;
+	color: var(--text-faint);
+	cursor: default;
 }
 
-@supports not (color: color-mix(in srgb, red 50%, blue)) {
-	.task-time-tracker-log-row.is-tracking-active {
-		background-color: var(--background-primary);
-	}
+.task-time-tracker-log-card-status-icon svg {
+	width: 13px;
+	height: 13px;
+	margin-top: 2px;
+}
+
+/* Reinforces the status icon above; doesn't replace it. */
+.task-time-tracker-log-task-title-closed {
+	text-decoration: line-through;
+	color: var(--text-faint);
+}
+
+/* Row whose task is currently tracking — a GLOBAL flag per task (see
+   isTrackingThisTask in TimeLogView.ts#renderTaskCard), applied to every
+   card of that task across day/week/results, not just the one whose own
+   date happens to be today. box-shadow inset rather than border-color: the
+   row no longer has its own border to recolor since it lives inside the
+   shared .task-time-tracker-log-list container, so the outline is drawn as
+   an inset shadow, without affecting layout or the :not(:first-child)
+   divider on neighboring rows. */
+.task-time-tracker-log-row.is-tracking-active {
+	box-shadow: inset 0 0 0 1px var(--interactive-accent);
+	background-color: var(--background-modifier-hover);
 }
 
 /* Only opacity dims here, not color/size — same functional button, same
@@ -440,6 +465,75 @@
    separator, not data. */
 .task-time-tracker-log-row.is-tracking-active .task-time-tracker-log-session-arrow {
 	color: var(--text-faint);
+}
+
+/* Brief arrival flash on the row navigateToTrackedTask() lands on (the
+   "go to Today" indicator and the status bar footer, see TimeLogView.ts) —
+   a fading
+   accent pulse layered on top of whatever this row's background already
+   is (idle, or the steady is-tracking-active tint above). Wrapped in
+   (prefers-reduced-motion: no-preference): reduced-motion users still get
+   the persistent accent border/background from is-tracking-active, just
+   without this extra pulse — see applyPendingHighlight() in
+   TimeLogView.ts, which skips adding this class entirely in that case. */
+@media (prefers-reduced-motion: no-preference) {
+	.task-time-tracker-log-row-highlight {
+		animation: task-time-tracker-row-flash 600ms ease-out;
+	}
+}
+
+@keyframes task-time-tracker-row-flash {
+	from {
+		background-color: color-mix(in srgb, var(--interactive-accent) 30%, transparent);
+	}
+	to {
+		background-color: transparent;
+	}
+}
+
+/* "Go to Today" indicator (see renderTrackingElsewhereIndicator() in
+   TimeLogView.ts): takes the control slot's place — between the title and
+   the totals column, the same spot the Stop control occupies on today's
+   own row — on a tracking task's card for any day OTHER than today. This
+   card's own total/session-count column is left untouched (unlike the old
+   "● Hoy" badge design this replaces, which took over that column
+   instead) — see "Visibilidad del tracking al navegar por días
+   anteriores". Always visible, not hover-revealed like the Resume control
+   it stands in for here: the whole point is surfacing that a session is
+   running elsewhere, which can't depend on hovering the row to notice.
+   Fixed 28px height to match that control, so title/kebab/totals keep the
+   same baseline regardless of which of the three states this slot is in. */
+.task-time-tracker-log-card-tracking-indicator {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.3em;
+	height: 28px;
+	padding: 0 0.5em;
+	flex-shrink: 0;
+	border-radius: var(--radius-s);
+	color: var(--interactive-accent);
+	cursor: pointer;
+}
+
+.task-time-tracker-log-card-tracking-indicator:hover {
+	background-color: var(--background-modifier-hover);
+}
+
+.task-time-tracker-log-card-tracking-indicator:focus-visible {
+	outline: 2px solid var(--interactive-accent);
+	outline-offset: 2px;
+}
+
+.task-time-tracker-log-card-tracking-indicator-arrow {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.task-time-tracker-log-card-tracking-indicator-arrow svg {
+	width: 13px;
+	height: 13px;
+	display: block;
 }
 
 /* Width-collapsing slot for resuming tracking of an already-tracked task

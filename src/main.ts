@@ -78,7 +78,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		this.statusBarWidget = new StatusBarWidget(
 			this,
 			() => this.trackingEngine.getActiveEntry(),
-			() => void this.activateLogView(),
+			() => void this.handleStatusBarClick(),
 		);
 		this.addSettingTab(new SettingsTab(this.app, this));
 
@@ -298,29 +298,41 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 
 	// Fallback for files not open in any editor: vault.on("modify") fires
 	// just the same (Obsidian already wrote the file to disk), so
-	// reading it from the vault is enough.
+	// reading it from the vault is enough. Also the general path that
+	// keeps the Historial panel's checkbox state (closed/reopened) in
+	// sync with a note edited directly, outside the panel — see
+	// refreshLogViewsIfTracked().
 	private async handleFileModified(file: TAbstractFile): Promise<void> {
-		if (!(file instanceof TFile)) return;
-		if (!this.trackingEngine.getActiveEntry()) return;
+		if (!(file instanceof TFile) || file.extension !== "md") return;
+
+		const hasActive = this.trackingEngine.getActiveEntry() !== null;
+		const panelOpen = this.hasTimeLogViewOpen();
+		if (!hasActive && !panelOpen) return;
 
 		const content = await this.app.vault.cachedRead(file);
-		await this.stopIfActiveTaskClosedIn(content);
+		if (hasActive) await this.stopIfActiveTaskClosedIn(content);
+		if (panelOpen) this.refreshLogViewsIfTracked(content);
 	}
 
 	// Short debounce: every keystroke reschedules the check, so the
 	// content is only evaluated once the user stops typing on that line
 	// for EDITOR_CHANGE_DEBOUNCE_MS. A transient "[x]"/"[-]" state
 	// mid-edit never gets evaluated if it's corrected before the delay
-	// expires.
+	// expires. Same dual purpose as handleFileModified above (auto-stop +
+	// keeping the panel in sync), just on the fast path for a note that's
+	// open in an editor, without waiting for the editor's own save-to-
+	// disk debounce.
 	private scheduleEditorChangeCheck(editor: Editor): void {
-		if (!this.trackingEngine.getActiveEntry()) return;
+		if (!this.trackingEngine.getActiveEntry() && !this.hasTimeLogViewOpen()) return;
 
 		if (this.editorChangeDebounceTimer !== null) {
 			window.clearTimeout(this.editorChangeDebounceTimer);
 		}
 		this.editorChangeDebounceTimer = window.setTimeout(() => {
 			this.editorChangeDebounceTimer = null;
-			void this.stopIfActiveTaskClosedIn(editor.getValue());
+			const content = editor.getValue();
+			if (this.trackingEngine.getActiveEntry()) void this.stopIfActiveTaskClosedIn(content);
+			if (this.hasTimeLogViewOpen()) this.refreshLogViewsIfTracked(content);
 		}, EDITOR_CHANGE_DEBOUNCE_MS);
 	}
 
@@ -341,6 +353,32 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 				this.notifyTrackingChanged();
 			}
 			return;
+		}
+	}
+
+	private hasTimeLogViewOpen(): boolean {
+		return this.app.workspace.getLeavesOfType(TIME_LOG_VIEW_TYPE).length > 0;
+	}
+
+	// Keeps the Historial panel reacting live to a checkbox toggled
+	// (closed OR reopened) directly in a note, outside the panel — e.g.
+	// unchecking a task the panel still shows as closed. Cheap discard
+	// first (no "[tt-id::" substring at all) before the line-by-line scan,
+	// so an edit to a note with no tracked task never reaches
+	// refreshLogViews(); note content check only runs against the ids this
+	// device already has history for, not the whole vault.
+	private refreshLogViewsIfTracked(content: string): void {
+		if (!content.includes("[tt-id::")) return;
+
+		const trackedIds = new Set(this.trackingEngine.getEntries().map((entry) => entry.taskId));
+		if (trackedIds.size === 0) return;
+
+		for (const line of content.split("\n")) {
+			const taskId = extractTaskId(line);
+			if (taskId && trackedIds.has(taskId)) {
+				this.refreshLogViews();
+				return;
+			}
 		}
 	}
 
@@ -632,21 +670,39 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 
 	// The location (sidebar/tab) is only decided when creating a new
 	// leaf; an already-open panel is revealed where it already was,
-	// without moving it (see SettingsTab.ts).
-	private async activateLogView(): Promise<void> {
+	// without moving it (see SettingsTab.ts). Returns the opened view (or
+	// null if a leaf couldn't be obtained) so callers that need to act on
+	// it afterward — see handleStatusBarClick() — don't have to re-look it
+	// up themselves.
+	private async activateLogView(): Promise<TimeLogView | null> {
 		const existing = this.app.workspace.getLeavesOfType(TIME_LOG_VIEW_TYPE);
 		if (existing[0]) {
 			await this.app.workspace.revealLeaf(existing[0]);
-			return;
+			return existing[0].view instanceof TimeLogView ? existing[0].view : null;
 		}
 
 		const leaf: WorkspaceLeaf | null =
 			this.pluginState.settings.logViewLocation === "tab"
 				? this.app.workspace.getLeaf("tab")
 				: this.app.workspace.getRightLeaf(false);
-		if (!leaf) return;
+		if (!leaf) return null;
 		await leaf.setViewState({ type: TIME_LOG_VIEW_TYPE, active: true });
 		await this.app.workspace.revealLeaf(leaf);
+		return leaf.view instanceof TimeLogView ? leaf.view : null;
+	}
+
+	// Status bar footer click (see "Footer de status"): always opens the
+	// Historial panel AND navigates it to today's Day view, with or
+	// without an active session — no longer conditional on tracking being
+	// active. If a session IS active, it also scrolls/flashes that task's
+	// row — same destination as the "go to Today" indicator on that
+	// task's card elsewhere in the panel (see
+	// TimeLogView.ts#navigateToTrackedTask); with none active, taskId is
+	// null and there's simply nothing to highlight once there.
+	private async handleStatusBarClick(): Promise<void> {
+		const view = await this.activateLogView();
+		const active = this.trackingEngine.getActiveEntry();
+		if (view) view.navigateToTrackedTask(active ? active.taskId : null);
 	}
 
 	// Dashboard — always in a tab of the main workspace, no location

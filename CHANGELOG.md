@@ -4,6 +4,18 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.32] - 2026-09-24
+
+### Fixed
+
+- Task detection: tasks written inside a callout weren't recognized as trackable — creating one there never assigned a `tt-id`, and moving an already-tracked task into a callout stopped it from being trackable further. The task-line pattern now tolerates the callout's `>` prefix (including nested callouts), in detection, in starting/continuing tracking, and in auto-stop when the task is marked done. As a side effect, this also enables tracking for tasks inside simple quotes, which share the same `>` prefix.
+- History: tasks whose source note was deleted showed "Task not found" instead of the task's own name. The card and the "Edit task" dialog now show the task's real name, with an explicit "Note not found" message and a red icon on the card.
+
+### Added
+
+- History: each task card now has a play/stop control to resume or stop tracking directly from the panel, without opening the source note. Hidden on hover on desktop, always visible on touch. Tasks marked done in their note no longer offer this control, and instead show a "completed" status icon on the card.
+- History: a task actively tracking now shows a small pulsing dot + arrow (↗) on any other day/view where it also has sessions, instead of the full accent styling — clicking it (or the status bar) jumps to today's view. The status bar now always jumps to today's view when clicked, whether or not tracking is active.
+
 ## [0.0.31] - 2026-09-07
 
 ### Fixed

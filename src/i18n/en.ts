@@ -175,6 +175,8 @@ export const en = {
 	"log.resumeTrackingAriaLabel": "Resume tracking",
 	"log.openNoteAriaLabel": "Open task note",
 	"log.noteNotFoundAriaLabel": "Source note not found",
+	"log.taskClosedAriaLabel": "Task completed — reopen it from the note to keep tracking time",
+	"log.trackingElsewhereAriaLabel": "Tracking now in Today — click to go",
 	"log.viewDay": "Day",
 	"log.viewWeek": "Week",
 	"log.today": "Today",

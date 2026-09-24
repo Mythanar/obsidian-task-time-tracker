@@ -171,6 +171,8 @@ export const es: Record<TranslationKey, string> = {
 	"log.resumeTrackingAriaLabel": "Retomar tracking",
 	"log.openNoteAriaLabel": "Abrir nota de la tarea",
 	"log.noteNotFoundAriaLabel": "Nota de origen no encontrada",
+	"log.taskClosedAriaLabel": "Tarea completada — reábrela desde la nota para seguir registrando tiempo",
+	"log.trackingElsewhereAriaLabel": "Trackeando ahora en Hoy, clic para ir",
 	"log.viewDay": "Día",
 	"log.viewWeek": "Semana",
 	"log.today": "Hoy",

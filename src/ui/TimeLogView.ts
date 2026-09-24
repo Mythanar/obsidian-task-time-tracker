@@ -11,7 +11,13 @@
 
 import { ItemView, Menu, MarkdownView, Notice, Platform, TFile, WorkspaceLeaf, setIcon, setTooltip } from "obsidian";
 import { formatDuration, formatDurationCompact } from "../core/TrackingEngine";
-import { parseCheckboxLine, ResolvedTask, TaskIdentifier } from "../core/TaskIdentifier";
+import {
+	extractCheckboxState,
+	isClosedCheckboxState,
+	parseCheckboxLine,
+	ResolvedTask,
+	TaskIdentifier,
+} from "../core/TaskIdentifier";
 import { t } from "../i18n";
 import { DeleteTaskResult, EntryUpdateResult, Project, TimeEntry } from "../types";
 import { openDatePickerPopover, reanchorDatePickerPopover } from "./DatePickerPopover";
@@ -190,6 +196,19 @@ export class TimeLogView extends ItemView {
 		| { kind: "total"; el: HTMLElement; completedMs: number; start: number; lastMinute: number }
 	> = [];
 	private busUnsubscribe: (() => void) | null = null;
+	// The single globally active session (if any), recomputed once per
+	// render() and read by every card — a task is "tracking" (see
+	// "Visibilidad del tracking al navegar por días anteriores") iff its
+	// taskId matches this entry's, regardless of whether that entry's
+	// date falls inside the card's own visible day/week/range.
+	private globalActiveEntry: TimeEntry | null = null;
+	// Set by navigateToTrackedTask() (the "go to Today" indicator and the
+	// status bar footer's click, see main.ts) right before switching to
+	// today's Day view: consumed once, at the end of the render() that
+	// follows, to scroll to and briefly flash that task's card — see
+	// applyPendingHighlight(). null when the footer navigates with no
+	// active session: there's nothing to highlight, only the view switch.
+	private pendingHighlightTaskId: string | null = null;
 	// render() is async (resolveTaskIds reads the vault) and can fire
 	// more than once for the same user action (e.g. saving an edit:
 	// saveEditDraft() calls render() explicitly, and main.ts already
@@ -234,6 +253,25 @@ export class TimeLogView extends ItemView {
 	}
 
 	refresh(): void {
+		void this.render();
+	}
+
+	// Entry point for the "go to Today" indicator (a tracked task's card
+	// on a day other than today, see renderTrackingElsewhereIndicator) and
+	// the status bar footer's click, both of which must land on today's
+	// Day view (see "Visibilidad del tracking al navegar por días
+	// anteriores"). Clears the project filter too: otherwise an active
+	// filter that doesn't match the tracked task's project would hide the
+	// very row this navigation promises to reveal.
+	// taskId is null for the footer's click when there is no active
+	// session (it still always navigates to Today, just with nothing to
+	// highlight once there — see handleStatusBarClick() in main.ts).
+	navigateToTrackedTask(taskId: string | null): void {
+		this.viewMode = "day";
+		this.anchorDate = startOfDay(Date.now());
+		this.projectFilterId = null;
+		this.projectFilterNoProject = false;
+		this.pendingHighlightTaskId = taskId;
 		void this.render();
 	}
 
@@ -332,19 +370,39 @@ export class TimeLogView extends ItemView {
 
 		const expandKey = `${dayKey}|${taskId}`;
 		const totalMs = taskEntries.reduce((sum, entry) => sum + ((entry.end ?? Date.now()) - entry.start), 0);
-		const isMissing = resolutions.get(taskId) == null;
+		const resolved = resolutions.get(taskId) ?? null;
+		const isMissing = resolved == null;
+		// Closed tasks ([x]/[-] in the note) — see "Tareas cerradas": read
+		// straight off the already-resolved line, no extra vault read
+		// needed. Only meaningful when the note was found; a missing note
+		// can't be checked and is never treated as closed.
+		const closed = resolved ? isClosedCheckboxState(extractCheckboxState(resolved.lineText)) : false;
 		const expanded = this.expandedTaskIds.has(expandKey);
-		// The active session, if it's one of THIS card's entries (already
-		// scoped to the visible date range by renderDaySection()): since
-		// there's only one active timer across the whole plugin, at most
-		// one card in the whole view can satisfy this. If the active task
-		// has no session in the visible range, activeEntry is null here
-		// and the card behaves exactly like any other.
-		const activeEntry = taskEntries.find((entry) => entry.end === null) ?? null;
+		// "Tracking" is a GLOBAL flag per task (see
+		// "Visibilidad del tracking al navegar por días anteriores"), not
+		// "does this card's own day/week/range include the active
+		// session" — a task can be actively tracked (always dated today)
+		// while this particular card shows a different, past day.
+		const isTrackingThisTask = this.globalActiveEntry !== null && this.globalActiveEntry.taskId === taskId;
+		// The active entry, but only if it's actually one of THIS card's
+		// own entries (i.e. this card is today's, since the active
+		// session's date is always today) — governs the full "very
+		// active" treatment (accent border, functional Stop, live
+		// HH:MM:SS counter) below, as opposed to the "go to Today"
+		// indicator shown on a tracking task's card for any OTHER day.
+		const activeEntryInRange = isTrackingThisTask
+			? (taskEntries.find((entry) => entry.id === this.globalActiveEntry?.id) ?? null)
+			: null;
 		const project = this.actions.getProjectForTask(taskId);
 
 		const card = list.createDiv({ cls: "task-time-tracker-log-row" });
-		card.toggleClass("is-tracking-active", activeEntry !== null);
+		card.setAttribute("data-task-id", taskId);
+		// The full accent border + "very active" treatment is reserved for
+		// today's own row (see "Visibilidad del tracking al navegar por
+		// días anteriores") — a task tracked right now still shows plainly
+		// on its past-day cards, just without this and without a working
+		// Stop (see the control-slot branch below).
+		card.toggleClass("is-tracking-active", activeEntryInRange !== null);
 
 		const header = card.createDiv({ cls: "task-time-tracker-log-card-header" });
 		// The whole header (icon/title/meta + project row) expands or
@@ -408,6 +466,20 @@ export class TimeLogView extends ItemView {
 			});
 		}
 
+		// "Tarea cerrada" status icon — right after the note icon, never
+		// replacing it (the note icon still opens/highlights the task
+		// regardless of its checkbox state). Purely informational: no
+		// hover state and cursor:default (the whole header still toggles
+		// expand/collapse if clicked here, same as any other non-
+		// interactive spot in the header) — a circle-check, not a square
+		// checkbox shape, so it doesn't read as another clickable checkbox.
+		if (closed) {
+			const statusIcon = titleLine.createSpan({ cls: "task-time-tracker-log-card-status-icon" });
+			setIcon(statusIcon, "circle-check");
+			statusIcon.setAttribute("aria-label", t("log.taskClosedAriaLabel"));
+			setTooltip(statusIcon, t("log.taskClosedAriaLabel"));
+		}
+
 		// Title: no hover or click action of its own (navigation only
 		// lives in the icon above) — only a tooltip with the full text on
 		// desktop if it's truncated.
@@ -424,6 +496,11 @@ export class TimeLogView extends ItemView {
 		const title = titleLine.createDiv({ text: titleText, cls: "task-time-tracker-log-task" });
 		if (isMissing) {
 			title.addClass("task-time-tracker-log-task-title-missing-note");
+		}
+		// Reinforces the status icon above, doesn't replace it — see
+		// "Tareas cerradas".
+		if (closed) {
+			title.addClass("task-time-tracker-log-task-title-closed");
 		}
 
 		if (isMissing) {
@@ -462,30 +539,65 @@ export class TimeLogView extends ItemView {
 		// baggage, but doesn't get keyboard behavior for free either, so
 		// role="button" + tabIndex + an explicit Enter/Space handler
 		// replace what a native button would have given us automatically.
-		const controlSlot = outerRow.createDiv({ cls: "task-time-tracker-log-card-control-slot" });
-		controlSlot.toggleClass("is-active", activeEntry !== null);
-		const controlBtn = controlSlot.createSpan({ cls: "task-time-tracker-log-card-control" });
-		controlBtn.toggleClass("is-active", activeEntry !== null);
-		controlBtn.setAttribute("role", "button");
-		controlBtn.tabIndex = 0;
-		const controlLabel = activeEntry ? t("log.stopTrackingAriaLabel") : t("log.resumeTrackingAriaLabel");
-		controlBtn.setAttribute("aria-label", controlLabel);
-		setTooltip(controlBtn, controlLabel);
-		setIcon(controlBtn, activeEntry ? "square" : "play");
-		const triggerControl = (evt: Event) => {
-			evt.stopPropagation();
-			if (activeEntry) {
+		// Closed tasks skip this slot entirely — no space reserved, no
+		// hover reveal — there is no play/stop action available on them
+		// (see "Tareas cerradas").
+		//
+		// Three mutually exclusive states share this same slot:
+		// - today's own active row (activeEntryInRange): the real,
+		//   functional Stop — the ONLY row anywhere that can stop the
+		//   global session.
+		// - tracking, but this card is a DIFFERENT day (isTrackingThisTask
+		//   without activeEntryInRange): no Stop here — stopping today's
+		//   session from a past-day row the user is looking at instead
+		//   would be invisible at the moment it happens. A "go to Today"
+		//   indicator takes its place (see
+		//   renderTrackingElsewhereIndicator) — see "Visibilidad del
+		//   tracking al navegar por días anteriores".
+		// - idle: the existing hover-reveal Resume control.
+		if (!closed && activeEntryInRange) {
+			const controlSlot = outerRow.createDiv({ cls: "task-time-tracker-log-card-control-slot" });
+			controlSlot.addClass("is-active");
+			const controlBtn = controlSlot.createSpan({ cls: "task-time-tracker-log-card-control" });
+			controlBtn.addClass("is-active");
+			controlBtn.setAttribute("role", "button");
+			controlBtn.tabIndex = 0;
+			const controlLabel = t("log.stopTrackingAriaLabel");
+			controlBtn.setAttribute("aria-label", controlLabel);
+			setTooltip(controlBtn, controlLabel);
+			setIcon(controlBtn, "square");
+			const triggerControl = (evt: Event) => {
+				evt.stopPropagation();
 				void this.actions.stopTracking();
-			} else {
+			};
+			controlBtn.addEventListener("click", triggerControl);
+			controlBtn.addEventListener("keydown", (evt) => {
+				if (evt.key !== "Enter" && evt.key !== " ") return;
+				evt.preventDefault();
+				triggerControl(evt);
+			});
+		} else if (!closed && isTrackingThisTask) {
+			this.renderTrackingElsewhereIndicator(outerRow, taskId);
+		} else if (!closed) {
+			const controlSlot = outerRow.createDiv({ cls: "task-time-tracker-log-card-control-slot" });
+			const controlBtn = controlSlot.createSpan({ cls: "task-time-tracker-log-card-control" });
+			controlBtn.setAttribute("role", "button");
+			controlBtn.tabIndex = 0;
+			const controlLabel = t("log.resumeTrackingAriaLabel");
+			controlBtn.setAttribute("aria-label", controlLabel);
+			setTooltip(controlBtn, controlLabel);
+			setIcon(controlBtn, "play");
+			const triggerControl = (evt: Event) => {
+				evt.stopPropagation();
 				void this.actions.resumeTracking(taskId);
-			}
-		};
-		controlBtn.addEventListener("click", triggerControl);
-		controlBtn.addEventListener("keydown", (evt) => {
-			if (evt.key !== "Enter" && evt.key !== " ") return;
-			evt.preventDefault();
-			triggerControl(evt);
-		});
+			};
+			controlBtn.addEventListener("click", triggerControl);
+			controlBtn.addEventListener("keydown", (evt) => {
+				if (evt.key !== "Enter" && evt.key !== " ") return;
+				evt.preventDefault();
+				triggerControl(evt);
+			});
+		}
 
 		// Right column: aggregate duration on top, session count below,
 		// stacked in its own column — kebab next, always in that same
@@ -495,9 +607,16 @@ export class TimeLogView extends ItemView {
 		// internal concept (ProjectManager, see TaskIdentifier), it just
 		// stops being painted here.
 		const rightCol = outerRow.createDiv({ cls: "task-time-tracker-log-card-right-col" });
-		// Aggregate total (several sessions summed): compact format, not
-		// HH:MM:SS — see formatDurationCompact(). Pulsing bullet only if
-		// tracking is active (see below).
+
+		// Always the real total/session count for THIS card's own range —
+		// never replaced by a badge, even on a tracking task's past-day
+		// card (see "Visibilidad del tracking al navegar por días
+		// anteriores": the "go to Today" indicator lives in the control
+		// slot instead, it doesn't take over this column). Aggregate total
+		// (several sessions summed): compact format (formatDurationCompact),
+		// except on today's own tracking row, which switches to the live
+		// HH:MM:SS counter below. Pulsing bullet only if tracking is active
+		// in THIS card's range.
 		const totalGroup = rightCol.createSpan({ cls: "task-time-tracker-totals-duration-group" });
 		// The pulsing bullet in accent color (same class/animation as the
 		// inline badge next to the checkbox, see
@@ -507,11 +626,11 @@ export class TimeLogView extends ItemView {
 		// button). It lives next to the TOTAL, never inside the
 		// play/stop button — see the control above, between the title
 		// and this column.
-		if (activeEntry) {
+		if (activeEntryInRange) {
 			totalGroup.createSpan({ cls: "task-time-tracker-inline-dot task-time-tracker-log-card-total-dot" });
 		}
 		const totalDuration = totalGroup.createSpan({
-			text: formatDurationCompact(totalMs),
+			text: activeEntryInRange ? formatDuration(totalMs) : formatDurationCompact(totalMs),
 			cls: "task-time-tracker-totals-duration",
 		});
 		rightCol.createSpan({
@@ -519,22 +638,20 @@ export class TimeLogView extends ItemView {
 			cls: "task-time-tracker-log-session-count",
 		});
 
-		if (activeEntry) {
-			// Header total ("N sessions · Xh Ym"): completedMs is the sum
-			// of this card's ALREADY closed sessions; the per-second tick
-			// (via the bus) adds the elapsed time since activeEntry.start
-			// on top. Compact format, without redrawing every second (see
-			// tickActiveCard) — previously it only updated on an external
-			// refresh of the panel.
+		if (activeEntryInRange) {
+			// Today's own active row: full HH:MM:SS, redrawn every
+			// second (kind "duration") — see "Vista de hoy". completedMs
+			// is the sum of this card's ALREADY closed sessions; the
+			// per-second tick (via the bus) adds the elapsed time since
+			// activeEntryInRange.start on top.
 			const completedMs = taskEntries
-				.filter((entry) => entry.id !== activeEntry.id)
+				.filter((entry) => entry.id !== activeEntryInRange.id)
 				.reduce((sum, entry) => sum + ((entry.end as number) - entry.start), 0);
 			this.activeCardTicks.push({
-				kind: "total",
+				kind: "duration",
 				el: totalDuration,
 				completedMs,
-				start: activeEntry.start,
-				lastMinute: Math.floor(totalMs / 60000),
+				start: activeEntryInRange.start,
 			});
 		}
 
@@ -584,6 +701,43 @@ export class TimeLogView extends ItemView {
 				window.setTimeout(() => detail.scrollIntoView({ block: "end" }), 0);
 			}
 		}
+	}
+
+	// "Go to Today" indicator — takes the control slot's place (between
+	// title and the totals column) on a tracking task's card for any day
+	// OTHER than today (see "Visibilidad del tracking al navegar por días
+	// anteriores"). Deliberately NOT the functional Stop that used to sit
+	// here: stopping the global session from a past-day row the user is
+	// looking at would take effect on today's session without the user
+	// seeing it happen. A pulsing accent bullet (same treatment as the
+	// live total's own bullet, reused here since this row's own total
+	// stays a plain historical number — see the rightCol block above) plus
+	// an arrow icon, one single hit target (bullet+arrow together, not the
+	// bullet alone) — WCAG 1.4.1 requires the tooltip/aria-label to carry
+	// the meaning too, not just the accent color. Independent from the
+	// header's expand/collapse gesture (evt.stopPropagation), same pattern
+	// as the note icon and kebab. A <span role="button">, not a <button> —
+	// same reasoning as the play/stop control (no room for Obsidian's
+	// native hover box-shadow at this size).
+	private renderTrackingElsewhereIndicator(container: HTMLElement, taskId: string): void {
+		const indicator = container.createSpan({ cls: "task-time-tracker-log-card-tracking-indicator" });
+		indicator.setAttribute("role", "button");
+		indicator.tabIndex = 0;
+		indicator.setAttribute("aria-label", t("log.trackingElsewhereAriaLabel"));
+		setTooltip(indicator, t("log.trackingElsewhereAriaLabel"));
+		indicator.createSpan({ cls: "task-time-tracker-inline-dot task-time-tracker-log-card-total-dot" });
+		setIcon(indicator.createSpan({ cls: "task-time-tracker-log-card-tracking-indicator-arrow" }), "arrow-up-right");
+
+		const trigger = (evt: Event) => {
+			evt.stopPropagation();
+			this.navigateToTrackedTask(taskId);
+		};
+		indicator.addEventListener("click", trigger);
+		indicator.addEventListener("keydown", (evt) => {
+			if (evt.key !== "Enter" && evt.key !== " ") return;
+			evt.preventDefault();
+			trigger(evt);
+		});
 	}
 
 	// Briefcase icon (project) + person icon (client, if any). Indented
@@ -1236,14 +1390,22 @@ export class TimeLogView extends ItemView {
 	// all, not even its heading — it's a results list, not a calendar,
 	// unlike Week, where the heading + "No sessions this day" IS shown
 	// for every empty day.
-	private async renderDaySection(
+	// resolutions is resolved ONCE by the caller for the whole visible
+	// range (see render()/renderResultsSection()), not per day: every
+	// card across every day section of the same render() pass reads the
+	// same snapshot for a given tt-id — a task appearing in more than one
+	// day (week/Resultados view) can't end up resolved from two different
+	// moments in time, which would risk a card whose icon/title/control
+	// slot don't all agree with each other. No longer async: resolving
+	// ahead of time means this is now a synchronous DOM build.
+	private renderDaySection(
 		container: Element,
 		dayStart: number,
 		allEntries: TimeEntry[],
 		withHeading: boolean,
-		token: number,
+		resolutions: Map<string, ResolvedTask | null>,
 		hideIfEmpty = false,
-	): Promise<void> {
+	): void {
 		const dayEntries = allEntries
 			.filter((entry) => isSameLocalDay(entry.start, dayStart))
 			.sort((a, b) => a.start - b.start);
@@ -1261,13 +1423,6 @@ export class TimeLogView extends ItemView {
 			this.renderDayHeading(container, dayStart, dayEntries);
 		}
 
-		const resolutions = await this.resolveTaskIds(dayEntries);
-		// A more recent render() call already took control of the
-		// container while this section's tt-ids were being resolved —
-		// see the renderToken comment. Aborting here avoids duplicating
-		// cards on top of that more recent call's (already correct)
-		// result.
-		if (token !== this.renderToken) return;
 		this.renderTaskList(container, dayEntries, resolutions, dayStart);
 	}
 
@@ -1282,12 +1437,19 @@ export class TimeLogView extends ItemView {
 		// tick stops having any effect instead of pointing at an
 		// already-unmounted node.
 		this.activeCardTicks = [];
+		// The one session tracking right now, if any — see the
+		// globalActiveEntry field comment. Recomputed here (not read lazily
+		// per card) so every card in this render() agrees on the same
+		// snapshot, even if getEntries() could theoretically change
+		// mid-render.
+		this.globalActiveEntry = allEntries.find((entry) => entry.end === null) ?? null;
 
 		container.empty();
 
 		if (allEntries.length === 0) {
 			container.createEl("h4", { text: t("log.title") });
 			container.createEl("p", { text: t("log.emptyAll") });
+			this.pendingHighlightTaskId = null;
 			return;
 		}
 
@@ -1313,23 +1475,65 @@ export class TimeLogView extends ItemView {
 
 		if (this.viewMode === "results") {
 			await this.renderResultsSection(container, visibleEntries, token);
+			this.applyPendingHighlight(container, token);
 			return;
 		}
 
 		const rangeStart = this.viewMode === "day" ? startOfDay(this.anchorDate) : startOfWeek(this.anchorDate);
 		const rangeEnd = this.viewMode === "day" ? addDays(rangeStart, 1) : addDays(rangeStart, 7);
-		const rangeHasEntries = visibleEntries.some((entry) => entry.start >= rangeStart && entry.start < rangeEnd);
+		const rangeEntries = visibleEntries.filter((entry) => entry.start >= rangeStart && entry.start < rangeEnd);
+		const rangeHasEntries = rangeEntries.length > 0;
 
 		if ((this.projectFilterId || this.projectFilterNoProject) && !rangeHasEntries) {
 			this.renderFilteredEmptyState(container);
-		} else if (this.viewMode === "day") {
-			await this.renderDaySection(container, rangeStart, visibleEntries, false, token);
 		} else {
-			for (let i = 0; i < 7; i++) {
-				if (token !== this.renderToken) return;
-				await this.renderDaySection(container, addDays(rangeStart, i), visibleEntries, true, token);
+			// Resolved once for the whole range (single day, or all 7 of
+			// the week at once) — see the renderDaySection comment on why
+			// per-day resolution risked a card whose parts came from
+			// different moments in time.
+			const resolutions = await this.resolveTaskIds(rangeEntries);
+			if (token !== this.renderToken) return;
+			if (this.viewMode === "day") {
+				this.renderDaySection(container, rangeStart, rangeEntries, false, resolutions);
+			} else {
+				for (let i = 0; i < 7; i++) {
+					this.renderDaySection(container, addDays(rangeStart, i), rangeEntries, true, resolutions);
+				}
 			}
 		}
+		this.applyPendingHighlight(container, token);
+	}
+
+	// Consumes pendingHighlightTaskId (set by navigateToTrackedTask()) once
+	// the render() it triggered has finished building the DOM: scrolls to
+	// that task's card and applies a brief highlight flash. A no-op if the
+	// task's card isn't in this render's output (shouldn't happen in
+	// practice — an active session's date is always today, and
+	// navigateToTrackedTask() always lands on today's Day view with no
+	// project filter, so the row is guaranteed to exist). Deferred with
+	// setTimeout(0), same reason as the expand-scroll in renderTaskCard:
+	// waits for layout to settle before measuring/scrolling.
+	private applyPendingHighlight(container: Element, token: number): void {
+		if (!this.pendingHighlightTaskId) return;
+		const taskId = this.pendingHighlightTaskId;
+		this.pendingHighlightTaskId = null;
+
+		const target = container.querySelector<HTMLElement>(`[data-task-id="${CSS.escape(taskId)}"]`);
+		if (!target) return;
+
+		const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+		window.setTimeout(() => {
+			if (token !== this.renderToken) return;
+			target.scrollIntoView({ block: "center", behavior: prefersReducedMotion ? "auto" : "smooth" });
+			// The flash itself is pure motion (a fading pulse) with no
+			// static fallback: reduced-motion users still get the accent
+			// border/background that already marks a tracking row (see
+			// .task-time-tracker-log-row.is-tracking-active), just without
+			// the extra pulse on arrival.
+			if (prefersReducedMotion) return;
+			target.addClass("task-time-tracker-log-row-highlight");
+			window.setTimeout(() => target.removeClass("task-time-tracker-log-row-highlight"), 600);
+		}, 0);
 	}
 
 	// Range results view: grouped by day (heading + cards, see
@@ -1354,10 +1558,17 @@ export class TimeLogView extends ItemView {
 
 		const totalDays = Math.round((rangeEndExclusive - rangeStart) / 86400000);
 		const loadedDays = Math.min(this.resultsLoadedPages * RESULTS_PAGE_DAYS, totalDays);
+		const loadedRangeEnd = addDays(rangeStart, loadedDays);
+		const loadedEntries = visibleEntries.filter((entry) => entry.start >= rangeStart && entry.start < loadedRangeEnd);
+
+		// Resolved once for every loaded day at once — same reasoning as
+		// the day/week path in render(): a task with sessions on more than
+		// one loaded day must read the same snapshot on all of them.
+		const resolutions = await this.resolveTaskIds(loadedEntries);
+		if (token !== this.renderToken) return;
 
 		for (let i = 0; i < loadedDays; i++) {
-			if (token !== this.renderToken) return;
-			await this.renderDaySection(container, addDays(rangeStart, i), visibleEntries, true, token, true);
+			this.renderDaySection(container, addDays(rangeStart, i), loadedEntries, true, resolutions, true);
 		}
 
 		if (loadedDays < totalDays) {
