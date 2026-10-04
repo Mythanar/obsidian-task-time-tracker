@@ -24,7 +24,9 @@ import { openDatePickerPopover, reanchorDatePickerPopover } from "./DatePickerPo
 import { EditTaskModal } from "./EditTaskModal";
 import { InlineTrackingBus } from "./InlineTrackingBus";
 import { openProjectPickerPopover } from "./ProjectPickerList";
+import { SearchSuggestPopover } from "./SearchSuggestPopover";
 import { renderSessionInfo } from "./sessionEdit";
+import { applySearchFilter, getSearchSuggestions, SearchFilter } from "../core/TaskSearch";
 
 export const TIME_LOG_VIEW_TYPE = "task-time-tracker-log-view";
 
@@ -90,41 +92,6 @@ function formatShortDate(ms: number): string {
 	return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
-// Range title in the Resultados header (see renderDateNav): same "-"
-// dash as the rest of the panel, but more compact than the date-picker
-// or the Resultados empty state (which always show the full month on
-// both sides, see renderResultsEmptyState) — here month/year is omitted
-// on the left end when it matches the right one, since it's a
-// single-line title meant to fit next to "Volver" and calendar+Filter
-// on the same row.
-function formatResultsRangeTitle(startMs: number, endMs: number): string {
-	const start = new Date(startMs);
-	const end = new Date(endMs);
-	const sameYear = start.getFullYear() === end.getFullYear();
-	const sameMonth = sameYear && start.getMonth() === end.getMonth();
-
-	if (sameMonth) {
-		return `${start.getDate()} - ${formatShortDate(endMs)}`;
-	}
-	if (sameYear) {
-		return `${formatShortDate(startMs)} - ${formatShortDate(endMs)}`;
-	}
-	const withYear = (ms: number) => new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-	return `${withYear(startMs)} - ${withYear(endMs)}`;
-}
-
-// "· N dias" metadata on the Resultados range box: calendar days in the
-// range, both ends included — not just days with activity (that's
-// already covered by the "N tareas · M dias con actividad" subtitle, see
-// renderSubtitle). Math.round (not exact division) for the same reason
-// as renderResultsSection#totalDays: a range can cross a daylight saving
-// change, where the real calendar day doesn't measure exactly 86400000ms.
-function formatResultsRangeDays(startMs: number, endMs: number): string {
-	const days = Math.round((endMs - startMs) / 86400000) + 1;
-	const word = days === 1 ? t("log.day.singular") : t("log.day.plural");
-	return `${days} ${word}`;
-}
-
 // Range results view — maximum number of calendar days resolved/
 // rendered per page (see renderResultsSection()): a larger range has no
 // selection limit, but the list is cut here and a "Cargar mas" button
@@ -132,6 +99,8 @@ function formatResultsRangeDays(startMs: number, endMs: number): string {
 // days (the vast majority empty) of a very wide range (e.g. a year) all
 // at once.
 const RESULTS_PAGE_DAYS = 180;
+
+const SEARCH_SUGGESTION_LIMIT = 8;
 
 type LogViewMode = "day" | "week" | "results";
 
@@ -167,18 +136,42 @@ export class TimeLogView extends ItemView {
 	// filter / no project) that projectFilterId alone can't represent.
 	// Mutually exclusive with projectFilterId: never both active at once.
 	private projectFilterNoProject = false;
-	// Range results view (see renderResultsSection()): only make sense
-	// when viewMode === "results" — a range of two different days
-	// applied in the date-picker (see renderDateNav()) sets them;
-	// "Volver"/"Limpiar" doesn't clear them, it only changes viewMode to
-	// "day" (they're overwritten by the next applied range, no need to
-	// clear them first).
+	// Resultados' date range (see renderResultsSection()), set by a range
+	// applied in the date-picker (see renderDateNav()). null = no date
+	// filter: Resultados covers the whole history (a search, or a project
+	// left on its own after removing the search chip). Only meaningful
+	// while viewMode === "results"; cleared on leaving it (exitResults).
 	private resultsRangeStart: number | null = null;
 	private resultsRangeEnd: number | null = null;
 	// How many pages of RESULTS_PAGE_DAYS days have already been
-	// "loaded" (the "Cargar mas" button) for the current range — resets
-	// to 1 every time a new range is applied from the date-picker.
+	// "loaded" (the "Cargar mas" button) — resets to 1 every time a new
+	// range or search is applied.
 	private resultsLoadedPages = 1;
+	// Where "Volver" (and closeResultsIfNoFilters) returns to: the Day/Week
+	// position the user was on when Results was entered. Not overwritten
+	// when a new range or search is applied while already in Results.
+	private resultsReturnMode: "day" | "week" = "day";
+	private resultsReturnAnchor = startOfDay(Date.now());
+	// Search field open in the header's "mode" slot (replacing the
+	// Day/Week toggle or Results' back+counter block). Never touches
+	// viewMode/anchorDate, so closing it brings back the toggle exactly as
+	// it was.
+	private searchOpen = false;
+	private focusSearchOnRender = false;
+	// What's typed in the search field, unconfirmed. Kept outside the DOM
+	// because render() rebuilds the field from scratch.
+	private searchDraft = "";
+	// Confirmed search (see core/TaskSearch.ts), shown as a chip. Only
+	// ever set while viewMode === "results" — entering a search always
+	// enters Resultados, and leaving Resultados clears it.
+	private searchFilter: SearchFilter | null = null;
+	// What the suggestions are drawn from: the project-filtered history
+	// (plus Resultados' date range, if any — text AND project AND date),
+	// from the last render().
+	private searchableEntries: TimeEntry[] = [];
+	private searchInputEl: HTMLInputElement | null = null;
+	private searchHadFocus = false;
+	private suggestPopover: SearchSuggestPopover | null = null;
 	// Elements with a live counter for the active task (if it's in the
 	// visible date range after the last render()): recalculated every
 	// second via the bus, without rebuilding the whole panel. There can
@@ -250,6 +243,8 @@ export class TimeLogView extends ItemView {
 	async onClose(): Promise<void> {
 		this.busUnsubscribe?.();
 		this.busUnsubscribe = null;
+		this.suggestPopover?.hide();
+		this.suggestPopover = null;
 	}
 
 	refresh(): void {
@@ -267,10 +262,12 @@ export class TimeLogView extends ItemView {
 	// session (it still always navigates to Today, just with nothing to
 	// highlight once there — see handleStatusBarClick() in main.ts).
 	navigateToTrackedTask(taskId: string | null): void {
+		this.leaveResults();
 		this.viewMode = "day";
 		this.anchorDate = startOfDay(Date.now());
 		this.projectFilterId = null;
 		this.projectFilterNoProject = false;
+		this.closeSearchField();
 		this.pendingHighlightTaskId = taskId;
 		void this.render();
 	}
@@ -296,13 +293,29 @@ export class TimeLogView extends ItemView {
 		}
 	}
 
+	// Card title, closed state and "not found" all come from this, with
+	// the same criterion as the note icon (openTaskNote): if the tt-id is
+	// duplicated across notes, the note of the task's latest session wins
+	// — so the title and the note it opens are always the same note.
 	private async resolveTaskIds(entries: TimeEntry[]): Promise<Map<string, ResolvedTask | null>> {
 		const uniqueIds = [...new Set(entries.map((entry) => entry.taskId))];
+		const latestPaths = this.latestSessionPaths();
 		const resolutions = new Map<string, ResolvedTask | null>();
 		for (const taskId of uniqueIds) {
-			resolutions.set(taskId, await this.taskIdentifier.resolve(taskId));
+			resolutions.set(taskId, await this.taskIdentifier.resolvePreferring(taskId, latestPaths.get(taskId) ?? ""));
 		}
 		return resolutions;
+	}
+
+	// filePath of each task's most recent session across the whole history
+	// (not just the visible range), keyed by tt-id.
+	private latestSessionPaths(): Map<string, string> {
+		const latest = new Map<string, TimeEntry>();
+		for (const entry of this.getEntries()) {
+			const current = latest.get(entry.taskId);
+			if (!current || entry.start > current.start) latest.set(entry.taskId, entry);
+		}
+		return new Map([...latest].map(([taskId, entry]) => [taskId, entry.filePath]));
 	}
 
 	private taskLabel(taskId: string, resolutions: Map<string, ResolvedTask | null>): string {
@@ -449,7 +462,7 @@ export class TimeLogView extends ItemView {
 			setTooltip(noteBtn, t("log.openNoteAriaLabel"));
 			noteBtn.addEventListener("click", (evt) => {
 				evt.stopPropagation();
-				void this.openTaskNote(taskId, taskEntries);
+				void this.openTaskNote(taskId);
 			});
 		} else {
 			// "Not found" task: same class as the normal note icon (same
@@ -950,17 +963,18 @@ export class TimeLogView extends ItemView {
 	}
 
 	// Opens a task's source note from its card's title (resolvePreferring:
-	// prioritizes the most recent session's note if the id is duplicated
-	// across several notes, with the generic first-match criterion as a
-	// fallback). If the note is already open in some workspace tab, that
+	// prioritizes the note of the task's latest session — across the whole
+	// history, same as the title in resolveTaskIds — if the id is
+	// duplicated across several notes, with the generic first-match
+	// criterion as a fallback). If the note is already open in some
+	// workspace tab, that
 	// one is focused (the first one found, regardless of which is "most
 	// recent" among several) instead of opening a new tab; otherwise a
 	// new tab opens in the center area, same as before. Selects the
 	// whole line for a moment as a highlight (there's no public API for
 	// Obsidian's native search flash without touching the internal DOM).
-	private async openTaskNote(taskId: string, taskEntries: TimeEntry[]): Promise<void> {
-		const mostRecent = taskEntries.reduce((latest, entry) => (entry.start > latest.start ? entry : latest));
-		const resolved = await this.taskIdentifier.resolvePreferring(taskId, mostRecent.filePath);
+	private async openTaskNote(taskId: string): Promise<void> {
+		const resolved = await this.taskIdentifier.resolvePreferring(taskId, this.latestSessionPaths().get(taskId) ?? "");
 		const file = resolved ? this.app.vault.getAbstractFileByPath(resolved.filePath) : null;
 		if (!resolved || !(file instanceof TFile)) {
 			new Notice(t("notice.noteNotFound"));
@@ -997,32 +1011,32 @@ export class TimeLogView extends ItemView {
 	// this replaced). Single 480px container breakpoint, shared by all 3
 	// views — see the @container blocks in styles.css:
 	// - Wide format (>=480px): "auto 1fr auto" grid in a single row —
-	//   left: Day/Week toggle or "Volver"; center: arrows+date with NO
-	//   box of its own in Day/Week, framed box (range + "· N dias") in
-	//   Resultados (see formatResultsRangeTitle/formatResultsRangeDays);
-	//   right: calendar+Filter, always anchored to the right edge.
-	// - Compact format (<480px), 2 rows: row 1 = toggle/Volver on the
-	//   left + calendar+Filter on the right (space-between); row 2 = a
-	//   FULL-WIDTH framed control — in Day/Week a real stepper (grid
-	//   44px 1fr 44px, touch targets on the ends, see the @container
-	//   that restyles .task-time-tracker-log-datenav-range); in
-	//   Resultados the same box but with no arrows or dividers, just
-	//   centered text (range + metadata) — not interactive.
+	//   left ("mode" slot): Day/Week toggle, Resultados' back+counter
+	//   block, or the search field while it's open; center: arrows+date
+	//   in Day/Week, empty in Resultados; right: calendar+search+Filter,
+	//   always anchored to the right edge.
+	// - Compact format (<480px): row 1 = "mode" slot on the left +
+	//   actions on the right; in Day/Week, row 2 = a FULL-WIDTH stepper
+	//   (grid 44px 1fr 44px, touch targets on the ends, see the
+	//   @container that restyles .task-time-tracker-log-datenav-range).
+	//   Resultados has no row 2.
+	// Below the row, one chip per active filter (see renderFilterChips).
 	// No "Hoy" button on this bar under any format — the only entry
 	// point to "Hoy" is the date-picker's footer (see
 	// DatePickerPopover.ts#goToToday).
-	private renderDateNav(container: Element): void {
+	private renderDateNav(container: Element, visibleEntries: TimeEntry[]): void {
 		const nav = container.createDiv({ cls: "task-time-tracker-log-datenav" });
-		// Distinguishes Resultados from Day/Week for the filter button's
-		// own breakpoint (see the @container on
-		// .task-time-tracker-log-filter-btn-label in styles.css) — 610px
-		// in Day/Week, 575px in Resultados, neither tied to the 480px
-		// breakpoint that governs the rest of the header.
+		// Resultados has nothing in the "range" area, so Compact collapses
+		// to a single row (see the @container on .is-results in styles.css).
 		nav.toggleClass("is-results", this.viewMode === "results");
+		nav.toggleClass("is-searching", this.searchOpen);
 
 		const row = nav.createDiv({ cls: "task-time-tracker-log-datenav-row" });
 
-		if (this.viewMode !== "results") {
+		if (this.searchOpen) {
+			// Replaces whatever the "mode" slot holds, with no transition.
+			this.renderSearchInput(row);
+		} else if (this.viewMode !== "results") {
 			const modeToggle = row.createDiv({ cls: "task-time-tracker-log-datenav-mode" });
 			const dayBtn = modeToggle.createEl("button", {
 				text: t("log.viewDay"),
@@ -1047,46 +1061,27 @@ export class TimeLogView extends ItemView {
 			});
 		}
 
-		if (this.viewMode === "results") {
-			// Occupies the grid's "mode" area (see
-			// .task-time-tracker-log-results-back) — same slot as the
-			// Day/Week toggle, aligned the same way on the left. "Volver"
-			// always leads to Day view with today's date (doesn't
-			// remember whether it came from Day or Week; same
-			// destination as the date-picker's "Limpiar" in this mode,
-			// see DatePickerPopover.ts#goToToday).
-			const backBtn = row.createEl("button", { cls: "task-time-tracker-log-results-back" });
+		if (this.viewMode === "results" && !this.searchOpen) {
+			// "Volver" (action) and the counter (state) are two separate
+			// elements with a divider between them, so the pair doesn't read
+			// as a single "go to Results" link. The counter uses the same
+			// full-range, project-filtered task count as renderSubtitle.
+			const titleEl = row.createDiv({ cls: "task-time-tracker-log-results-title" });
+			const backBtn = titleEl.createEl("button", { cls: "task-time-tracker-log-results-back" });
 			setIcon(backBtn.createSpan(), "arrow-left");
 			backBtn.createSpan({ text: t("log.resultsBack") });
 			backBtn.addEventListener("click", () => {
-				this.viewMode = "day";
-				this.anchorDate = startOfDay(Date.now());
+				this.exitResults();
 				void this.render();
 			});
-
-			// Selected range: a framed box (border + background, see
-			// .task-time-tracker-log-results-rangebox) instead of plain
-			// text — plain text looked unbalanced next to "Volver" and
-			// calendar+Filter, which are controls with their own frame.
-			// Occupies the grid's "range" area, the same central slot as
-			// the arrows+date in Day/Week, but with no navigation arrows
-			// (an arbitrary range has no "previous/next"). Text in two
-			// parts: the range itself (formatResultsRangeTitle) and a
-			// metadata of the full range's calendar days, both ends
-			// included (formatResultsRangeDays — not just days with
-			// activity, that's already covered by the subtitle).
-			const rangeStart = this.resultsRangeStart as number;
-			const rangeEnd = this.resultsRangeEnd as number;
-			const rangeBox = row.createDiv({ cls: "task-time-tracker-log-results-rangebox" });
-			rangeBox.createSpan({
-				text: formatResultsRangeTitle(rangeStart, rangeEnd),
-				cls: "task-time-tracker-log-results-rangebox-label",
-			});
-			rangeBox.createSpan({
-				text: `· ${formatResultsRangeDays(rangeStart, rangeEnd)}`,
-				cls: "task-time-tracker-log-results-rangebox-meta",
-			});
-		} else {
+			titleEl.createSpan({ cls: "task-time-tracker-log-results-sep", attr: { "aria-hidden": "true" } });
+			const { start, end } = this.getViewRangeBounds();
+			const taskCount = new Set(
+				visibleEntries.filter((entry) => entry.start >= start && entry.start < end).map((entry) => entry.taskId),
+			).size;
+			const countKey = taskCount === 1 ? "log.resultsCount.singular" : "log.resultsCount.plural";
+			titleEl.createSpan({ text: t(countKey, { n: String(taskCount) }), cls: "task-time-tracker-log-results-count" });
+		} else if (this.viewMode !== "results") {
 			const range = row.createDiv({ cls: "task-time-tracker-log-datenav-range" });
 			const prevBtn = range.createEl("button", { cls: "clickable-icon task-time-tracker-icon-btn" });
 			setIcon(prevBtn, "chevron-left");
@@ -1131,10 +1126,12 @@ export class TimeLogView extends ItemView {
 		// is showing anything other than "today in Day view". Same
 		// visual treatment (is-active) as the filter button when a
 		// project is selected, so the user notices at a glance that
-		// they're not viewing the default date. No text pill (unlike the
-		// filter): the date is already shown in the row below, showing
-		// it here too would duplicate it.
-		const isDateFilterActive = !(this.viewMode === "day" && isSameLocalDay(this.anchorDate, startOfDay(Date.now())));
+		// they're not viewing the default date. A Resultados with no range
+		// (a search over the whole history) has no date filter.
+		const isDateFilterActive =
+			this.viewMode === "results"
+				? this.resultsRangeStart !== null
+				: !(this.viewMode === "day" && isSameLocalDay(this.anchorDate, startOfDay(Date.now())));
 		calendarBtn.toggleClass("is-active", isDateFilterActive);
 		setIcon(calendarBtn, "calendar");
 		calendarBtn.setAttribute("aria-label", t("log.datePickerAriaLabel"));
@@ -1144,16 +1141,28 @@ export class TimeLogView extends ItemView {
 			// full on reopening: Week is anchorDate+6 days (Monday to
 			// Sunday, see [[Vista de resultados por rango]] and
 			// renderDateNav), Resultados is the saved range end; Day has
-			// no range, a lone day.
+			// no range, a lone day. A Resultados with no range opens on
+			// today, with nothing marked as a range.
+			const today = startOfDay(Date.now());
+			const selectedDate =
+				this.viewMode === "results" ? (this.resultsRangeStart ?? today) : this.anchorDate;
 			const selectedRangeEnd =
 				this.viewMode === "week"
 					? addDays(this.anchorDate, 6)
 					: this.viewMode === "results"
-						? (this.resultsRangeEnd as number)
+						? (this.resultsRangeEnd ?? today)
 						: this.anchorDate;
+			// Resultados' return point is taken when the picker OPENS, not
+			// when the range completes: the picker applies every click at
+			// once, so the range's first click has already moved the view to
+			// that day by the time the second click enters Resultados. null
+			// when opened from Resultados itself — the original return point
+			// is kept.
+			const openedFrom =
+				this.viewMode === "results" ? null : { mode: this.viewMode, anchor: this.anchorDate };
 			openDatePickerPopover({
 				anchorEl: calendarBtn,
-				selectedDate: this.viewMode === "results" ? (this.resultsRangeStart as number) : this.anchorDate,
+				selectedDate,
 				selectedRangeEnd,
 				// The picker doesn't distinguish "click on the week number"
 				// from "a day range that turns out to be exactly a week"
@@ -1161,16 +1170,30 @@ export class TimeLogView extends ItemView {
 				// doesn't matter: both must jump to Week view. Any other
 				// range (neither a single day nor a full week) enters
 				// Resultados mode — see renderResultsSection().
+				// With a search active, every selection — a day and a week
+				// included — only scopes the search in time and stays in
+				// Resultados: the only way to drop a search is its chip or
+				// "Volver", never the calendar. (Which also covers a range's
+				// first click, applied as a lone day before the second one
+				// completes the range.)
 				onChange: (start, end) => {
-					if (start === end) {
+					const isWeek = start === startOfWeek(start) && end === addDays(start, 6);
+					const keepsSearch = this.viewMode === "results" && this.searchFilter !== null;
+					if (!keepsSearch && start === end) {
+						this.leaveResults();
 						this.viewMode = "day";
 						this.anchorDate = start;
 						void this.render();
-					} else if (start === startOfWeek(start) && end === addDays(start, 6)) {
+					} else if (!keepsSearch && isWeek) {
+						this.leaveResults();
 						this.viewMode = "week";
 						this.anchorDate = start;
 						void this.render();
 					} else {
+						if (openedFrom && this.viewMode !== "results") {
+							this.resultsReturnMode = openedFrom.mode;
+							this.resultsReturnAnchor = openedFrom.anchor;
+						}
 						this.viewMode = "results";
 						this.resultsRangeStart = start;
 						this.resultsRangeEnd = end;
@@ -1181,40 +1204,208 @@ export class TimeLogView extends ItemView {
 			});
 		});
 
+		const searchBtn = actions.createEl("button", {
+			cls: "task-time-tracker-log-header-icon-btn task-time-tracker-icon-btn",
+		});
+		// Same criterion as calendar and Filter: "a search is applied" (its
+		// chip is visible), not "the field is open".
+		searchBtn.toggleClass("is-active", this.searchFilter !== null);
+		setIcon(searchBtn, "search");
+		searchBtn.setAttribute("aria-label", t("log.searchAriaLabel"));
+		setTooltip(searchBtn, t("log.searchAriaLabel"));
+		// Closing it without confirming discards the draft: no chip, no
+		// filter. A confirmed search stays (it has its own chip).
+		searchBtn.addEventListener("click", () => {
+			if (this.searchOpen) {
+				this.closeSearchField();
+			} else {
+				this.searchOpen = true;
+				this.focusSearchOnRender = true;
+			}
+			void this.render();
+		});
+
 		this.renderProjectFilter(actions);
+		this.renderFilterChips(nav);
 	}
 
-	// Project filter button, next to the calendar: just the "filter"
-	// icon at rest (same look as the calendar button — see
-	// .task-time-tracker-log-header-icon-btn), the selected project's
-	// name (or "No project") + a tinted background in active state. The
-	// "x" icon to clear the filter is an independent button (its own
-	// hit-area), only present in active state — deliberately separate
-	// from the main button, which only opens/closes the popover.
-	private renderProjectFilter(nav: HTMLElement): void {
-		const wrap = nav.createDiv({ cls: "task-time-tracker-log-filter" });
-		const activeProject = this.projectFilterId
-			? (this.actions.getProjects().find((p) => p.id === this.projectFilterId) ?? null)
-			: null;
-		const isActive = activeProject !== null || this.projectFilterNoProject;
+	// Search field (see core/TaskSearch.ts and SearchSuggestPopover.ts).
+	// Two ways to confirm: pick a suggestion (filters to exactly that task)
+	// or Enter with nothing highlighted (the typed text, as a substring).
+	// Either one enters Resultados; Escape closes the suggestions first,
+	// then the field.
+	private renderSearchInput(row: HTMLElement): void {
+		// render() rebuilds the field from scratch, sometimes while the user
+		// is typing (e.g. a vault change refreshing the panel): keep focus
+		// and the open suggestions across that (see searchHadFocus).
+		const hadFocus = this.searchHadFocus;
+		this.suggestPopover?.hide();
 
-		const filterBtn = wrap.createEl("button", {
-			cls: "task-time-tracker-log-filter-btn task-time-tracker-log-header-icon-btn task-time-tracker-icon-btn",
+		const input = row.createEl("input", {
+			type: "search",
+			cls: "task-time-tracker-log-search-input",
+			attr: { placeholder: t("log.searchPlaceholder"), "aria-label": t("log.searchAriaLabel") },
 		});
-		filterBtn.toggleClass("is-active", isActive);
-		filterBtn.setAttribute("aria-label", t("log.filterButton"));
-		setTooltip(filterBtn, t("log.filterButton"));
-		setIcon(filterBtn.createSpan(), "filter");
-		// No selection: just the icon (same look as the calendar
-		// button). With a selection: the project's name or "No project",
-		// same as it already showed before — the icon-only look is
-		// exclusive to rest state, not active state.
-		if (isActive) {
-			filterBtn.createSpan({
-				text: activeProject ? activeProject.name : t("log.editModalNoProject"),
-				cls: "task-time-tracker-log-filter-btn-label",
+		input.value = this.searchDraft;
+		this.searchInputEl = input;
+		const popover = new SearchSuggestPopover(input, (suggestion) =>
+			this.confirmSearch({ query: suggestion.text, taskId: suggestion.taskId }),
+		);
+		this.suggestPopover = popover;
+		const refreshSuggestions = () =>
+			popover.update(getSearchSuggestions(this.searchableEntries, this.searchDraft, SEARCH_SUGGESTION_LIMIT));
+
+		input.addEventListener("input", () => {
+			this.searchDraft = input.value;
+			refreshSuggestions();
+		});
+		input.addEventListener("keydown", (evt) => {
+			if (evt.isComposing) return;
+			if (evt.key === "ArrowDown" || evt.key === "ArrowUp") {
+				evt.preventDefault();
+				if (!popover.isOpen()) refreshSuggestions();
+				popover.move(evt.key === "ArrowDown" ? 1 : -1);
+			} else if (evt.key === "Enter") {
+				evt.preventDefault();
+				const picked = popover.getHighlighted();
+				if (picked) {
+					this.confirmSearch({ query: picked.text, taskId: picked.taskId });
+				} else if (this.searchDraft.trim()) {
+					this.confirmSearch({ query: this.searchDraft.trim(), taskId: null });
+				}
+			} else if (evt.key === "Escape") {
+				evt.preventDefault();
+				if (popover.isOpen()) {
+					popover.hide();
+				} else {
+					this.closeSearchField();
+					void this.render();
+				}
+			}
+		});
+
+		if (this.focusSearchOnRender || hadFocus) {
+			this.focusSearchOnRender = false;
+			window.setTimeout(() => {
+				input.focus();
+				if (hadFocus && this.searchDraft.trim()) refreshSuggestions();
+			}, 0);
+		}
+	}
+
+	private closeSearchField(): void {
+		this.searchOpen = false;
+		this.searchDraft = "";
+		this.suggestPopover?.hide();
+		this.suggestPopover = null;
+		this.searchInputEl = null;
+	}
+
+	// Confirming a search always lands in Resultados: entering it from
+	// Day/Week (whose position is the return point), or replacing the
+	// current search if already there. An existing date range is kept
+	// (text AND date), as is the project filter (text AND project).
+	private confirmSearch(filter: SearchFilter): void {
+		if (this.viewMode !== "results") {
+			this.resultsReturnMode = this.viewMode;
+			this.resultsReturnAnchor = this.anchorDate;
+			this.viewMode = "results";
+			this.resultsRangeStart = null;
+			this.resultsRangeEnd = null;
+		}
+		this.searchFilter = filter;
+		this.resultsLoadedPages = 1;
+		this.closeSearchField();
+		void this.render();
+	}
+
+	// One chip per active filter, below the header row, in every view —
+	// the only place a filter's value is shown (the header icons only say
+	// "some filter is active"). The date filter will add its own chip here.
+	private renderFilterChips(nav: HTMLElement): void {
+		const chips: Array<{ label: string; onRemove: () => void }> = [];
+
+		if (this.searchFilter) {
+			chips.push({
+				label: `"${this.searchFilter.query}"`,
+				onRemove: () => {
+					this.searchFilter = null;
+				},
 			});
 		}
+
+		if (this.projectFilterId !== null || this.projectFilterNoProject) {
+			const project = this.projectFilterId
+				? this.actions.getProjects().find((p) => p.id === this.projectFilterId)
+				: undefined;
+			chips.push({
+				label: project ? project.name : t("log.editModalNoProject"),
+				onRemove: () => {
+					this.projectFilterId = null;
+					this.projectFilterNoProject = false;
+				},
+			});
+		}
+
+		if (chips.length === 0) return;
+
+		const row = nav.createDiv({ cls: "task-time-tracker-log-chips" });
+		for (const chip of chips) {
+			const chipEl = row.createDiv({ cls: "task-time-tracker-log-chip" });
+			chipEl.createSpan({ text: chip.label, cls: "task-time-tracker-log-chip-label" });
+			setTooltip(chipEl, chip.label);
+			const removeBtn = chipEl.createEl("button", { cls: "task-time-tracker-log-chip-remove" });
+			setIcon(removeBtn, "x");
+			removeBtn.setAttribute("aria-label", t("log.filterClearAriaLabel"));
+			removeBtn.addEventListener("click", () => {
+				chip.onRemove();
+				this.closeResultsIfNoFilters();
+				void this.render();
+			});
+		}
+	}
+
+	// Clears the state that only exists inside Resultados (its date range
+	// and the search) — for every way out of it. Doesn't move viewMode
+	// itself: callers either go back to the return point (exitResults) or
+	// somewhere explicit (the date-picker, navigateToTrackedTask).
+	private leaveResults(): void {
+		this.searchFilter = null;
+		this.resultsRangeStart = null;
+		this.resultsRangeEnd = null;
+	}
+
+	// Leaves Resultados for the Day/Week position it was entered from.
+	private exitResults(): void {
+		this.leaveResults();
+		this.viewMode = this.resultsReturnMode;
+		this.anchorDate = this.resultsReturnAnchor;
+	}
+
+	// Resultados never exists without a filter: once the last one (date
+	// range, search or project) is removed, it closes back to where it was
+	// entered from.
+	private closeResultsIfNoFilters(): void {
+		if (this.viewMode !== "results") return;
+		const hasFilter =
+			this.resultsRangeStart !== null ||
+			this.searchFilter !== null ||
+			this.projectFilterId !== null ||
+			this.projectFilterNoProject;
+		if (!hasFilter) this.exitResults();
+	}
+
+	// Project filter button: icon-only in every state, tinted when a
+	// project (or "No project") is selected. The value and its "x" live in
+	// the filter chip (see renderFilterChips), not here.
+	private renderProjectFilter(actions: HTMLElement): void {
+		const filterBtn = actions.createEl("button", {
+			cls: "task-time-tracker-log-header-icon-btn task-time-tracker-icon-btn",
+		});
+		filterBtn.toggleClass("is-active", this.projectFilterId !== null || this.projectFilterNoProject);
+		filterBtn.setAttribute("aria-label", t("log.filterButton"));
+		setTooltip(filterBtn, t("log.filterButton"));
+		setIcon(filterBtn, "filter");
 		filterBtn.addEventListener("click", () => {
 			openProjectPickerPopover({
 				anchorEl: filterBtn,
@@ -1230,21 +1421,6 @@ export class TimeLogView extends ItemView {
 				},
 			});
 		});
-
-		if (isActive) {
-			const clearBtn = wrap.createEl("button", {
-				cls: "task-time-tracker-log-filter-clear task-time-tracker-icon-btn clickable-icon",
-			});
-			setIcon(clearBtn, "x");
-			clearBtn.setAttribute("aria-label", t("log.filterClearAriaLabel"));
-			setTooltip(clearBtn, t("log.filterClearAriaLabel"));
-			clearBtn.addEventListener("click", (evt) => {
-				evt.stopPropagation();
-				this.projectFilterId = null;
-				this.projectFilterNoProject = false;
-				void this.render();
-			});
-		}
 	}
 
 	// Replaces the normal day/week empty state only when a project
@@ -1349,7 +1525,10 @@ export class TimeLogView extends ItemView {
 	// sesiones/dias").
 	private getViewRangeBounds(): { start: number; end: number } {
 		if (this.viewMode === "results") {
-			return { start: this.resultsRangeStart as number, end: addDays(this.resultsRangeEnd as number, 1) };
+			if (this.resultsRangeStart === null || this.resultsRangeEnd === null) {
+				return { start: -Infinity, end: Infinity };
+			}
+			return { start: this.resultsRangeStart, end: addDays(this.resultsRangeEnd, 1) };
 		}
 		const start = this.viewMode === "day" ? startOfDay(this.anchorDate) : startOfWeek(this.anchorDate);
 		const end = this.viewMode === "day" ? addDays(start, 1) : addDays(start, 7);
@@ -1444,6 +1623,8 @@ export class TimeLogView extends ItemView {
 		// mid-render.
 		this.globalActiveEntry = allEntries.find((entry) => entry.end === null) ?? null;
 
+		// Must be read before container.empty() detaches the field.
+		this.searchHadFocus = this.searchInputEl !== null && document.activeElement === this.searchInputEl;
 		container.empty();
 
 		if (allEntries.length === 0) {
@@ -1459,11 +1640,22 @@ export class TimeLogView extends ItemView {
 		// kept above only to decide the plugin's global empty state ("No
 		// sessions recorded yet"), which has nothing to do with the
 		// filter.
-		const visibleEntries = this.projectFilterNoProject
+		const projectEntries = this.projectFilterNoProject
 			? allEntries.filter((entry) => this.actions.getProjectForTask(entry.taskId) === null)
 			: this.projectFilterId
 				? allEntries.filter((entry) => this.actions.getProjectForTask(entry.taskId)?.id === this.projectFilterId)
 				: allEntries;
+
+		// Search (see core/TaskSearch.ts) narrows the same listing further —
+		// text AND project AND Resultados' date range. Suggestions draw from
+		// what the search would be applied to, so a suggestion never leads
+		// to an empty Resultados.
+		const { start: boundsStart, end: boundsEnd } = this.getViewRangeBounds();
+		this.searchableEntries =
+			this.viewMode === "results"
+				? projectEntries.filter((entry) => entry.start >= boundsStart && entry.start < boundsEnd)
+				: projectEntries;
+		const visibleEntries = this.searchFilter ? applySearchFilter(projectEntries, this.searchFilter) : projectEntries;
 
 		const titleRow = container.createDiv({ cls: "task-time-tracker-log-title-row" });
 		const titleCol = titleRow.createDiv({ cls: "task-time-tracker-log-title-col" });
@@ -1471,7 +1663,7 @@ export class TimeLogView extends ItemView {
 		this.renderSubtitle(titleCol, visibleEntries);
 		this.renderViewTotal(titleRow, visibleEntries);
 
-		this.renderDateNav(container);
+		this.renderDateNav(container, visibleEntries);
 
 		if (this.viewMode === "results") {
 			await this.renderResultsSection(container, visibleEntries, token);
@@ -1537,29 +1729,44 @@ export class TimeLogView extends ItemView {
 	}
 
 	// Range results view: grouped by day (heading + cards, see
-	// renderDaySection with hideIfEmpty), with no empty days interspersed.
-	// Paginated in blocks of RESULTS_PAGE_DAYS days — a range can be
-	// arbitrarily wide (no limit in the date-picker), but resolving
-	// hundreds/thousands of days (the vast majority empty) all at once
-	// makes no sense; "Cargar mas" only appears if the full range
-	// exceeds what's already loaded. The title row's total (see
-	// renderViewTotal) ALWAYS covers the full range, not just what's
-	// loaded — it's computed separately, it doesn't depend on this loop.
+	// renderDaySection with hideIfEmpty), newest day first, with no empty
+	// days interspersed. Paginated in blocks of RESULTS_PAGE_DAYS days — a
+	// range can be arbitrarily wide (no limit in the date-picker), but
+	// resolving hundreds/thousands of days (the vast majority empty) all
+	// at once makes no sense; "Cargar mas" only appears if the full range
+	// exceeds what's already loaded, and it loads further BACK in time
+	// (older days), since the first page already starts at the newest
+	// day. The title row's total (see renderViewTotal) ALWAYS covers the
+	// full range, not just what's loaded — it's computed separately, it
+	// doesn't depend on this loop.
+	// With no date range (a search or project over the whole history), the
+	// span runs from the first to the last matching day — never a range
+	// padded out to "today" or to the start of all tracking.
 	private async renderResultsSection(container: Element, visibleEntries: TimeEntry[], token: number): Promise<void> {
-		const rangeStart = this.resultsRangeStart as number;
-		const rangeEnd = this.resultsRangeEnd as number; // dia de inicio del ultimo dia (inclusive)
-		const rangeEndExclusive = addDays(rangeEnd, 1);
-
-		const rangeHasEntries = visibleEntries.some((entry) => entry.start >= rangeStart && entry.start < rangeEndExclusive);
-		if (!rangeHasEntries) {
-			this.renderResultsEmptyState(container, rangeStart, rangeEnd);
+		const { start: boundsStart, end: boundsEnd } = this.getViewRangeBounds();
+		const matchingEntries = visibleEntries.filter((entry) => entry.start >= boundsStart && entry.start < boundsEnd);
+		if (matchingEntries.length === 0) {
+			this.renderResultsEmptyState(container);
 			return;
 		}
 
+		let rangeStart: number;
+		let rangeEnd: number; // start of the last day (inclusive)
+		if (this.resultsRangeStart !== null && this.resultsRangeEnd !== null) {
+			rangeStart = this.resultsRangeStart;
+			rangeEnd = this.resultsRangeEnd;
+		} else {
+			// reduce, not Math.min(...spread): a long history can exceed the
+			// engine's argument limit.
+			rangeStart = startOfDay(matchingEntries.reduce((min, entry) => Math.min(min, entry.start), Infinity));
+			rangeEnd = startOfDay(matchingEntries.reduce((max, entry) => Math.max(max, entry.start), -Infinity));
+		}
+		const rangeEndExclusive = addDays(rangeEnd, 1);
+
 		const totalDays = Math.round((rangeEndExclusive - rangeStart) / 86400000);
 		const loadedDays = Math.min(this.resultsLoadedPages * RESULTS_PAGE_DAYS, totalDays);
-		const loadedRangeEnd = addDays(rangeStart, loadedDays);
-		const loadedEntries = visibleEntries.filter((entry) => entry.start >= rangeStart && entry.start < loadedRangeEnd);
+		const loadedRangeStart = addDays(rangeEndExclusive, -loadedDays);
+		const loadedEntries = visibleEntries.filter((entry) => entry.start >= loadedRangeStart && entry.start < rangeEndExclusive);
 
 		// Resolved once for every loaded day at once — same reasoning as
 		// the day/week path in render(): a task with sessions on more than
@@ -1568,7 +1775,7 @@ export class TimeLogView extends ItemView {
 		if (token !== this.renderToken) return;
 
 		for (let i = 0; i < loadedDays; i++) {
-			this.renderDaySection(container, addDays(rangeStart, i), loadedEntries, true, resolutions, true);
+			this.renderDaySection(container, addDays(rangeEndExclusive, -(i + 1)), loadedEntries, true, resolutions, true);
 		}
 
 		if (loadedDays < totalDays) {
@@ -1581,34 +1788,40 @@ export class TimeLogView extends ItemView {
 		}
 	}
 
-	// "Quitar filtros" (plural): Resultados' empty range can be due to
-	// the date range, the project/"No project" filter, or a combination
-	// of both — unlike renderFilteredEmptyState (which can only be due
-	// to the project filter, no range in Day/Week), there's no way to
-	// tell the cause apart here, so the button clears both at once and
-	// always returns to Day/today (same destination as
-	// "Volver"/"Limpiar" in this mode).
-	private renderResultsEmptyState(container: Element, rangeStart: number, rangeEnd: number): void {
-		const sameMonth =
-			new Date(rangeStart).getMonth() === new Date(rangeEnd).getMonth() &&
-			new Date(rangeStart).getFullYear() === new Date(rangeEnd).getFullYear();
-		const startLabel = sameMonth ? String(new Date(rangeStart).getDate()) : formatShortDate(rangeStart);
-		const endLabel = formatShortDate(rangeEnd);
-
+	// "Quitar filtros" (plural): Resultados' empty state can be due to the
+	// search, the date range, the project/"No project" filter, or a
+	// combination — there's no way to tell the cause apart, so the button
+	// clears them all and returns to where Resultados was entered from
+	// (same destination as "Volver"). The search message is a basic
+	// placeholder; the final empty-state copy is Bloque 5.
+	private renderResultsEmptyState(container: Element): void {
 		const wrap = container.createDiv({ cls: "task-time-tracker-log-results-empty" });
 		const textEl = wrap.createEl("p", { cls: "task-time-tracker-log-results-empty-text" });
-		textEl.createSpan({ text: `${t("log.resultsEmptyPrefix")} ` });
-		textEl.createSpan({
-			text: `${startLabel} ${t("log.resultsEmptyJoiner")} ${endLabel}`,
-			cls: "task-time-tracker-log-results-empty-range",
-		});
+
+		const rangeStart = this.resultsRangeStart;
+		const rangeEnd = this.resultsRangeEnd;
+		if (this.searchFilter) {
+			textEl.setText(t("log.searchNoResults", { query: this.searchFilter.query }));
+		} else if (rangeStart !== null && rangeEnd !== null) {
+			const sameMonth =
+				new Date(rangeStart).getMonth() === new Date(rangeEnd).getMonth() &&
+				new Date(rangeStart).getFullYear() === new Date(rangeEnd).getFullYear();
+			const startLabel = sameMonth ? String(new Date(rangeStart).getDate()) : formatShortDate(rangeStart);
+			const endLabel = formatShortDate(rangeEnd);
+			textEl.createSpan({ text: `${t("log.resultsEmptyPrefix")} ` });
+			textEl.createSpan({
+				text: `${startLabel} ${t("log.resultsEmptyJoiner")} ${endLabel}`,
+				cls: "task-time-tracker-log-results-empty-range",
+			});
+		} else {
+			textEl.setText(t("log.resultsEmptyGeneric"));
+		}
 
 		const clearBtn = wrap.createEl("button", { text: t("log.resultsFilterRemoveButton") });
 		clearBtn.addEventListener("click", () => {
-			this.viewMode = "day";
-			this.anchorDate = startOfDay(Date.now());
 			this.projectFilterId = null;
 			this.projectFilterNoProject = false;
+			this.exitResults();
 			void this.render();
 		});
 	}

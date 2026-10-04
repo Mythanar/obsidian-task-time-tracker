@@ -74,6 +74,8 @@ Every tracked task gets a short, unique identifier stored inline with the task t
 
 <img src="docs/images/id-hidden-dark.png" alt="Task identifier, Hidden visibility mode" style="border-radius:12px;">
 
+**Duplicated notes.** If two notes contain the same `[tt-id:: …]` (for example, after duplicating a note), the plugin treats them as a single task: its time still adds up correctly. Which copy's text is shown in the Time Tracker panel, the Dashboard and exports is not defined. The note icon on each card opens the note where the task was last tracked. Avoid duplicating notes that contain tracked tasks.
+
 ### Using it with the Tasks plugin
 
 If you use the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin, where the identifier sits on the line matters. Tasks only recognises its own fields (due date 📅, scheduled ⏳, start 🛫, created ➕, done ✅, priority, recurrence…) when nothing else comes after them. This is a known limitation of Tasks itself ([obsidian-tasks#1505](https://github.com/obsidian-tasks-group/obsidian-tasks/issues/1505)) and affects any text added at the end of a task line, not just this plugin.

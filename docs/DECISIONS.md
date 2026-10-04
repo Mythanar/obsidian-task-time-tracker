@@ -1389,3 +1389,144 @@ resultado final.
   altura del título ya no depende de cuánto ancho tenga en cada
   instante, así que la transición de 150ms solo mueve el punto de corte
   del ellipsis, nunca el layout de la fila.
+
+## Task search — Block 1: Resultados in descending order
+
+- **Resultados lists days newest first.** The first 180-day page now
+  starts at the range's most recent day, and "Load more" walks further
+  back in time. Before, it started at the oldest day and paged forward,
+  which made no sense for a long history. Card order within a day is
+  unchanged (Fase 5 decision). The range total was already full-range,
+  independent of pagination, so it didn't change either.
+
+## Task search — Block 2: header chips and search slot
+
+- **Filter chips are the single place that shows a filter's value.** One
+  chip per active filter, each with its own "×", in a row under the
+  header in every view (Day, Week, Resultados). The header icons
+  (calendar, search, filter) only say "a filter is active" via the
+  shared `is-active` tint. Only the project filter exists for now. The
+  text and date filters will add chips through the same
+  `renderFilterChips` list.
+- **The filter button is icon-only in every state.** The project-name
+  label inside it, its 609px/574px breakpoints, and the separate inline
+  "×" next to it are all removed. The chip replaces all three.
+  `.task-time-tracker-log-filter-btn(-label)` survives only because the
+  Edit modal's Project button still uses it.
+- **Resultados header: "← Volver | N tareas encontradas".** The range
+  box ("1–15 sep · 15 días") is replaced, not kept alongside, by a task
+  counter. A divider sits between Volver and the counter so the pair
+  reads as action + state, not as one "go to Results" link. The counter
+  uses the same full-range, project-filtered task count as the
+  subtitle. The selected range is no longer shown as text in this
+  block. It comes back as a date chip in Block 4.
+- **Volver returns to where Resultados was entered from** (the same Day
+  or Week position), not always to Day/today. Picking a new range while
+  already in Resultados keeps the original return point. The point is
+  captured when the date-picker opens, not when the range completes: the
+  picker applies every click immediately, so a range's first click has
+  already moved the view to that day (first build returned to the range
+  start because of this).
+- **Resultados never exists without a filter.** When the last filter
+  is removed, the view closes back to that return point
+  (`closeResultsIfNoFilters`). The date range counts as a filter, and
+  today the date-picker is the only way into Resultados, so this rule
+  can't trigger until an entry point without a range exists.
+- **The search slot (placeholder, no search logic yet).** The search icon
+  toggles a field in the header's "mode" slot. The field replaces the
+  Day/Week toggle, or Resultados' back+counter block, directly with no
+  transition. It never touches `viewMode`/`anchorDate`, so closing it
+  restores the toggle in the same Day/Week state.
+
+## Task search — Block 3: suggestions and search logic
+
+- **What's compared: each session's stored `taskText`, plus the tt-id.**
+  The stored text is the line without its checkbox or tt-id. Search is
+  in memory, with no vault reads, so tasks whose note was deleted are
+  still found. A renamed task is still found by its old name (accepted).
+  Matching ignores case and accents (NFD + strip diacritics). The pure
+  logic lives in `core/TaskSearch.ts`, covered by `tests/TaskSearch.test.ts`.
+- **Matching is per task, not per session.** If any session of a task
+  matches, every session of that task is shown, so searching an old name
+  brings the whole renamed task.
+- **Two ways to confirm.** Picking a suggestion filters by that task's
+  tt-id (`SearchFilter.taskId`). The chip shows its text, but other tasks
+  whose text merely contains it never slip in. Enter with no suggestion
+  highlighted searches the typed text as a substring. Nothing is
+  highlighted until the arrow keys are used, so plain Enter always means
+  "this text as-is".
+- **The search icon's active tint means "a search is confirmed"** (its
+  chip is visible), whether or not the field is open. It does not mean
+  "the field is open". This is the same criterion as calendar and
+  Filter: active = a filter of this kind is applied. Block 2 tinted it
+  while the field was open, a placeholder from before searches could be
+  confirmed.
+- **Suggestions show the tt-id** on the right, in the same raw form as
+  the Edit task modal, so an id pasted from there visibly matches.
+- **Search only exists inside Resultados.** Confirming enters it, taking
+  the Day/Week position as the return point. Every way out of Resultados
+  (`leaveResults`) clears the search together with the date range.
+  Resultados can now exist with no date range (whole history). Its
+  pagination then spans the first to the last matching day.
+- **AND everywhere:** text AND project AND an existing date range. A range
+  applied from Resultados is kept when a search is confirmed. Suggestions
+  are drawn from that same scope, so a suggestion never leads to an
+  empty Resultados.
+- **Date-picker in a search:** with a search active, every picker
+  selection (a lone day, a week, a range, or the footer's "Today") only
+  scopes the search in time. It stays in Resultados with that day/week
+  as the range, keeping the search and the project filter. Only the
+  search chip or "Volver" drops a search, never the calendar. The first
+  build left Resultados on a day/week and silently lost the search. This
+  also covers a range's first click, which is applied as a lone day,
+  so the earlier snapshot-and-restore workaround is gone. Without a
+  search, a day/week still leaves Resultados as before. Block 4 owns the
+  rest of the calendar-within-search design (the date chip).
+- **The empty state's "Quitar filtros"** now returns to the return
+  point, like Volver, instead of Day/today. The no-match message is a
+  basic placeholder. Block 5 owns the final copy.
+
+## Task search — Block 3 close: "Retomar" stores the note's current text; card title aligned with the note icon
+
+- **Background: stored text is never resynced.** `TimeEntry.taskText` is
+  written only when a session is created (`TrackingEngine.start`). No
+  path rewrites it afterwards, including renaming or moving the note,
+  stopping, or editing times. Cards look "resynced" because, while the
+  note exists, their title shows the note's live line, resolved by
+  tt-id. `taskText` is only the fallback for a deleted note. Search reads
+  only `taskText`, so a rename was invisible to it until a new session
+  stored the new name.
+- **"Retomar" now stores the note's current text and location** when the
+  task's line is still in the vault (`resolvePreferring(taskId,
+  latestSession.filePath)` + `parseCheckboxLine`). Before, it copied the
+  previous session's snapshot, so resuming from the panel kept saving
+  the old name forever. If the line can't be found, or is no longer a
+  checkbox, it falls back to the previous snapshot as before. It reads
+  the note but never writes it. `filePath` is taken from the same
+  resolution, so the new session points at the note the text came from.
+- **`resolve()` vs `resolvePreferring()` with a duplicated tt-id.** For
+  example, a note duplicated as a backup leaves the same `[tt-id:: …]`
+  in two files.
+  - `resolve()` returns the first matching line while iterating
+    `vault.getMarkdownFiles()`. The public API doesn't document that
+    order, so which copy wins is undefined. All copies count as one
+    task, so the time adds up correctly either way.
+  - `resolvePreferring(taskId, path)` looks in `path` first and falls
+    back to `resolve()` if that note no longer has the tt-id.
+- **Mismatch fixed: card title vs note icon.** The title, its
+  closed-task state, and "not found" used `resolve()`, while the note
+  icon used `resolvePreferring()`. With a duplicated tt-id, a card could
+  show copy A's text and open copy B. Both now use
+  `resolvePreferring()` with the same preferred path: the note of the
+  task's latest session across the whole history (`latestSessionPaths`).
+  Before, the icon used the latest session among the card's own
+  sessions, which on a day or week card is not necessarily the task's
+  latest. Title and icon now always point at the same note.
+- **Unchanged, still on `resolve()`:** the Dashboard, the CSV export's
+  task text, and repositioning the tt-id when tracking stops.
+- **Backlog, no date:** making `resolve()`'s fallback deterministic, for
+  example first match in alphabetical path order. It would change the
+  Dashboard, the export and the tt-id repositioning too, so it's a
+  separate decision. The README documents the duplicated-notes case as
+  undefined behaviour ("avoid duplicating notes that contain tracked
+  tasks").

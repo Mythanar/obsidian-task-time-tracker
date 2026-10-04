@@ -405,18 +405,26 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 
 	// "Retomar tracking de una tarea ya registrada" — starts a new
 	// session for a tt-id that already has history, from its card's play
-	// button in the Historial. Doesn't read or write the source note
-	// (unlike startTrackingFromCursor/handleInlineStart): the new
-	// TimeEntry's taskText/filePath are the snapshot of that task's most
-	// recently saved session, so it works the same whether the note was
-	// edited or deleted since. Never reopens the previous session —
-	// trackingEngine.start() always creates a new entry.
+	// button in the Historial. Reads the source note but never writes it
+	// (unlike startTrackingFromCursor/handleInlineStart). If the task's
+	// line is still in the vault, the new TimeEntry stores its CURRENT
+	// text and location (resolvePreferring: the latest session's note
+	// first, same as the card's title and note icon) — so a task renamed
+	// in its note is saved, and searchable, under its new name. If the
+	// line is gone (note deleted, or no longer a checkbox), it falls back
+	// to the latest session's snapshot, as before. Never reopens the
+	// previous session — trackingEngine.start() always creates a new entry.
 	private async resumeTracking(taskId: string): Promise<void> {
 		const taskEntries = this.trackingEngine.getEntries().filter((entry) => entry.taskId === taskId);
 		if (taskEntries.length === 0) return;
 		const mostRecent = taskEntries.reduce((latest, entry) => (entry.start > latest.start ? entry : latest));
 
-		const result = await this.trackingEngine.start(taskId, mostRecent.taskText, mostRecent.filePath);
+		const resolved = await this.taskIdentifier.resolvePreferring(taskId, mostRecent.filePath);
+		const liveText = resolved ? parseCheckboxLine(resolved.lineText) : null;
+		const taskText = liveText ?? mostRecent.taskText;
+		const filePath = liveText !== null && resolved ? resolved.filePath : mostRecent.filePath;
+
+		const result = await this.trackingEngine.start(taskId, taskText, filePath);
 		if (result !== "started") return;
 
 		this.statusBarWidget.refresh();

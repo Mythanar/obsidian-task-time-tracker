@@ -1146,10 +1146,10 @@
 	}
 }
 
-/* Compact (< 480px): row 1 has the mode toggle/Back and calendar+Filter
-   anchored right; row 2 is a full-width boxed control (see the @container
-   block restyling .task-time-tracker-log-datenav-range below, and
-   .task-time-tracker-log-results-rangebox for Results). Larger
+/* Compact (< 480px): row 1 has the "mode" slot (toggle, Results' back+
+   counter, or the search field) and the actions anchored right; row 2 is
+   the full-width Day/Week stepper (see the @container block restyling
+   .task-time-tracker-log-datenav-range below). Larger
    margin-bottom/min-height than Wide, since there's an extra stacked row —
    without it the row overlaps the divider/empty-day content below. */
 @container tt-datenav (max-width: 479px) {
@@ -1163,6 +1163,29 @@
 		column-gap: 12px;
 		margin-bottom: 24px;
 		min-height: 88px;
+	}
+
+	/* Results has nothing in the "range" area: a single row, so no empty
+	   second row is reserved. minmax(0, 1fr) lets the counter ellipsize. */
+	.task-time-tracker-log-datenav.is-results .task-time-tracker-log-datenav-row {
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas: "mode actions";
+		margin-bottom: 16px;
+		min-height: 40px;
+	}
+}
+
+/* Wide: the "mode" column (auto by default, sized for the toggle) becomes
+   flexible when it holds something that must be able to shrink or grow —
+   Results' back+counter block, or the search field. */
+@container tt-datenav (min-width: 480px) {
+	.task-time-tracker-log-datenav.is-results .task-time-tracker-log-datenav-row {
+		grid-template-columns: minmax(0, 1fr) auto;
+		grid-template-areas: "mode actions";
+	}
+
+	.task-time-tracker-log-datenav.is-searching:not(.is-results) .task-time-tracker-log-datenav-row {
+		grid-template-columns: minmax(0, 1fr) auto auto;
 	}
 }
 
@@ -1203,14 +1226,10 @@
 	color: var(--text-on-accent);
 }
 
-/* Centered in the free space of the Wide grid, without its own box border
-   (unlike the boxed range in Results, see
-   .task-time-tracker-log-results-rangebox). Becomes a full-width boxed
-   control in Compact (see @container below) — same element, just restyled
-   by container width. "Back" (.task-time-tracker-log-results-back) occupies
-   the "mode" grid area when it replaces the Day/Week toggle, not this
-   "range" area — the Results range lives in its own element (rangebox),
-   also in the "range" area. */
+/* Day/Week arrows+date, centered in the free space of the Wide grid,
+   without a box border of its own. Becomes a full-width boxed control in
+   Compact (see @container below) — same element, just restyled by
+   container width. Not rendered in Results. */
 .task-time-tracker-log-datenav-range {
 	grid-area: range;
 	justify-self: center;
@@ -1282,8 +1301,8 @@
 	}
 }
 
-/* Calendar+Filter (see TimeLogView.ts#renderDateNav) never separate or
-   change grid-area — always anchored to the row's right edge
+/* Calendar+search+Filter (see TimeLogView.ts#renderDateNav) never separate
+   or change grid-area — always anchored to the row's right edge
    (justify-self:end) in both formats. */
 .task-time-tracker-log-datenav-actions {
 	grid-area: actions;
@@ -1304,28 +1323,12 @@
 	flex-shrink: 0;
 }
 
-/* flex-shrink:0 — this group never cedes space to the rest of the row; see
-   .task-time-tracker-log-filter-btn below for how the button itself adapts
-   (a binary breakpoint swap, not progressive shrinking). */
-.task-time-tracker-log-filter {
-	display: flex;
-	align-items: center;
-	gap: 0.15em;
-	flex-shrink: 0;
-}
-
-/* Shared base class with the Edit modal's Project button (see
-   .task-time-tracker-edit-modal-project-btn below) — visual look
-   (background, size, icon-only vs pill) is set per context. flex-shrink:0
-   is deliberate: an earlier attempt at progressive shrinking via dynamic
-   flex-shrink/min-width caused the Results date box to clip and the
-   Day/Week row to break, by making the filter compete for the whole row's
-   space. max-width is a fixed cap on the button itself, unrelated to
-   available row space — it only guards against extremely long project
-   names (see .task-time-tracker-log-filter-btn-label for the ellipsis).
-   The name disappears entirely below 480px (see the @container block
-   below) — a binary swap tied to the same breakpoint as the rest of the
-   header, not an intermediate state. */
+/* Icon+name pill used by the Edit modal's Project button (see
+   .task-time-tracker-edit-modal-project-btn below). The Historial's
+   header filter button no longer uses it — it's icon-only, its value
+   lives in the filter chip. max-width only guards against extremely long
+   project names (see .task-time-tracker-log-filter-btn-label for the
+   ellipsis). */
 .task-time-tracker-log-filter-btn {
 	display: inline-flex;
 	align-items: center;
@@ -1348,28 +1351,7 @@
 	white-space: nowrap;
 }
 
-/* This button's own breakpoint — deliberately not the 480px one governing
-   the rest of the header: the project name disappears entirely and only
-   the funnel icon remains, a binary swap with no intermediate state.
-   Threshold differs by view: 610px in Day/Week (shares the row with the
-   mode toggle) vs 575px in Results (shares the row with Back and the range
-   box, a bit less crowded) — .is-results on .task-time-tracker-log-datenav
-   distinguishes the two within the same container-query context.
-   Independent of the header's 480px 2-row breakpoint. The clear-filter "x"
-   icon is unaffected, always visible in both formats. */
-@container tt-datenav (max-width: 609px) {
-	.task-time-tracker-log-datenav:not(.is-results) .task-time-tracker-log-filter-btn-label {
-		display: none;
-	}
-}
-
-@container tt-datenav (max-width: 574px) {
-	.task-time-tracker-log-datenav.is-results .task-time-tracker-log-filter-btn-label {
-		display: none;
-	}
-}
-
-/* Shared appearance between calendar and project-filter buttons at rest:
+/* Shared appearance between calendar, search and filter buttons at rest:
    no background/border/shadow of their own, keeping Obsidian's native
    button look — this only centers the icon and prevents shrinking. */
 .task-time-tracker-log-header-icon-btn {
@@ -1380,10 +1362,13 @@
 }
 
 /* Distinct from the solid fill used by the active Day/Week toggle, so the
-   two don't visually compete in the same bar. Used by both the project
-   filter (when a project/"No project" is selected) and the calendar
-   (active whenever a date filter applies — in Week, in Day when not
-   "today", always in Results). */
+   two don't visually compete in the same bar. Used by the project filter
+   (when a project/"No project" is selected), the search button (when a
+   search is confirmed — not merely while its field is open) and the
+   calendar (active whenever a date filter applies — in Week, in Day when
+   not "today", in Results when it has a date range). Same meaning on all
+   three: "a filter of this kind is applied". The filter chips reuse the
+   same tint. */
 .task-time-tracker-log-header-icon-btn.is-active {
 	gap: 0.35em;
 	background-color: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
@@ -1398,17 +1383,89 @@
 	}
 }
 
-/* Independent hit area from the main filter button, same pattern as the
-   panel's other icon-only buttons. */
-.task-time-tracker-log-filter-clear {
-	flex-shrink: 0;
-	color: var(--text-muted);
+/* Search field in the "mode" slot, replacing the toggle (or Results'
+   back+counter) while search is open. The Wide grid makes that column
+   flexible (see .is-searching above), so it simply fills it. */
+.task-time-tracker-log-search-input {
+	grid-area: mode;
+	width: 100%;
+	min-width: 0;
 }
 
-.task-time-tracker-log-filter-clear:hover {
+/* One chip per active filter (see TimeLogView.ts#renderFilterChips).
+   Wraps onto more lines instead of scrolling; a single chip never grows
+   past the row (max-width:100%), its label ellipsizes instead. */
+.task-time-tracker-log-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+	margin: -4px 0 4px;
+}
+
+.task-time-tracker-log-chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 2px;
+	max-width: 100%;
+	min-width: 0;
+	padding: 2px 4px 2px 10px;
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 40%, transparent);
+	border-radius: var(--radius-l);
+	background-color: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+}
+
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+	.task-time-tracker-log-chip {
+		border-color: var(--background-modifier-border);
+		background-color: var(--background-modifier-hover);
+	}
+}
+
+.task-time-tracker-log-chip-label {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.task-time-tracker-log-chip-remove {
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 20px;
+	height: 20px;
+	padding: 0;
+	border: none;
+	border-radius: 50%;
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-muted);
+	cursor: pointer;
+}
+
+.task-time-tracker-log-chip-remove:hover {
 	color: var(--text-normal);
 	background-color: var(--background-modifier-hover);
-	border-radius: 50%;
+}
+
+.task-time-tracker-log-chip-remove svg {
+	width: 14px;
+	height: 14px;
+}
+
+/* Same 44px touch target as the header buttons on mobile, via an
+   invisible hit-area so the chip itself stays compact. */
+.is-mobile .task-time-tracker-log-chip-remove {
+	position: relative;
+}
+
+.is-mobile .task-time-tracker-log-chip-remove::after {
+	content: "";
+	position: absolute;
+	inset: -12px;
 }
 
 /* "Clear filter" uses a neutral ghost style (no mod-cta/mod-warning) — it's
@@ -1478,70 +1535,41 @@
 	color: var(--text-faint);
 }
 
-/* "Back" (see TimeLogView.ts#renderDateNav) reuses the same 3-area grid
-   mechanism as the Day/Week mode toggle (see the @container blocks above)
-   — always exactly 2 fixed rows in Compact, never free wrapping. Occupies
-   the "mode" area, same slot and justify-self as the toggle it replaces. */
-.task-time-tracker-log-results-back {
+/* Results' left block (see TimeLogView.ts#renderDateNav): "Back" (action)
+   + a divider + the "N tasks found" counter (state). Occupies the "mode"
+   area, which in Results is the flexible column (see the .is-results grid
+   rules above) — only the counter ellipsizes, Back never shrinks. */
+.task-time-tracker-log-results-title {
 	grid-area: mode;
 	justify-self: start;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	min-width: 0;
+	max-width: 100%;
+}
+
+.task-time-tracker-log-results-back {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.35em;
+	flex-shrink: 0;
 }
 
-/* Boxed (border+background+radius) rather than plain text (see
-   TimeLogView.ts#formatResultsRangeTitle/formatResultsRangeDays), so it
-   doesn't look unbalanced next to Back and calendar+Filter, which are
-   boxed controls too. Shares the "range" grid area with the Day/Week
-   arrows+date. In Wide it's a content-sized pill; in Compact (see
-   @container below) it becomes a full-width bar like the Day/Week
-   stepper, but static (no arrows/dividers). */
-.task-time-tracker-log-results-rangebox {
-	grid-area: range;
-	justify-self: center;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	gap: 8px;
-	height: 34px;
-	padding: 0 14px;
-	min-width: 0;
-	max-width: 100%;
-	border: 1px solid var(--background-modifier-border);
-	border-radius: var(--radius-s);
-	background: var(--background-secondary);
-	white-space: nowrap;
+.task-time-tracker-log-results-sep {
+	flex-shrink: 0;
+	width: 1px;
+	height: 1.4em;
+	background-color: var(--background-modifier-border);
 }
 
-@container tt-datenav (max-width: 479px) {
-	.task-time-tracker-log-results-rangebox {
-		justify-self: stretch;
-		height: 38px;
-		padding: 0 12px;
-	}
-}
-
-/* Only element here that truncates if it doesn't fit — same criterion as
-   .task-time-tracker-log-datenav-label (needed in addition to the column's
-   minmax(0,1fr), see that comment). The day-count metadata below always
-   stays fully visible. */
-.task-time-tracker-log-results-rangebox-label {
-	font-weight: 600;
-	color: var(--text-normal);
+.task-time-tracker-log-results-count {
 	min-width: 0;
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-}
-
-/* Never truncates (flex-shrink:0) — the range label is what cedes space
-   first. */
-.task-time-tracker-log-results-rangebox-meta {
-	font-size: 0.85em;
-	color: var(--text-faint);
-	white-space: nowrap;
-	flex-shrink: 0;
+	font-weight: 600;
+	color: var(--text-normal);
 }
 
 .task-time-tracker-log-results-load-more {
@@ -2302,6 +2330,51 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	padding: 0.75em 0.35em;
 	color: var(--text-muted);
 	font-size: 0.9em;
+}
+
+/* Search suggestions (see SearchSuggestPopover.ts): same floating frame as
+   the project picker, one row per task — text on the left (truncated, the
+   matched part emphasized), tt-id on the right in the same raw form the
+   Edit task modal shows it. */
+.task-time-tracker-search-suggest {
+	max-height: 320px;
+	overflow-y: auto;
+	padding: 0.35em;
+}
+
+.task-time-tracker-search-suggest-row {
+	display: flex;
+	align-items: center;
+	gap: 0.75em;
+	padding: 0.5em 0.5em;
+	border-radius: var(--radius-s);
+	cursor: pointer;
+}
+
+.task-time-tracker-search-suggest-row:hover,
+.task-time-tracker-search-suggest-row.is-highlighted {
+	background-color: var(--background-modifier-hover);
+}
+
+.task-time-tracker-search-suggest-text {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--text-normal);
+}
+
+.task-time-tracker-search-suggest-match {
+	font-weight: 600;
+	color: var(--text-accent);
+}
+
+.task-time-tracker-search-suggest-id {
+	flex-shrink: 0;
+	font-family: var(--font-monospace);
+	font-size: 0.8em;
+	color: var(--text-faint);
 }
 
 .task-time-tracker-project-picker-skeleton {
