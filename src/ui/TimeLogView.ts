@@ -92,13 +92,44 @@ function formatShortDate(ms: number): string {
 	return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short" });
 }
 
-// Range results view — maximum number of calendar days resolved/
-// rendered per page (see renderResultsSection()): a larger range has no
-// selection limit, but the list is cut here and a "Cargar mas" button
-// adds the next page, to avoid trying to resolve hundreds/thousands of
-// days (the vast majority empty) of a very wide range (e.g. a year) all
-// at once.
-const RESULTS_PAGE_DAYS = 180;
+// Date filter chip: "4 oct" for a lone day, "1–15 sept" / "28 ago – 3
+// sept" for a range. formatRange (not two formatShortDate joined by
+// hand) so each language puts day/month and the shared parts in its own
+// order ("Sep 1 – 15" in English). The year is only shown when the range
+// isn't entirely in the current year.
+function formatDateChip(startMs: number, endMs: number): string {
+	const currentYear = new Date().getFullYear();
+	const showYear = new Date(startMs).getFullYear() !== currentYear || new Date(endMs).getFullYear() !== currentYear;
+	const format = new Intl.DateTimeFormat(undefined, {
+		day: "numeric",
+		month: "short",
+		...(showYear ? { year: "numeric" } : {}),
+	});
+	return startMs === endMs ? format.format(startMs) : format.formatRange(startMs, endMs);
+}
+
+// Resultados page size, in cards (one task on one day), not days (see
+// renderResultsSection()). Each loaded card's task is resolved against the
+// vault on every render (and "Cargar mas" re-renders every loaded page),
+// so this bounds that cost while filling two or three screens of the
+// panel — enough that a page never looks empty, small enough to stay
+// instant. A day is never split, so a page can run a little over.
+const RESULTS_PAGE_CARDS = 30;
+
+// Resultados' cards, by day: the distinct tasks with a session that day,
+// one card each (the grouping renderTaskList draws). The one definition of
+// "card" shared by pagination and the "N entries found" counter, so the
+// two can never disagree.
+function cardsByDay(entries: TimeEntry[]): Map<number, Set<string>> {
+	const byDay = new Map<number, Set<string>>();
+	for (const entry of entries) {
+		const day = startOfDay(entry.start);
+		const tasks = byDay.get(day) ?? new Set<string>();
+		tasks.add(entry.taskId);
+		byDay.set(day, tasks);
+	}
+	return byDay;
+}
 
 const SEARCH_SUGGESTION_LIMIT = 8;
 
@@ -114,6 +145,10 @@ export class TimeLogView extends ItemView {
 	// scroll to the end of the detail (most recent session) once, not on
 	// every subsequent render() while the card stays expanded.
 	private pendingScrollKey: string | null = null;
+	// Scroll position to restore after a "Cargar mas" re-render (see
+	// renderResultsSection). Consumed by the Resultados render that
+	// follows; dropped if the user leaves Resultados before that.
+	private pendingResultsScrollTop: number | null = null;
 	// Deleting a whole task (its entire history by tt-id): pending
 	// confirmation, if any. Stored by taskId, not by card/day: if the
 	// same task appears in several cards (week view), the confirmation
@@ -143,7 +178,7 @@ export class TimeLogView extends ItemView {
 	// while viewMode === "results"; cleared on leaving it (exitResults).
 	private resultsRangeStart: number | null = null;
 	private resultsRangeEnd: number | null = null;
-	// How many pages of RESULTS_PAGE_DAYS days have already been
+	// How many pages of RESULTS_PAGE_CARDS cards have already been
 	// "loaded" (the "Cargar mas" button) — resets to 1 every time a new
 	// range or search is applied.
 	private resultsLoadedPages = 1;
@@ -165,9 +200,8 @@ export class TimeLogView extends ItemView {
 	// ever set while viewMode === "results" — entering a search always
 	// enters Resultados, and leaving Resultados clears it.
 	private searchFilter: SearchFilter | null = null;
-	// What the suggestions are drawn from: the project-filtered history
-	// (plus Resultados' date range, if any — text AND project AND date),
-	// from the last render().
+	// What the suggestions are drawn from: the whole history, regardless of
+	// the project filter or Resultados' date range (see render()).
 	private searchableEntries: TimeEntry[] = [];
 	private searchInputEl: HTMLInputElement | null = null;
 	private searchHadFocus = false;
@@ -1075,12 +1109,17 @@ export class TimeLogView extends ItemView {
 				void this.render();
 			});
 			titleEl.createSpan({ cls: "task-time-tracker-log-results-sep", attr: { "aria-hidden": "true" } });
+			// Entries = cards (one task on one day) across every match, not
+			// just the loaded pages — the same unit as pagination, so it
+			// doesn't move on "Cargar mas". Distinct tasks are already in the
+			// subtitle; repeating that count here said nothing new.
 			const { start, end } = this.getViewRangeBounds();
-			const taskCount = new Set(
-				visibleEntries.filter((entry) => entry.start >= start && entry.start < end).map((entry) => entry.taskId),
-			).size;
-			const countKey = taskCount === 1 ? "log.resultsCount.singular" : "log.resultsCount.plural";
-			titleEl.createSpan({ text: t(countKey, { n: String(taskCount) }), cls: "task-time-tracker-log-results-count" });
+			let cardCount = 0;
+			for (const tasks of cardsByDay(visibleEntries.filter((entry) => entry.start >= start && entry.start < end)).values()) {
+				cardCount += tasks.size;
+			}
+			const countKey = cardCount === 1 ? "log.resultsCount.singular" : "log.resultsCount.plural";
+			titleEl.createSpan({ text: t(countKey, { n: String(cardCount) }), cls: "task-time-tracker-log-results-count" });
 		} else if (this.viewMode !== "results") {
 			const range = row.createDiv({ cls: "task-time-tracker-log-datenav-range" });
 			const prevBtn = range.createEl("button", { cls: "clickable-icon task-time-tracker-icon-btn" });
@@ -1227,6 +1266,53 @@ export class TimeLogView extends ItemView {
 
 		this.renderProjectFilter(actions);
 		this.renderFilterChips(nav);
+		this.renderProjectHistoryRow(nav);
+	}
+
+	// Day/Week with a project filtered: a row offering that project's whole
+	// history — the one entry to Resultados that needs neither a date nor a
+	// search. Never inside Resultados (it already covers that scope).
+	// Independent of the project popover, which still just filters the
+	// current day/week. Also takes the project chip's place in Day/Week
+	// (see renderFilterChips), so it carries that chip's "x" — the only way
+	// to drop the project filter there, since the popover has no "clear".
+	private renderProjectHistoryRow(nav: HTMLElement): void {
+		if (this.viewMode === "results") return;
+		if (this.projectFilterId === null && !this.projectFilterNoProject) return;
+
+		const projectName = this.projectFilterId
+			? (this.actions.getProjects().find((p) => p.id === this.projectFilterId)?.name ?? "")
+			: t("log.editModalNoProject");
+
+		const row = nav.createDiv({ cls: "task-time-tracker-log-project-history" });
+		const label = row.createDiv({ cls: "task-time-tracker-log-project-history-label" });
+		setIcon(label.createSpan({ cls: "task-time-tracker-log-project-history-icon" }), "filter");
+		const nameEl = label.createSpan({ text: projectName, cls: "task-time-tracker-log-project-history-name" });
+		setTooltip(nameEl, projectName);
+		const removeBtn = label.createEl("button", {
+			cls: "task-time-tracker-log-chip-remove clickable-icon",
+		});
+		setIcon(removeBtn, "x");
+		removeBtn.setAttribute("aria-label", t("log.filterClearAriaLabel"));
+		setTooltip(removeBtn, t("log.filterClearAriaLabel"));
+		removeBtn.addEventListener("click", () => {
+			this.projectFilterId = null;
+			this.projectFilterNoProject = false;
+			void this.render();
+		});
+
+		const action = row.createEl("button", { cls: "task-time-tracker-log-project-history-action" });
+		action.createSpan({ text: t("log.projectHistoryAction") });
+		setIcon(action.createSpan({ cls: "task-time-tracker-log-project-history-arrow" }), "arrow-right");
+		action.addEventListener("click", () => {
+			this.resultsReturnMode = this.viewMode === "week" ? "week" : "day";
+			this.resultsReturnAnchor = this.anchorDate;
+			this.leaveResults();
+			this.closeSearchField();
+			this.viewMode = "results";
+			this.resultsLoadedPages = 1;
+			void this.render();
+		});
 	}
 
 	// Search field (see core/TaskSearch.ts and SearchSuggestPopover.ts).
@@ -1319,20 +1405,15 @@ export class TimeLogView extends ItemView {
 		void this.render();
 	}
 
-	// One chip per active filter, below the header row, in every view —
-	// the only place a filter's value is shown (the header icons only say
-	// "some filter is active"). The date filter will add its own chip here.
+	// One chip per active filter, below the header row — Resultados only.
+	// In Day/Week the only possible filter is the project, and the "View
+	// full history" row already shows it (with its own "x"), so a chip
+	// there would just duplicate it (see renderProjectHistoryRow). Order:
+	// project, text, date. Each "x" removes only its own filter;
+	// closeResultsIfNoFilters then decides whether Resultados survives.
 	private renderFilterChips(nav: HTMLElement): void {
+		if (this.viewMode !== "results") return;
 		const chips: Array<{ label: string; onRemove: () => void }> = [];
-
-		if (this.searchFilter) {
-			chips.push({
-				label: `"${this.searchFilter.query}"`,
-				onRemove: () => {
-					this.searchFilter = null;
-				},
-			});
-		}
 
 		if (this.projectFilterId !== null || this.projectFilterNoProject) {
 			const project = this.projectFilterId
@@ -1347,6 +1428,30 @@ export class TimeLogView extends ItemView {
 			});
 		}
 
+		if (this.searchFilter) {
+			chips.push({
+				label: `"${this.searchFilter.query}"`,
+				onRemove: () => {
+					this.searchFilter = null;
+				},
+			});
+		}
+
+		// Any Resultados with a date range has this chip — whether the range
+		// scopes a search or came straight from the calendar. Removing it
+		// widens Resultados to the whole history (search/project kept);
+		// with no other filter left, Resultados closes.
+		if (this.viewMode === "results" && this.resultsRangeStart !== null && this.resultsRangeEnd !== null) {
+			chips.push({
+				label: formatDateChip(this.resultsRangeStart, this.resultsRangeEnd),
+				onRemove: () => {
+					this.resultsRangeStart = null;
+					this.resultsRangeEnd = null;
+					this.resultsLoadedPages = 1;
+				},
+			});
+		}
+
 		if (chips.length === 0) return;
 
 		const row = nav.createDiv({ cls: "task-time-tracker-log-chips" });
@@ -1354,7 +1459,7 @@ export class TimeLogView extends ItemView {
 			const chipEl = row.createDiv({ cls: "task-time-tracker-log-chip" });
 			chipEl.createSpan({ text: chip.label, cls: "task-time-tracker-log-chip-label" });
 			setTooltip(chipEl, chip.label);
-			const removeBtn = chipEl.createEl("button", { cls: "task-time-tracker-log-chip-remove" });
+			const removeBtn = chipEl.createEl("button", { cls: "task-time-tracker-log-chip-remove clickable-icon" });
 			setIcon(removeBtn, "x");
 			removeBtn.setAttribute("aria-label", t("log.filterClearAriaLabel"));
 			removeBtn.addEventListener("click", () => {
@@ -1625,6 +1730,7 @@ export class TimeLogView extends ItemView {
 
 		// Must be read before container.empty() detaches the field.
 		this.searchHadFocus = this.searchInputEl !== null && document.activeElement === this.searchInputEl;
+		if (this.viewMode !== "results") this.pendingResultsScrollTop = null;
 		container.empty();
 
 		if (allEntries.length === 0) {
@@ -1647,14 +1753,13 @@ export class TimeLogView extends ItemView {
 				: allEntries;
 
 		// Search (see core/TaskSearch.ts) narrows the same listing further —
-		// text AND project AND Resultados' date range. Suggestions draw from
-		// what the search would be applied to, so a suggestion never leads
-		// to an empty Resultados.
-		const { start: boundsStart, end: boundsEnd } = this.getViewRangeBounds();
-		this.searchableEntries =
-			this.viewMode === "results"
-				? projectEntries.filter((entry) => entry.start >= boundsStart && entry.start < boundsEnd)
-				: projectEntries;
+		// text AND project AND Resultados' date range. Suggestions, though,
+		// come from the whole history, ignoring both the project filter and
+		// the date range: a list silently cut down made tasks outside them
+		// look like they didn't exist. Picking one never touches the project
+		// or date chips — the user set them — so the combination can
+		// legitimately come back empty.
+		this.searchableEntries = allEntries;
 		const visibleEntries = this.searchFilter ? applySearchFilter(projectEntries, this.searchFilter) : projectEntries;
 
 		const titleRow = container.createDiv({ cls: "task-time-tracker-log-title-row" });
@@ -1728,20 +1833,17 @@ export class TimeLogView extends ItemView {
 		}, 0);
 	}
 
-	// Range results view: grouped by day (heading + cards, see
-	// renderDaySection with hideIfEmpty), newest day first, with no empty
-	// days interspersed. Paginated in blocks of RESULTS_PAGE_DAYS days — a
-	// range can be arbitrarily wide (no limit in the date-picker), but
-	// resolving hundreds/thousands of days (the vast majority empty) all
-	// at once makes no sense; "Cargar mas" only appears if the full range
-	// exceeds what's already loaded, and it loads further BACK in time
-	// (older days), since the first page already starts at the newest
-	// day. The title row's total (see renderViewTotal) ALWAYS covers the
-	// full range, not just what's loaded — it's computed separately, it
-	// doesn't depend on this loop.
-	// With no date range (a search or project over the whole history), the
-	// span runs from the first to the last matching day — never a range
-	// padded out to "today" or to the start of all tracking.
+	// Resultados list: grouped by day (heading + cards, see
+	// renderDaySection with hideIfEmpty), newest day first, only days with
+	// matches. Paginated by number of cards, not days: whole days are added,
+	// newest first, until the page holds at least RESULTS_PAGE_CARDS cards
+	// per loaded page — a day is never split, even if that overshoots. So
+	// a first page always shows real results, however sparse they are in
+	// time (a fixed day window could come up empty with only "Cargar mas"
+	// under it). "Cargar mas" only appears while matching days remain, and
+	// loads further BACK in time. The title row's total (see
+	// renderViewTotal) ALWAYS covers every match, not just what's loaded —
+	// it's computed separately and doesn't depend on this loop.
 	private async renderResultsSection(container: Element, visibleEntries: TimeEntry[], token: number): Promise<void> {
 		const { start: boundsStart, end: boundsEnd } = this.getViewRangeBounds();
 		const matchingEntries = visibleEntries.filter((entry) => entry.start >= boundsStart && entry.start < boundsEnd);
@@ -1750,23 +1852,19 @@ export class TimeLogView extends ItemView {
 			return;
 		}
 
-		let rangeStart: number;
-		let rangeEnd: number; // start of the last day (inclusive)
-		if (this.resultsRangeStart !== null && this.resultsRangeEnd !== null) {
-			rangeStart = this.resultsRangeStart;
-			rangeEnd = this.resultsRangeEnd;
-		} else {
-			// reduce, not Math.min(...spread): a long history can exceed the
-			// engine's argument limit.
-			rangeStart = startOfDay(matchingEntries.reduce((min, entry) => Math.min(min, entry.start), Infinity));
-			rangeEnd = startOfDay(matchingEntries.reduce((max, entry) => Math.max(max, entry.start), -Infinity));
-		}
-		const rangeEndExclusive = addDays(rangeEnd, 1);
+		const tasksByDay = cardsByDay(matchingEntries);
+		const daysNewestFirst = [...tasksByDay.keys()].sort((a, b) => b - a);
 
-		const totalDays = Math.round((rangeEndExclusive - rangeStart) / 86400000);
-		const loadedDays = Math.min(this.resultsLoadedPages * RESULTS_PAGE_DAYS, totalDays);
-		const loadedRangeStart = addDays(rangeEndExclusive, -loadedDays);
-		const loadedEntries = visibleEntries.filter((entry) => entry.start >= loadedRangeStart && entry.start < rangeEndExclusive);
+		const targetCards = this.resultsLoadedPages * RESULTS_PAGE_CARDS;
+		const loadedDays: number[] = [];
+		let loadedCards = 0;
+		for (const day of daysNewestFirst) {
+			if (loadedCards >= targetCards) break;
+			loadedDays.push(day);
+			loadedCards += tasksByDay.get(day)?.size ?? 0;
+		}
+		const oldestLoadedDay = loadedDays[loadedDays.length - 1] ?? Infinity;
+		const loadedEntries = matchingEntries.filter((entry) => entry.start >= oldestLoadedDay);
 
 		// Resolved once for every loaded day at once — same reasoning as
 		// the day/week path in render(): a task with sessions on more than
@@ -1774,17 +1872,28 @@ export class TimeLogView extends ItemView {
 		const resolutions = await this.resolveTaskIds(loadedEntries);
 		if (token !== this.renderToken) return;
 
-		for (let i = 0; i < loadedDays; i++) {
-			this.renderDaySection(container, addDays(rangeEndExclusive, -(i + 1)), loadedEntries, true, resolutions, true);
+		for (const day of loadedDays) {
+			this.renderDaySection(container, day, loadedEntries, true, resolutions, true);
 		}
 
-		if (loadedDays < totalDays) {
+		if (loadedDays.length < daysNewestFirst.length) {
 			const loadMoreWrap = container.createDiv({ cls: "task-time-tracker-log-results-load-more" });
 			const loadMoreBtn = loadMoreWrap.createEl("button", { text: t("log.resultsLoadMore") });
 			loadMoreBtn.addEventListener("click", () => {
 				this.resultsLoadedPages += 1;
+				this.pendingResultsScrollTop = container.scrollTop;
 				void this.render();
 			});
+		}
+
+		// Restored only now, with the days back in the DOM: render() empties
+		// the panel and then awaits resolveTaskIds before redrawing them,
+		// and in that gap the panel is too short to scroll, so the browser
+		// clamps scrollTop to 0 — which used to throw the user back to the
+		// top on every "Cargar mas".
+		if (this.pendingResultsScrollTop !== null) {
+			container.scrollTop = this.pendingResultsScrollTop;
+			this.pendingResultsScrollTop = null;
 		}
 	}
 

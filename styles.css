@@ -1392,6 +1392,105 @@
 	min-width: 0;
 }
 
+/* "View full history" row (see TimeLogView.ts#renderProjectHistoryRow),
+   Day/Week only, right under the header. Same accent tint as the active
+   header icons and the Results chips, so it reads as "this filter is
+   on". The project name is the only part that shrinks (ellipsis); the
+   action never wraps or truncates. */
+.task-time-tracker-log-project-history {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	margin: -4px 0 4px;
+	/* Same box and type as .task-time-tracker-log-chip: it stands in for
+	   the project chip in Day/Week. */
+	padding: 2px 4px 2px 10px;
+	border: 1px solid color-mix(in srgb, var(--interactive-accent) 40%, transparent);
+	border-radius: var(--radius-l);
+	background-color: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+	color: var(--text-normal);
+	font-size: var(--font-ui-small);
+}
+
+@supports not (color: color-mix(in srgb, red 50%, blue)) {
+	.task-time-tracker-log-project-history {
+		border-color: var(--background-modifier-border);
+		background-color: var(--background-modifier-hover);
+	}
+}
+
+.task-time-tracker-log-project-history-label {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	min-width: 0;
+}
+
+.task-time-tracker-log-project-history-icon {
+	display: flex;
+	flex-shrink: 0;
+	color: var(--text-accent);
+}
+
+.task-time-tracker-log-project-history-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+.task-time-tracker-log-project-history-name {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* Two classes deep on purpose: Obsidian's own button:not(.clickable-icon)
+   rule outranks a single class and would bring back its background,
+   border and shadow. */
+.task-time-tracker-log-project-history .task-time-tracker-log-project-history-action {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	flex-shrink: 0;
+	height: 20px;
+	padding: 0 6px;
+	border: none;
+	border-radius: var(--radius-s);
+	background: transparent;
+	box-shadow: none;
+	color: var(--text-accent);
+	font-size: inherit;
+	font-weight: inherit;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.task-time-tracker-log-project-history .task-time-tracker-log-project-history-action:hover {
+	background-color: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
+}
+
+.task-time-tracker-log-project-history-arrow {
+	display: flex;
+}
+
+.task-time-tracker-log-project-history-arrow svg {
+	width: 14px;
+	height: 14px;
+}
+
+/* 44px touch target via an invisible hit-area (same as the chip "x"), so
+   the row keeps the chip's height on mobile too. */
+.is-mobile .task-time-tracker-log-project-history .task-time-tracker-log-project-history-action {
+	position: relative;
+}
+
+.is-mobile .task-time-tracker-log-project-history .task-time-tracker-log-project-history-action::after {
+	content: "";
+	position: absolute;
+	inset: -12px 0;
+}
+
 /* One chip per active filter (see TimeLogView.ts#renderFilterChips).
    Wraps onto more lines instead of scrolling; a single chip never grows
    past the row (max-width:100%), its label ellipsizes instead. */
@@ -1430,6 +1529,10 @@
 	white-space: nowrap;
 }
 
+/* Also carries .clickable-icon (see TimeLogView.ts), which opts it out of
+   Obsidian's default button look (background, border, shadow) — without
+   it the "x" rendered as a filled circle. Used by the Results chips and
+   by the Day/Week "View full history" row. */
 .task-time-tracker-log-chip-remove {
 	display: flex;
 	align-items: center;

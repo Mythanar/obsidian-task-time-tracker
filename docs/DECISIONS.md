@@ -1530,3 +1530,146 @@ resultado final.
   separate decision. The README documents the duplicated-notes case as
   undefined behaviour ("avoid duplicating notes that contain tracked
   tasks").
+
+## Task search — Block 4: calendar within a search + date chip
+
+- **Already in place from Block 3, verified rather than rebuilt:**
+  - With a search active, a day, week or range from the calendar stays
+    in Resultados and only scopes the search in time.
+  - The calendar icon is tinted whenever Resultados has a date range.
+  - Suggestions are drawn from text AND project AND that range, because
+    they use the same bounds as Resultados.
+  - The close rule already counts the range as a filter.
+- **The date chip appears in any Resultados with a date range**, not only
+  inside a search. Block 2 dropped the range box on the understanding
+  that the date would come back as a chip. Removing the text chip
+  leaves a range-only Resultados, and it would be inconsistent for the
+  range's chip to disappear while the range stays applied. Day/Week
+  navigation never shows a date chip: it is navigation, not a filter.
+- **The chip's "×" removes only the range.** Resultados widens to the
+  whole history, keeping search and project. With no other filter left
+  (a range picked straight from the calendar), the Block 2 close rule
+  returns to the entry point.
+- **Chip order: project, text, date**, matching the mockup. Block 3 had
+  text before project.
+- **Format: `Intl.DateTimeFormat.formatRange`** (day + short month), not
+  two dates joined by hand. Each locale orders the parts and merges the
+  shared ones itself ("1–15 sept" / "Sep 1 – 15"). The old range box's
+  hand-built format read "1 - Sep 15" in English. A lone day shows
+  as one date. The year is shown only when the range isn't entirely in
+  the current year.
+
+## Resultados pagination: by number of cards, not a fixed day window
+
+- **Replaces Block 1's 180-day window.** A fixed window anchored at the
+  newest end could hold no match at all, for example a search over the
+  whole history whose only hit is months old, or a sparse range. The
+  first page then showed only "Load more", with no hint of whether
+  anything existed further back.
+- **Page = whole days, newest first, until at least `RESULTS_PAGE_CARDS`
+  (30) cards per loaded page.** A card is one task on one day, the unit
+  `renderTaskList` draws. It is not one session: several sessions of the
+  same task on a day share a card. A day is never split; if it crosses
+  the threshold, all of it is shown and the page runs over. Only days
+  with matches are walked, so empty days cost nothing. "Load more"
+  raises the target by another 30 and recomputes from the newest day, so
+  no day is repeated or skipped. It only appears while matching days
+  remain.
+- **Why 30:** every loaded card's task is resolved against the vault on
+  each render, and "Load more" re-renders all loaded pages. A deleted
+  note means a full vault scan for that task. 30 cards fill two or three
+  screens of the side panel, so a page never looks thin, while keeping
+  that cost bounded.
+- **Unchanged from Block 1:** newest-first order, backward paging, card
+  order within a day, the full-range total, and the empty state. The
+  button text stays "Load more" / "Cargar más". The "(180 días)" from
+  the mockup was never in the code, so there was no count to replace.
+
+## Task search — Block 4b: "View full history" row for a filtered project
+
+- **A third way into Resultados, needing neither a date nor a search.**
+  In Day/Week with a project (or "No project") filtered, a row under
+  the chips shows the funnel and the project name on the left and
+  "View full history →" on the right. Pressing it enters Resultados with
+  only the project filter: no date range (the Block 3 whole-history
+  Resultados), no search. The return point is the current Day/Week
+  position. An open, unconfirmed search field is discarded, as when it
+  is closed by hand.
+- **Never shown inside Resultados**, whatever brought you there, and gone
+  as soon as the project filter is removed. It is rendered from the
+  filter state on every render, so it has no state of its own to go
+  stale.
+- **The project popover is untouched.** It still just filters the
+  current day/week. The row is a separate element.
+- **First real trigger of the Block 2 close rule without a search:** in
+  that Resultados, removing the project chip with no text or date added
+  returns to the entry point.
+- **The arrow is a Lucide icon**, not a "→" in the translated string, so
+  screen readers don't announce "right arrow". The project name is the
+  only part that truncates; the action never wraps.
+- **Amendment after QA: chips are Resultados-only; the row replaces the
+  project chip in Day/Week.** With both, the project showed twice, as a
+  chip and right below it in the row. This overrides Block 2's "chips in
+  every view". In Day/Week the project is the only possible filter, so
+  the row is its only representation and carries that chip's "×". That
+  "×" has to exist somewhere: the project popover has no "clear" option,
+  and the inline "×" next to the funnel was removed in Block 2.
+- **Look, per the design sketch:** the same accent tint and border as
+  the active header icons. The funnel is in accent, the project name in
+  bold, and "View full history →" is accent text with no button frame.
+- **Obsidian's `button:not(.clickable-icon)` was overriding plain-class
+  button styles.** The chip "×" rendered as a filled circle, and the row
+  action as a framed button. The "×" buttons now carry `.clickable-icon`,
+  Obsidian's own opt-out also used by the panel's other icon buttons. The
+  row action, a text button, uses a two-class selector instead.
+
+## Task search — fix after QA: suggestions ignore the project filter
+
+- **Suggestions come from the whole history regardless of the project
+  filter.** They are still scoped to Resultados' date range, if any.
+  Before, they were cut down to the filtered project with no visible
+  hint, so tasks from other projects looked like they didn't exist.
+  This reverses Block 3's "a suggestion never leads to an empty
+  Resultados".
+- **Picking a suggestion never touches the project chip.** The user
+  set it, and we don't change filters they set without being asked. A
+  task from another project therefore yields project AND text = 0, which
+  is intentional. For now it shows the basic Block 3 message (`No tasks
+  match "{query}".`). The project-aware variant ("No tasks from
+  {project} match…") doesn't exist yet; it belongs to Block 5's empty
+  states.
+- **Pagination count verified, no change.** It already counts rendered
+  cards (one task on one day; the same task on N days = N cards). The
+  QA figure "19 tasks · 53 days" was the title subtitle, which covers
+  the whole range on purpose. Replayed on the Tester data, that same
+  project loads 17 days / 30 cards on page 1.
+
+## Task search — fixes after QA, round 2
+
+- **Suggestions also ignore Resultados' date range.** They come from the
+  whole history, with no project or date scope. As with the project
+  chip, picking a suggestion never touches the date chip, so date AND
+  text can come back empty. That outcome is accepted.
+- **The Resultados counter now shows "N entries found" (cards), not "N
+  tasks found".** It used to show the distinct-task count, the same
+  number already in the subtitle, so it added nothing. It also hid how
+  much content a filter has: on the Tester data, one project shows
+  "19 tasks · 53 days" in the subtitle and 98 entries. An entry is a
+  card: one task on one day. That is the unit pagination counts.
+  Pagination and the counter share one definition (`cardsByDay`), so
+  they can't disagree. The counter covers every match, not the loaded
+  pages, so "Load more" doesn't change it. The subtitle is unchanged.
+
+## Resultados — "Load more" keeps the scroll position
+
+- **Cause:** `render()` empties the panel and then awaits
+  `resolveTaskIds` (vault reads) before redrawing the days. In that gap
+  the panel is shorter than the viewport, so the browser clamps the
+  scroll container's `scrollTop` to 0. When the content returns, it
+  stays at the top. This is a fixed sequence on every render, not a
+  race, so no timing instrumentation was needed.
+- **Fix:** the "Load more" click stores the view's scroll position
+  (`pendingResultsScrollTop`). `renderResultsSection` restores it once
+  the days and the button are back in the DOM. If the user leaves
+  Resultados before that render, the value is dropped. Other views'
+  scrolling is untouched.
