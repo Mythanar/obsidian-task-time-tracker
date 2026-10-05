@@ -1106,8 +1106,11 @@ export class TimeLogView extends ItemView {
 			// full-range, project-filtered task count as renderSubtitle.
 			const titleEl = row.createDiv({ cls: "task-time-tracker-log-results-title" });
 			const backBtn = titleEl.createEl("button", { cls: "task-time-tracker-log-results-back" });
+			// Icon only at every width: the label crowded out the counter on
+			// mobile. The name stays available via aria-label/tooltip.
 			setIcon(backBtn.createSpan(), "arrow-left");
-			backBtn.createSpan({ text: t("log.resultsBack") });
+			backBtn.setAttribute("aria-label", t("log.resultsBack"));
+			setTooltip(backBtn, t("log.resultsBack"));
 			backBtn.addEventListener("click", () => {
 				this.exitResults();
 				void this.render();

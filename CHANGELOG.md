@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.0.33] - 2026-10-05
+
+### Added
+
+- History: a new task search (magnifier icon in the panel header) finds tasks by name or by `tt-id`, suggesting matches as you type. Suggestions and results always come from your entire history, regardless of the active project filter or date range. Picking a suggestion shows all of that task's sessions, including ones saved under an older name. Pressing Enter without picking one searches the typed text anywhere in a task's name.
+- Results view: it can now be opened straight from a search, from a date range, or from a new "View full history" action shown when a project is filtered in Day/Week. That action opens Results with only that project, over the whole history.
+- Results view: every active filter (project, search text, date range) shows as its own chip, each removable with its own ×, and they combine with each other. Removing the date chip widens the view to the whole history, keeping the other filters.
+- History: dedicated empty states when a text search finds nothing, with one message per filter combination, and a "Searching…" indicator while the first results load.
+
+### Changed
+
+- Results view: days are now listed newest first (previously oldest first), and "Load more" brings in older days.
+- Results view: pagination now loads whole days until there are at least 30 task cards per page, instead of a fixed 180-day window, so a sparse search or range always shows real results on the first page. A counter next to the back arrow shows how many entries were found.
+- Results view: the "Back" button is now just an arrow icon (still labelled "Back" for screen readers and on hover), leaving room for the entries counter on narrow screens. It now returns to the exact day or week you came from, instead of always going to today.
+- Resuming tracking from the panel now saves the task's current text from its note, so a task renamed in its note becomes searchable under its new name right away.
+
+### Fixed
+
+- Results view: "Load more" no longer jumps back to the top of the panel; it keeps your scroll position.
+
 ## [0.0.32] - 2026-09-24
 
 ### Fixed

@@ -1655,7 +1655,6 @@
 .task-time-tracker-log-results-back {
 	display: inline-flex;
 	align-items: center;
-	gap: 0.35em;
 	flex-shrink: 0;
 }
 
