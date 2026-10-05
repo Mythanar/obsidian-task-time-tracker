@@ -149,6 +149,10 @@ export class TimeLogView extends ItemView {
 	// renderResultsSection). Consumed by the Resultados render that
 	// follows; dropped if the user leaves Resultados before that.
 	private pendingResultsScrollTop: number | null = null;
+	// Set by confirmSearch: the next Resultados paint shows "Searching…"
+	// while it resolves notes (see renderResultsSection). Cleared once a
+	// paint completes, so later re-renders never show it.
+	private showSearchLoading = false;
 	// Deleting a whole task (its entire history by tt-id): pending
 	// confirmation, if any. Stored by taskId, not by card/day: if the
 	// same task appears in several cards (week view), the confirmation
@@ -1401,6 +1405,7 @@ export class TimeLogView extends ItemView {
 		}
 		this.searchFilter = filter;
 		this.resultsLoadedPages = 1;
+		this.showSearchLoading = true;
 		this.closeSearchField();
 		void this.render();
 	}
@@ -1476,6 +1481,7 @@ export class TimeLogView extends ItemView {
 	// somewhere explicit (the date-picker, navigateToTrackedTask).
 	private leaveResults(): void {
 		this.searchFilter = null;
+		this.showSearchLoading = false;
 		this.resultsRangeStart = null;
 		this.resultsRangeEnd = null;
 	}
@@ -1848,6 +1854,7 @@ export class TimeLogView extends ItemView {
 		const { start: boundsStart, end: boundsEnd } = this.getViewRangeBounds();
 		const matchingEntries = visibleEntries.filter((entry) => entry.start >= boundsStart && entry.start < boundsEnd);
 		if (matchingEntries.length === 0) {
+			this.showSearchLoading = false;
 			this.renderResultsEmptyState(container);
 			return;
 		}
@@ -1869,8 +1876,19 @@ export class TimeLogView extends ItemView {
 		// Resolved once for every loaded day at once — same reasoning as
 		// the day/week path in render(): a task with sessions on more than
 		// one loaded day must read the same snapshot on all of them.
+		// "Searching…" only on the first paint after confirming a search —
+		// the wait here is resolveTaskIds reading notes, which shows on big
+		// vaults. Never on "Cargar mas" or other re-renders (the flag is only
+		// set by confirmSearch), and never without a search.
+		const loadingEl =
+			this.showSearchLoading && this.searchFilter
+				? container.createDiv({ text: t("log.searchLoading"), cls: "task-time-tracker-log-results-loading" })
+				: null;
+
 		const resolutions = await this.resolveTaskIds(loadedEntries);
 		if (token !== this.renderToken) return;
+		loadingEl?.remove();
+		this.showSearchLoading = false;
 
 		for (const day of loadedDays) {
 			this.renderDaySection(container, day, loadedEntries, true, resolutions, true);
@@ -1905,12 +1923,35 @@ export class TimeLogView extends ItemView {
 	// placeholder; the final empty-state copy is Bloque 5.
 	private renderResultsEmptyState(container: Element): void {
 		const wrap = container.createDiv({ cls: "task-time-tracker-log-results-empty" });
-		const textEl = wrap.createEl("p", { cls: "task-time-tracker-log-results-empty-text" });
 
 		const rangeStart = this.resultsRangeStart;
 		const rangeEnd = this.resultsRangeEnd;
 		if (this.searchFilter) {
-			textEl.setText(t("log.searchNoResults", { query: this.searchFilter.query }));
+			// With a search, one message per combination (text alone, + project,
+			// + date, + both) and always the same "search-x" icon — the text
+			// is what all four have in common. The states without a search
+			// keep their own copy and no icon.
+			setIcon(wrap.createDiv({ cls: "task-time-tracker-log-results-empty-icon" }), "search-x");
+		}
+		const textEl = wrap.createEl("p", { cls: "task-time-tracker-log-results-empty-text" });
+
+		if (this.searchFilter) {
+			// "No project" has its own wording: dropping its label into the
+			// named-project template read "No tasks from No project…".
+			const hasRange = rangeStart !== null && rangeEnd !== null;
+			const project = this.actions.getProjects().find((p) => p.id === this.projectFilterId)?.name ?? "";
+			const key = this.projectFilterNoProject
+				? hasRange
+					? "log.searchEmpty.textNoProjectRange"
+					: "log.searchEmpty.textNoProject"
+				: this.projectFilterId !== null
+					? hasRange
+						? "log.searchEmpty.textProjectRange"
+						: "log.searchEmpty.textProject"
+					: hasRange
+						? "log.searchEmpty.textRange"
+						: "log.searchEmpty.text";
+			textEl.setText(t(key, { query: this.searchFilter.query, project }));
 		} else if (rangeStart !== null && rangeEnd !== null) {
 			const sameMonth =
 				new Date(rangeStart).getMonth() === new Date(rangeEnd).getMonth() &&

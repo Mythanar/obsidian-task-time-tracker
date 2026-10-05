@@ -1673,3 +1673,26 @@ resultado final.
   the days and the button are back in the DOM. If the user leaves
   Resultados before that render, the value is dropped. Other views'
   scrolling is untouched.
+
+## Task search — Block 5: search empty states and "Searching…"
+
+- **Four empty-state messages when a search is active**, one per
+  combination: text, text + project, text + date, text + project +
+  date. The Spanish copy quotes the text with «», the English copy with
+  "". All four share one icon, Lucide `search-x`, because the text is
+  what they have in common. Before this, none of the Resultados empty
+  states had an icon. The no-search states (date range only, project
+  only, project + date) keep their previous copy and still have no
+  icon. The "No project" filter has its own two variants ("No tasks
+  without a project match…", with and without "in the selected range").
+  The first build reused the named-project template with the filter's
+  label, which read "No tasks from No project match…". All six text
+  states use the same icon.
+- **"Searching…" only on the first paint after confirming a search.**
+  `confirmSearch` sets `showSearchLoading`. The text is shown while
+  `renderResultsSection` waits on `resolveTaskIds` (note reads, which
+  are noticeable on large vaults). It is cleared once a paint completes,
+  so it never appears on "Load more" and doesn't affect the restored
+  scroll position. Leaving Resultados clears it too. Entries without a
+  search never show it. The empty-state check runs before that wait, so
+  a search with no matches goes straight to its message.

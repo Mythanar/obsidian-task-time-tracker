@@ -1702,6 +1702,25 @@
 	font-weight: 600;
 }
 
+/* Only on the search empty states (see TimeLogView.ts#renderResultsEmptyState). */
+.task-time-tracker-log-results-empty-icon {
+	display: flex;
+	color: var(--text-faint);
+}
+
+.task-time-tracker-log-results-empty-icon svg {
+	width: 28px;
+	height: 28px;
+}
+
+/* "Searching…" while the first page of a new search resolves its notes. */
+.task-time-tracker-log-results-loading {
+	padding: 1.75em 0 0.75em;
+	text-align: center;
+	color: var(--text-faint);
+	font-size: 0.9em;
+}
+
 .task-time-tracker-log-day-heading:first-of-type {
 	margin-top: 0;
 }
