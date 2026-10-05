@@ -18,6 +18,7 @@ A local-first Obsidian plugin for **tracking time directly on the checkboxes in 
 - [How it works](#how-it-works)
 - [Features](#features)
 - [Projects & clients](#projects--clients)
+- [Search](#search)
 - [Dashboard](#dashboard)
 - [Commands](#commands)
 - [Privacy & architecture](#privacy--architecture)
@@ -33,7 +34,7 @@ A local-first Obsidian plugin for **tracking time directly on the checkboxes in 
 3. **Watch the status bar** — a live timer shows the task name and elapsed time as you work.
 4. **Stop when you're done** — one click closes the session. Switching tasks does this automatically.
 5. **Check off the task — and tracking wraps up on its own**. Marking a task done (or cancelled) stops any active tracking automatically and saves the session, no extra step needed. Reopen the task later and you can pick up tracking again.
-6. **Review your history** — sessions grouped by task. Step through Day or Week with the arrows, or open the calendar to jump straight to any date, pick a week, or select a custom range — a range opens a dedicated Results view, sessions grouped by day with a running total.
+6. **Review your history** — sessions grouped by task. Step through Day or Week with the arrows, or open the calendar to jump straight to any date, pick a week, or select a custom range — a range opens a dedicated Results view, sessions grouped by day (most recent first) with a running total. Or search any task by name or `tt-id` across your whole history.
 
 <img src="docs/images/badges-demo.gif" alt="Animated demo of the task badge states — play, active tracking, and completed" width="450" style="border-radius:12px; margin:2rem 0;">
 
@@ -92,7 +93,7 @@ Tasks you tracked with an older version of the plugin may still have the identif
 - **One timer, no confusion** — only one active timer at a time. Switching tasks closes the previous session automatically, without losing data.
 - **Fits your task format** — works with Tasks-style checkboxes (`- [ ]`, `* [ ]`, `+ [ ]`), numbered lists, nested tasks, and checkboxes inside callouts or blockquotes.
 - **Plays nicely with Dataview, but never depends on it** — an optional, subtle-by-default identifier keeps your history linked to each task and makes it queryable, without cluttering your notes.
-- **A clear history** — a dedicated panel with per-task cards, day/week navigation or any custom date range, and inline editing or deletion of sessions.
+- **A clear history** — a dedicated panel with per-task cards, day/week navigation or any custom date range, task search by name or `tt-id`, and inline editing or deletion of sessions.
 - **Resume tracking without leaving the panel** — start or stop a task's tracking straight from its card in the History panel, without opening the note it lives in. If a task is currently being tracked, any other day where it also has past sessions shows a small marker that jumps you straight back to the live session.
 - **Organize with projects & clients** — group your tasks under projects (each with an optional client) from Settings, then filter the History panel down to a single one at a time.
 - **A 30-day overview at a glance** — the Dashboard view totals your last 30 days by project, client, day, and task, no filters or setup needed.
@@ -117,6 +118,27 @@ Assign a project to any tracked task from its **Edit task** dialog — pick one 
 Once you're tracking by project, filter the History panel down to a single one at a time with the **Filter** button in its header. The filter resets every time you reopen Obsidian, so it's never a setting you forget you left on.
 
 <img src="docs/images/filter-in-panel-29.png" alt="Filter button + popover in the History panel header" width="515" style="border-radius:12px;margin:2rem 0;">
+
+## Search
+
+Find any task from the History panel with the **magnifier icon** in its header. Type part of a task's name or its `tt-id`, and suggestions appear as you type.
+
+- **Pick a suggestion** to see every session of that task, including ones saved under an older name.
+- **Press Enter** without picking one to find every task whose name contains what you typed.
+
+Search always covers your **entire history**, whatever day, week or project you were looking at. Results open in the Results view, most recent days first.
+
+<img src="docs/images/search-suggestions-33.png" alt="Task search in the History panel header, with suggestions shown while typing" width="320" style="border-radius:12px;margin:2rem 0;">
+
+### Combining filters
+
+Search combines with the project filter and the date range. Each active filter shows as its own chip above the results, and each chip has its own **×** to remove just that filter while keeping the rest. For example, search for "invoice" within one project and one month, then drop the month to see that project's matches across all time.
+
+<img src="docs/images/search-chips-33.png" alt="Project, search text and date range filters shown as chips, each with its own remove button" width="280" style="border-radius:12px;margin:2rem 0;">
+
+### Full history of a project
+
+When a project is filtered in Day or Week view, a row under the header shows that project with a **View full history** action. It opens the Results view with only that project, across your whole history, with no date range applied.
 
 ## Dashboard
 
