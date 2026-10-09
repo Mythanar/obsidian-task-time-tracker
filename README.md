@@ -4,6 +4,9 @@
 
  <img src="docs/images/ttt-logo-dark.png" width="300" alt="Task Time Tracker logo">
  
+[![Release](https://img.shields.io/github/v/release/Mythanar/obsidian-task-time-tracker?style=flat-square&color=483699)](https://github.com/Mythanar/obsidian-task-time-tracker/releases) [![Obsidian downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&query=%24%5B%22task-time-tracker%22%5D.downloads&label=Obsidian%20downloads&color=483699&style=flat-square)](https://community.obsidian.md/plugins/task-time-tracker) [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20the%20project-483699?logo=ko-fi&logoColor=white&style=flat-square)](https://ko-fi.com/V1G5250ECI)
+
+
 A local-first Obsidian plugin for **tracking time directly on the checkboxes in your notes** — compatible with the Tasks plugin format, with no external services involved at any point.
 
 **Obsidian has no native way to track time on your work**. Existing plugins mostly focus on Pomodoro-style sessions, or don't integrate with the checkbox-based task format already used across vaults — and none of them combine tracking with exporting your time to the tools you already use.
