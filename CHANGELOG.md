@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- Edit task: when a task's source note can't be found, the modal now shows the full task line (open checkbox, saved text with its dates, priorities, tags and links, and its `tt-id`) with a "Copy task" button. Paste it into any note to recover the task and keep tracking it.
+
+### Changed
+
+- Edit task: the modal is now wider on desktop (640 px, still capped on narrow windows), with or without a source note. On phones it stays full screen.
+
 ## [0.0.33] - 2026-10-05
 
 ### Added

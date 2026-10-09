@@ -8,6 +8,7 @@
 // never here.
 
 import { App, Modal, Notice, Setting, setIcon } from "obsidian";
+import { appendTaskId } from "../core/TaskIdentifier";
 import { formatDuration, formatDurationCompact } from "../core/TrackingEngine";
 import { t } from "../i18n";
 import { EntryUpdateResult, Project, TimeEntry } from "../types";
@@ -112,11 +113,15 @@ export class EditTaskModal extends Modal {
 		// root, no need to hand-patch a margin-top.
 		this.setTitle(this.label);
 
-		// Note deleted: italic warning under the title, unlike the
+		// Note deleted: the recovery box below the tt-id row carries the
+		// "Note not found" warning itself. Only when there's no saved text
+		// to rebuild the line from (old or damaged records) does it fall
+		// back to the plain italic warning under the title, unlike the
 		// Historial card's treatment (there the name goes italic; here
 		// the title stays normal and this warning is what goes italic).
 		// Doesn't affect tt-id/Project/Sessions.
-		if (this.isMissing) {
+		const recoveryLine = this.isMissing ? this.buildRecoveryLine() : null;
+		if (this.isMissing && recoveryLine === null) {
 			contentEl.createDiv({ text: t("log.noteNotFound"), cls: "task-time-tracker-edit-modal-note-missing" });
 		}
 
@@ -140,6 +145,10 @@ export class EditTaskModal extends Modal {
 				new Notice(t("log.editModalIdCopied"));
 			});
 		});
+
+		if (recoveryLine !== null) {
+			this.renderRecoveryBox(contentEl, recoveryLine);
+		}
 
 		// Button + popover (shared "Project picker list" component, see
 		// ProjectPickerList.ts) instead of the previous native <select>:
@@ -214,6 +223,55 @@ export class EditTaskModal extends Modal {
 	onClose(): void {
 		if (this.feedbackTimeoutId !== null) window.clearTimeout(this.feedbackTimeoutId);
 		this.contentEl.empty();
+	}
+
+	// "Recover a task with a deleted note": rebuilds the full task line
+	// from the latest session's taskText (the same snapshot the Historial
+	// card shows as its title in this state), kept whole — Tasks dates,
+	// priorities, recurrences, tags and links included. Checkbox always
+	// open (closed tasks can't be tracked), tt-id placed before any Tasks
+	// field via appendTaskId(), line breaks collapsed to spaces so it's
+	// always one valid line. Returns null when there's no saved text.
+	private buildRecoveryLine(): string | null {
+		const entries = this.getEntries();
+		if (entries.length === 0) return null;
+		const latest = entries.reduce((a, b) => (b.start > a.start ? b : a));
+		const text = latest.taskText.replace(/[\r\n]+/g, " ").trim();
+		if (text.length === 0) return null;
+		return appendTaskId(`- [ ] ${text}`, this.taskId);
+	}
+
+	private renderRecoveryBox(container: Element, line: string): void {
+		const box = container.createDiv({ cls: "task-time-tracker-edit-modal-recovery-box" });
+
+		const header = box.createDiv({ cls: "task-time-tracker-edit-modal-recovery-header" });
+		const warning = header.createSpan({ cls: "task-time-tracker-edit-modal-recovery-warning" });
+		setIcon(warning.createSpan({ cls: "task-time-tracker-edit-modal-recovery-icon" }), "file-x");
+		warning.createSpan({ text: t("log.noteNotFound") });
+		header.createSpan({ text: t("log.editModalRecoverHint"), cls: "task-time-tracker-edit-modal-recovery-hint" });
+
+		box.createDiv({ text: line, cls: "task-time-tracker-edit-modal-recovery-line" });
+
+		const actions = box.createDiv({ cls: "task-time-tracker-edit-modal-recovery-actions" });
+		const copyBtn = actions.createEl("button", { cls: "mod-cta task-time-tracker-edit-modal-recovery-copy" });
+		const copyIcon = copyBtn.createSpan({ cls: "task-time-tracker-edit-modal-recovery-icon" });
+		const copyLabel = copyBtn.createSpan();
+		setIcon(copyIcon, "copy");
+		copyLabel.setText(t("log.editModalCopyTask"));
+		copyBtn.addEventListener("click", () => {
+			navigator.clipboard.writeText(line).then(
+				() => {
+					copyBtn.removeClass("mod-cta");
+					copyBtn.addClass("is-copied");
+					setIcon(copyIcon, "check");
+					copyLabel.setText(t("log.editModalTaskCopiedButton"));
+					new Notice(t("log.editModalTaskCopied"));
+				},
+				// The line stays selectable above, so a manual copy is
+				// still possible if the clipboard API refuses.
+				() => new Notice(t("log.editModalTaskCopyFailed")),
+			);
+		});
 	}
 
 	// Inline feedback (no global Notice, no footer): writes the message

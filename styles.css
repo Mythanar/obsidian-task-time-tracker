@@ -2256,6 +2256,115 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	height: 12px;
 }
 
+/* Wider than Obsidian's default dialog, with or without a source note.
+   Overrides Obsidian's own --dialog-width variable instead of `width`, so
+   its --dialog-max-width cap and the full-screen phone modal still apply
+   untouched. */
+.task-time-tracker-edit-modal {
+	--dialog-width: 640px;
+}
+
+/* "Recover a task with a deleted note" (see EditTaskModal.ts
+   #renderRecoveryBox). */
+.task-time-tracker-edit-modal-recovery-box {
+	display: flex;
+	flex-direction: column;
+	gap: 0.75em;
+	margin-top: 1em;
+	padding: 0.85em 1em;
+	background: var(--background-secondary);
+	border: 1px solid var(--background-modifier-border);
+	border-radius: var(--radius-m);
+}
+
+/* Desktop: warning and hint share one line, split by a thin rule; wraps
+   on its own if the window is too narrow. Mobile stacks them (below). */
+.task-time-tracker-edit-modal-recovery-header {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.3em 0.6em;
+	font-size: var(--font-ui-small);
+}
+
+.task-time-tracker-edit-modal-recovery-warning {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.4em;
+	font-weight: var(--font-semibold);
+	color: var(--text-error);
+}
+
+.task-time-tracker-edit-modal-recovery-hint {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.6em;
+	color: var(--text-muted);
+}
+
+.task-time-tracker-edit-modal-recovery-hint::before {
+	content: "";
+	width: 1px;
+	height: 1em;
+	background: var(--background-modifier-border);
+}
+
+.task-time-tracker-edit-modal-recovery-icon {
+	display: inline-flex;
+}
+
+.task-time-tracker-edit-modal-recovery-icon svg {
+	width: 14px;
+	height: 14px;
+}
+
+/* user-select: all — one tap/click selects the whole line, as a manual
+   fallback to the copy button. */
+.task-time-tracker-edit-modal-recovery-line {
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-small);
+	line-height: 1.6;
+	color: var(--text-normal);
+	overflow-wrap: break-word;
+	user-select: all;
+	-webkit-user-select: all;
+}
+
+.task-time-tracker-edit-modal-recovery-actions {
+	display: flex;
+	justify-content: flex-end;
+}
+
+.task-time-tracker-edit-modal-recovery-copy {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5em;
+	cursor: pointer;
+}
+
+/* After copying: back to the neutral button (mod-cta removed in
+   EditTaskModal.ts), with dimmed text. */
+.task-time-tracker-edit-modal-recovery-copy.is-copied {
+	color: var(--text-muted);
+}
+
+.is-mobile .task-time-tracker-edit-modal-recovery-header {
+	flex-direction: column;
+	align-items: flex-start;
+}
+
+.is-mobile .task-time-tracker-edit-modal-recovery-hint::before {
+	content: none;
+}
+
+/* 44px touch target, full box width (same .is-mobile gate as the other
+   touch targets in this file). */
+.is-mobile .task-time-tracker-edit-modal-recovery-copy {
+	width: 100%;
+	min-height: 44px;
+	justify-content: center;
+}
+
 .task-time-tracker-edit-modal-sessions {
 	max-height: 50vh;
 	overflow-y: auto;
