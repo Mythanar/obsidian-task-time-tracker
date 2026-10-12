@@ -213,6 +213,10 @@ Generic CSV exports also include the project and client assigned to each task, i
 2. Create a folder named `task-time-tracker` inside your vault's `.obsidian/plugins/` directory and place the three files there.
 3. Reload Obsidian and enable the plugin in Community Plugins.
 
+### Using it on several devices
+
+If you sync your vault (for example with Obsidian Sync), keep Task Time Tracker on the same version on all your devices. **The next version changes how data is stored**, so update it everywhere when it comes out. Data written by a newer version is kept intact by older ones from 0.0.34 onward; if a device detects data from a newer version, it asks you to update the plugin there and disables exporting and editing projects until you do.
+
 ## About
 
 Built by [Mythanar](https://mythanar.com). This plugin started as something I needed for myself, built alongside AI, because I couldn't find one that did what I actually wanted. If it works for me, maybe it'll work for someone else too.

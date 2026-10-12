@@ -28,6 +28,8 @@ export const es: Record<TranslationKey, string> = {
 	"recovery.keepGoing": "Seguir corriendo",
 
 	// 5. Modal de exportacion (src/ui/ExportModal.ts)
+	"export.newerFormat":
+		"Exportación desactivada: tus datos vienen de una versión más reciente de Task Time Tracker y el archivo saldría incompleto. Actualiza el plugin en este dispositivo para exportar.",
 	"export.title": "Exportar sesiones",
 	"export.from": "Desde",
 	"export.to": "Hasta",
@@ -88,6 +90,8 @@ export const es: Record<TranslationKey, string> = {
 	"settings.exportAll.desc": "Tu historial vive solo en este dispositivo. Usa este botón para tener una copia de seguridad en cualquier momento.",
 	"settings.exportAll.button": "Exportar todo",
 	"settings.projects.heading": "Proyectos y clientes",
+	"settings.projects.newerFormat":
+		"Solo lectura: tus datos vienen de una versión más reciente de Task Time Tracker. Actualiza el plugin en este dispositivo para editar proyectos y clientes.",
 	"settings.projects.banner":
 		"Usa los nombres exactos de proyecto y cliente de tu plataforma de seguimiento (Toggl, Clockify...). Que los nombres coincidan es lo que permite volver a importar en esa plataforma las sesiones exportadas desde este plugin.",
 	"settings.projects.tabOneByOne": "Uno por uno",
@@ -268,4 +272,8 @@ export const es: Record<TranslationKey, string> = {
 	"notice.noteNotFound": "No se encontró ninguna nota con esta tarea.",
 	"notice.tasksCompatResult": "Revisadas {reviewed} tareas, corregidas {fixed}.",
 	"notice.tasksCompatResultNone": "Revisadas {reviewed} tareas — ninguna necesitaba corrección.",
+	"notice.formatChangeAhead":
+		"Task Time Tracker: actualiza el plugin en todos tus dispositivos. La próxima versión cambiará cómo se guardan los datos y los dispositivos sin actualizar podrían perder información.",
+	"notice.newerFormat":
+		"Tus datos vienen de una versión más reciente de Task Time Tracker. Actualiza el plugin en este dispositivo; hasta entonces, la exportación y la edición de proyectos están desactivadas.",
 };

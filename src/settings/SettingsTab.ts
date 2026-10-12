@@ -150,13 +150,22 @@ export class SettingsTab extends PluginSettingTab {
 	// general good practice instead. One click, no modal: generic CSV
 	// (never Toggl), full range from the first session to now, same
 	// folder configured above (see exportAllEntriesToCsv() in main.ts).
+	//
+	// With data from a newer data format the button is disabled and the
+	// description becomes the same lock warning as the export modal (see
+	// ExportModal.ts).
 	private configureExportAll(setting: Setting): void {
+		const locked = this.plugin.store.isNewerFormat();
 		setting
 			.setName(t("settings.exportAll.name"))
-			.setDesc(t("settings.exportAll.desc"))
+			.setDesc(t(locked ? "export.newerFormat" : "settings.exportAll.desc"))
 			.addButton((button) =>
-				button.setButtonText(t("settings.exportAll.button")).onClick(() => void this.plugin.exportAllEntriesToCsv()),
+				button
+					.setButtonText(t("settings.exportAll.button"))
+					.setDisabled(locked)
+					.onClick(() => void this.plugin.exportAllEntriesToCsv()),
 			);
+		setting.descEl.toggleClass("task-time-tracker-settings-warning", locked);
 	}
 
 	// On-demand button that fixes, in one pass, tasks tracked with an

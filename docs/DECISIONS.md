@@ -1696,3 +1696,62 @@ resultado final.
   scroll position. Leaving Resultados clears it too. Entries without a
   search never show it. The empty-state check runs before that wait, so
   a search with no matches goes straight to its message.
+
+## Data compatibility between versions (0.0.34)
+
+- **Unknown data is kept everywhere.** Up to 0.0.33, `normalizeState()`
+  kept only the fields it knew, so a save from an older device stripped
+  whatever a newer version had stored. It now carries unknown fields
+  along at every level: top level, settings, projects and entries.
+  `normalizeState()` is used both on startup and in the re-read inside
+  every `apply()` (the 0.0.31 sync fix, PR #2), so one change covers
+  both. Unknown data always comes from the read just made, never from a
+  copy kept in memory: re-attaching it from memory would bring back the
+  stale-state problem PR #2 fixed (it would resurrect data removed on
+  another device). The read → apply only this change → save rule is
+  unchanged.
+- **Only unknown fields, not unknown values.** A known field with a value
+  this version doesn't understand still falls back to its default. Rule
+  for every future format change: add new fields, never reuse an
+  existing one with a different meaning.
+- **Data format mark (`formatVersion`).** Independent from the plugin
+  version; it is bumped only when an older version could misread the
+  data. Format 1 is everything up to 0.0.34 (data without the mark
+  counts as 1). The mark is written on the next real save, never on
+  load, and it is never lowered: an older device saving data from a
+  newer format keeps the newer mark.
+- **Data from a newer format.** Persistent notice once per session (on
+  load and when Sync delivers it), exports blocked (they would leave out
+  what this version doesn't know), and projects/clients locked in
+  Settings, so this device doesn't write them in the old shape. The lock
+  is checked inside each `ProjectManager` mutation against the state just
+  read, not against memory. Tracking and session edits keep working and
+  keep the newer data.
+- **One-time heads-up about the next format change.** Shown once per
+  device after updating, skipped on a fresh install. The "already shown"
+  flag lives in `window.localStorage` (vault name in the key), not in
+  `data.json`, so opening Obsidian still never saves.
+  `App#saveLocalStorage` would be the vault-scoped API, but it needs
+  Obsidian 1.8.7 and `minAppVersion` is 1.7.2.
+- **Per-device version left out.** Recording which version each device
+  last saved with would need a per-device id and a policy for devices no
+  longer in use (they would block a migration forever). Not worth it for
+  now.
+- **Export lock shown in place, not as a toast.** The export command
+  still opens the modal: a warning banner on top (same style as the
+  read-only notice in Projects & clients) and every control disabled,
+  so nothing typed there is saved either. "Export all" in Settings shows
+  the same text as its description, with the button disabled. A toast
+  that disappears after a few seconds was too easy to miss. The toast is
+  kept only as the last check right before writing, for newer data
+  arriving through Sync in between.
+- **No "View update" button on the newer-data notices.** Considered a
+  button opening the plugin's page via `obsidian://show-plugin?id=…`.
+  That action is not in the documented Obsidian URI actions (only the
+  plugin directory website uses it), and tested on desktop 1.12.7 in
+  Tester it does nothing: the app receives the URL but never processes
+  it, unlike the documented `search` action. Opening Settings on the
+  plugin page from code would need private API. A link to the web page
+  was discarded too: it only shows the listing, and the user would
+  still have to go back to Obsidian to update. The notices already say
+  what to do.

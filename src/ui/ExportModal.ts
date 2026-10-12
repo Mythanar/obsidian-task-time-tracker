@@ -11,8 +11,13 @@
 // Project", "Include Client") — see ClockifyCsvAdapter.ts. No column is
 // actually required by Clockify's importer (see docs/DECISIONS.md), so
 // both checkboxes are independent of each other and start unchecked.
+//
+// With data from a newer data format (see core/StateStore.ts#isNewerFormat)
+// the modal still opens, but shows a warning on top and every control is
+// disabled: the export would come out incomplete, and nothing typed here
+// gets saved to Settings either.
 
-import { App, ButtonComponent, Modal, Notice, Setting } from "obsidian";
+import { App, ButtonComponent, Modal, Notice, Setting, setIcon } from "obsidian";
 import { t } from "../i18n";
 import { ClockifySettings, isValidEmail, TogglSettings } from "../types";
 
@@ -58,6 +63,10 @@ export class ExportModal extends Modal {
 	// duplicates in Clockify" (both permanent notes, not tied to the
 	// chosen range).
 	private clockifyInfoEl: HTMLElement | null = null;
+	// Every input control in the modal, so all of them can be disabled at
+	// once when the data comes from a newer format (see applyLock()).
+	private controls: { setDisabled: (disabled: boolean) => unknown }[] = [];
+	private lockedNoticeEl: HTMLElement | null = null;
 
 	constructor(
 		app: App,
@@ -69,6 +78,9 @@ export class ExportModal extends Modal {
 		private saveClockifyIncludeProject: (value: boolean) => Promise<void>,
 		private saveClockifyIncludeClient: (value: boolean) => Promise<void>,
 		private onSubmit: (fromValue: string, toValue: string, format: ExportFormat) => void,
+		// Read on every check, not once: Sync can deliver newer data while
+		// the modal is open.
+		private isLocked: () => boolean,
 	) {
 		super(app);
 		this.togglEmailDraft = toggl.email;
@@ -92,18 +104,21 @@ export class ExportModal extends Modal {
 		this.setTitle(t("export.title"));
 
 		new Setting(contentEl).setName(t("export.from")).addText((text) => {
+			this.controls.push(text);
 			text.inputEl.type = "date";
 			text.setValue(this.fromValue);
 			text.onChange((value) => (this.fromValue = value));
 		});
 
 		new Setting(contentEl).setName(t("export.to")).addText((text) => {
+			this.controls.push(text);
 			text.inputEl.type = "date";
 			text.setValue(this.toValue);
 			text.onChange((value) => (this.toValue = value));
 		});
 
 		new Setting(contentEl).setName(t("export.formatLabel")).addDropdown((dropdown) => {
+			this.controls.push(dropdown);
 			dropdown.addOption("generic", t("export.formatGeneric"));
 			dropdown.addOption("toggl", t("export.formatToggl"));
 			dropdown.addOption("clockify", t("export.formatClockify"));
@@ -120,7 +135,7 @@ export class ExportModal extends Modal {
 		// does react to validity, reusing the same message classes as the
 		// Historial's session edit form.
 		this.emailSetting = new Setting(contentEl).setName(t("export.togglEmailLabel")).addText((text) =>
-			text
+			this.trackControl(text)
 				.setPlaceholder(t("export.emailPlaceholder"))
 				.setValue(this.togglEmailDraft)
 				.onChange((value) => {
@@ -140,7 +155,7 @@ export class ExportModal extends Modal {
 			.setName(t("export.includeProjectClientLabel"))
 			.setDesc(t("export.includeProjectClientHelp"))
 			.addToggle((toggle) =>
-				toggle.setValue(this.toggl.includeProjectClient).onChange((value) => {
+				this.trackControl(toggle).setValue(this.toggl.includeProjectClient).onChange((value) => {
 					this.toggl.includeProjectClient = value;
 					void this.saveIncludeProjectClient(value);
 				}),
@@ -151,7 +166,7 @@ export class ExportModal extends Modal {
 		// above); visibility also depends only on the format, never on
 		// the email's validity, same reason.
 		this.clockifyEmailSetting = new Setting(contentEl).setName(t("export.clockifyEmailLabel")).addText((text) =>
-			text
+			this.trackControl(text)
 				.setPlaceholder(t("export.emailPlaceholder"))
 				.setValue(this.clockifyEmailDraft)
 				.onChange((value) => {
@@ -183,7 +198,7 @@ export class ExportModal extends Modal {
 			.setName(t("export.includeProjectLabel"))
 			.setDesc(t("export.clockifyIncludeProjectHelp"))
 			.addToggle((toggle) =>
-				toggle.setValue(this.clockify.includeProject).onChange((value) => {
+				this.trackControl(toggle).setValue(this.clockify.includeProject).onChange((value) => {
 					this.clockify.includeProject = value;
 					void this.saveClockifyIncludeProject(value);
 				}),
@@ -192,7 +207,7 @@ export class ExportModal extends Modal {
 			.setName(t("export.includeClientLabel"))
 			.setDesc(t("export.clockifyIncludeClientHelp"))
 			.addToggle((toggle) =>
-				toggle.setValue(this.clockify.includeClient).onChange((value) => {
+				this.trackControl(toggle).setValue(this.clockify.includeClient).onChange((value) => {
 					this.clockify.includeClient = value;
 					void this.saveClockifyIncludeClient(value);
 				}),
@@ -238,6 +253,29 @@ export class ExportModal extends Modal {
 		});
 
 		this.updateFormatFields();
+		if (this.isLocked()) this.applyLock();
+	}
+
+	private trackControl<T extends { setDisabled: (disabled: boolean) => unknown }>(control: T): T {
+		this.controls.push(control);
+		return control;
+	}
+
+	// One-way: once locked, the modal stays locked until it's closed. The
+	// notice is only created here (never created hidden): same warning
+	// banner as the read-only notice in Settings > Projects & clients (see
+	// ProjectsSection.ts#renderLockedNotice), placed first in the modal.
+	private applyLock(): void {
+		if (!this.lockedNoticeEl) {
+			this.lockedNoticeEl = this.contentEl.createDiv({
+				cls: "task-time-tracker-settings-warning-banner task-time-tracker-export-locked-notice",
+			});
+			setIcon(this.lockedNoticeEl.createDiv({ cls: "task-time-tracker-settings-warning-banner-icon" }), "alert-triangle");
+			this.lockedNoticeEl.createDiv({ text: t("export.newerFormat"), cls: "task-time-tracker-settings-warning-banner-text" });
+			this.contentEl.prepend(this.lockedNoticeEl);
+		}
+		for (const control of this.controls) control.setDisabled(true);
+		this.exportButton?.setDisabled(true);
 	}
 
 	private needsTogglEmail(): boolean {
@@ -291,10 +329,16 @@ export class ExportModal extends Modal {
 			);
 		}
 
-		this.exportButton?.setDisabled(needsTogglEmail || needsClockifyEmail);
+		this.exportButton?.setDisabled(needsTogglEmail || needsClockifyEmail || this.isLocked());
 	}
 
 	private async handleSubmit(): Promise<void> {
+		// Newer data may have arrived through Sync after the modal opened:
+		// show the lock here instead of exporting or saving anything.
+		if (this.isLocked()) {
+			this.applyLock();
+			return;
+		}
 		if (!this.fromValue || !this.toValue) {
 			new Notice(t("export.rangeInvalid"));
 			return;
@@ -327,6 +371,7 @@ export class ExportModal extends Modal {
 	}
 
 	onClose(): void {
+		this.lockedNoticeEl = null;
 		this.contentEl.empty();
 	}
 }

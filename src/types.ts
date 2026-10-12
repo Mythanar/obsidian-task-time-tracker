@@ -128,4 +128,7 @@ export interface PluginState {
 	settings: PluginSettings;
 	projects: Project[];
 	taskProjects: TaskProjectAssignments;
+	// Data format mark (see DATA_FORMAT_VERSION in core/StateStore.ts).
+	// Independent from the plugin version.
+	formatVersion: number;
 }

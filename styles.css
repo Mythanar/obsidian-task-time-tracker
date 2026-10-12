@@ -155,6 +155,17 @@
 	color: var(--text-error);
 }
 
+/* "Export all" description while export is locked (data from a newer
+   version, see SettingsTab.ts#configureExportAll). */
+.task-time-tracker-settings-warning {
+	color: var(--text-warning);
+}
+
+/* Export modal lock notice (see ExportModal.ts#applyLock). */
+.task-time-tracker-export-locked-notice {
+	margin-bottom: 1em;
+}
+
 /* Settings rows default to a two-column layout (label/description +
    control, see SettingsTab.ts#getSettingDefinitions); this overrides it to
    block so full-width content (banner, Projects & clients) isn't squeezed
@@ -1958,6 +1969,13 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 
 /* Same highlighted-block-with-left-accent-border pattern already used
    elsewhere in the plugin (see .task-time-tracker-log-edit-duration). */
+/* Read-only notice in "Projects & clients" (data from a newer version,
+   see ProjectsSection.ts#renderLockedNotice): same spacing as the info
+   banner above it. */
+.task-time-tracker-projects .task-time-tracker-settings-warning-banner {
+	margin-bottom: 1em;
+}
+
 .task-time-tracker-projects-banner {
 	display: flex;
 	align-items: flex-start;

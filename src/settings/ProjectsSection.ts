@@ -79,6 +79,15 @@ export class ProjectsSection {
 		el.addClass("task-time-tracker-projects");
 
 		if (this.includeBanner) renderProjectsBanner(el);
+
+		// Data from a newer plugin version: read-only list, no forms, no
+		// inline editing, no delete (see ProjectManager#isLocked).
+		if (this.manager.isLocked()) {
+			this.renderLockedNotice(el);
+			this.renderLockedList(el);
+			return;
+		}
+
 		this.renderTabs(el);
 
 		if (this.activeTab === "one") {
@@ -88,6 +97,41 @@ export class ProjectsSection {
 		}
 
 		this.renderSavedList(el);
+	}
+
+	// Same warning banner as Clockify's payment-wall notice (see
+	// SettingsTab.ts#configureClockifyPaymentWallInfo).
+	private renderLockedNotice(el: HTMLElement): void {
+		const banner = el.createDiv({ cls: "task-time-tracker-settings-warning-banner" });
+		const icon = banner.createDiv({ cls: "task-time-tracker-settings-warning-banner-icon" });
+		setIcon(icon, "alert-triangle");
+		banner.createDiv({ text: t("settings.projects.newerFormat"), cls: "task-time-tracker-settings-warning-banner-text" });
+	}
+
+	private renderLockedList(el: HTMLElement): void {
+		const projects = this.manager.getProjects();
+		el.createDiv({
+			text: `${projects.length} ${t(projects.length === 1 ? "settings.projects.countSingular" : "settings.projects.countPlural")}`,
+			cls: "task-time-tracker-projects-count",
+		});
+		const list = el.createDiv({ cls: "task-time-tracker-projects-list" });
+		for (const project of projects) {
+			const row = list.createDiv({ cls: "task-time-tracker-projects-row" });
+			row.createSpan({ text: project.name, cls: "task-time-tracker-projects-row-name" });
+			const meta = row.createDiv({ cls: "task-time-tracker-projects-row-meta" });
+			if (project.client) meta.createSpan({ text: project.client, cls: "task-time-tracker-projects-row-client" });
+		}
+	}
+
+	// Data from a newer version arrived (Sync) while this section was
+	// open: drop any draft or edit in progress and show the locked view.
+	private showLocked(): void {
+		this.oneByOneError = null;
+		this.pasteError = null;
+		this.editingField = null;
+		this.editError = null;
+		this.deleteConfirmId = null;
+		this.render();
 	}
 
 	private renderTabs(el: HTMLElement): void {
@@ -141,6 +185,10 @@ export class ProjectsSection {
 
 	private async handleAdd(): Promise<void> {
 		const result = await this.manager.addProject(this.nameDraft, this.clientDraft);
+		if (!result.ok && result.error === "newer-format") {
+			this.showLocked();
+			return;
+		}
 		if (!result.ok) {
 			this.oneByOneError = result.error === "empty-name" ? "empty" : "duplicate";
 			this.render();
@@ -182,6 +230,10 @@ export class ProjectsSection {
 
 	private async handleImport(): Promise<void> {
 		const result = await this.manager.importProjects(this.pasteDraft);
+		if (!result.ok && result.error === "newer-format") {
+			this.showLocked();
+			return;
+		}
 		if (!result.ok) {
 			this.pasteError = { line: result.line, content: result.content };
 			this.render();
@@ -368,6 +420,10 @@ export class ProjectsSection {
 		const client = editing.field === "client" ? this.editDraft : (project.client ?? "");
 
 		const result = await this.manager.updateProject(editing.projectId, name, client);
+		if (!result.ok && result.error === "newer-format") {
+			this.showLocked();
+			return;
+		}
 		if (!result.ok) {
 			this.editError = result.error === "empty-name" ? "empty" : "duplicate";
 			// New reference (same field): invalidates the "session" the

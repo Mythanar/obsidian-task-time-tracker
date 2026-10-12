@@ -2,7 +2,7 @@
 // Never calls an external API: there is no way to validate these names
 // against the real platform, and none is needed (see CLAUDE.md).
 
-import { StateStore } from "./StateStore";
+import { isNewerFormat, StateStore } from "./StateStore";
 import { PluginState, Project } from "../types";
 
 // Same pattern as TrackingEngine.ts: a non-cryptographic id is enough for a
@@ -11,11 +11,24 @@ function generateId(): string {
 	return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export type AddProjectResult = { ok: true } | { ok: false; error: "empty-name" | "duplicate" };
-export type ImportProjectsResult = { ok: true } | { ok: false; line: number; content: string };
+// "newer-format": the data comes from a plugin version with a newer data
+// format (see StateStore.ts#isNewerFormat). Projects and clients are not
+// edited from here then, so this device does not write them in the old
+// shape. Checked against the state just read inside each mutation.
+export type AddProjectResult = { ok: true } | { ok: false; error: "empty-name" | "duplicate" | "newer-format" };
+export type ImportProjectsResult =
+	| { ok: true }
+	| { ok: false; error: "invalid-line"; line: number; content: string }
+	| { ok: false; error: "newer-format" };
 
 export class ProjectManager {
 	constructor(private store: StateStore) {}
+
+	// Read from the in-memory state, for the UI. Mutations re-check it
+	// against the state just read from disk.
+	isLocked(): boolean {
+		return this.store.isNewerFormat();
+	}
 
 	getProjects(): Project[] {
 		return this.store.getState().projects;
@@ -43,6 +56,7 @@ export class ProjectManager {
 		const client = rawClient.trim() || undefined;
 
 		return this.store.apply<AddProjectResult>((state) => {
+			if (isNewerFormat(state)) return { result: { ok: false, error: "newer-format" }, changed: false };
 			if (ProjectManager.exists(state, name, client)) {
 				return { result: { ok: false, error: "duplicate" }, changed: false };
 			}
@@ -67,6 +81,7 @@ export class ProjectManager {
 		const client = rawClient.trim() || undefined;
 
 		return this.store.apply<AddProjectResult>((state) => {
+			if (isNewerFormat(state)) return { result: { ok: false, error: "newer-format" }, changed: false };
 			const project = state.projects.find((p) => p.id === id);
 			if (!project) return { result: { ok: true }, changed: false };
 			if (ProjectManager.exists(state, name, client, id)) {
@@ -83,6 +98,7 @@ export class ProjectManager {
 	// taskProjects is cleaned up first, then the project list itself.
 	async removeProject(id: string): Promise<void> {
 		await this.store.apply((state) => {
+			if (isNewerFormat(state)) return { result: undefined, changed: false };
 			const index = state.projects.findIndex((p) => p.id === id);
 			if (index === -1) return { result: undefined, changed: false };
 			state.projects.splice(index, 1);
@@ -144,6 +160,7 @@ export class ProjectManager {
 		// Validating against what is already stored needs the latest state
 		// from disk, so parsing and insertion live in the same mutation.
 		return this.store.apply<ImportProjectsResult>((state) => {
+			if (isNewerFormat(state)) return { result: { ok: false, error: "newer-format" }, changed: false };
 			const parsed = this.parseImport(state, text);
 			if (!parsed.ok) return { result: parsed, changed: false };
 			for (const project of parsed.toAdd) {
@@ -156,7 +173,9 @@ export class ProjectManager {
 	private parseImport(
 		state: PluginState,
 		text: string,
-	): { ok: true; toAdd: { name: string; client?: string }[] } | { ok: false; line: number; content: string } {
+	):
+		| { ok: true; toAdd: { name: string; client?: string }[] }
+		| { ok: false; error: "invalid-line"; line: number; content: string } {
 		const lines = text.split("\n");
 		const toAdd: { name: string; client?: string }[] = [];
 		const seenInBatch = new Set<string>();
@@ -169,17 +188,17 @@ export class ProjectManager {
 			// text after the second separator belong to) — rejected
 			// instead of guessed.
 			const parts = line.split(";");
-			if (parts.length > 2) return { ok: false, line: i + 1, content: line };
+			if (parts.length > 2) return { ok: false, error: "invalid-line", line: i + 1, content: line };
 
 			const name = (parts[0] ?? "").trim();
-			if (name.length === 0) return { ok: false, line: i + 1, content: line };
+			if (name.length === 0) return { ok: false, error: "invalid-line", line: i + 1, content: line };
 
 			const clientPart = parts[1]?.trim();
 			const client = clientPart && clientPart.length > 0 ? clientPart : undefined;
 
 			const key = ProjectManager.key(name, client);
 			if (seenInBatch.has(key) || ProjectManager.exists(state, name, client)) {
-				return { ok: false, line: i + 1, content: line };
+				return { ok: false, error: "invalid-line", line: i + 1, content: line };
 			}
 			seenInBatch.add(key);
 			toAdd.push({ name, client });

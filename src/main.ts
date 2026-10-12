@@ -45,6 +45,12 @@ const EDITOR_CHANGE_DEBOUNCE_MS = 300;
 // See applyTaskIdFormatClass().
 const TASKID_FORMAT_BODY_CLASSES = ["task-time-tracker-taskid-reduced", "task-time-tracker-taskid-hidden"];
 
+// Per-device flag (local storage, never data.json) for the one-time
+// heads-up about the upcoming data format change. The value names the
+// change it warns about, so a future heads-up can use its own key.
+const FORMAT_CHANGE_NOTICE_KEY = "task-time-tracker-format-change-notice";
+const FORMAT_CHANGE_NOTICE_ID = "format-2";
+
 export default class TaskTimeTrackerPlugin extends Plugin {
 	trackingEngine!: TrackingEngine;
 	projectManager!: ProjectManager;
@@ -52,6 +58,9 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	taskIdentifier!: TaskIdentifier;
 	exportManager!: ExportManager;
 	store!: StateStore;
+	// The "data from a newer version" notice is shown once per session,
+	// not on every Sync delivery.
+	private newerFormatNoticeShown = false;
 	private editorChangeDebounceTimer: number | null = null;
 	private inlineControlsBus = new InlineTrackingBus();
 
@@ -70,6 +79,8 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		});
 		await this.store.init();
 		this.applyTaskIdFormatClass();
+		this.checkNewerDataFormat();
+		this.showFormatChangeNoticeOnce();
 
 		this.trackingEngine = new TrackingEngine(this.store);
 		this.projectManager = new ProjectManager(this.store);
@@ -213,6 +224,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 					(fromValue, toValue, format) => {
 						void this.runExport(fromValue, toValue, format);
 					},
+					() => this.store.isNewerFormat(),
 				).open();
 			},
 		});
@@ -249,9 +261,63 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	async onExternalSettingsChange(): Promise<void> {
 		await this.store.reload();
 		this.applyTaskIdFormatClass();
+		this.checkNewerDataFormat();
 		this.statusBarWidget.refresh();
 		this.refreshLogViews();
 		this.notifyTrackingChanged();
+	}
+
+	// Data written by a plugin version with a newer data format (see
+	// StateStore.ts#isNewerFormat). Persistent notice (stays until
+	// clicked), once per session.
+	private checkNewerDataFormat(): void {
+		if (!this.store.isNewerFormat() || this.newerFormatNoticeShown) return;
+		this.newerFormatNoticeShown = true;
+		new Notice(t("notice.newerFormat"), 0);
+	}
+
+	// With data from a newer format the export would come out incomplete
+	// (whatever this version doesn't know is left out), so it's blocked.
+	// The export modal and the "Export all" row in Settings already show
+	// the lock and disable themselves; this is only the last check right
+	// before writing, for newer data arriving through Sync in between.
+	private isExportBlocked(): boolean {
+		if (!this.store.isNewerFormat()) return false;
+		new Notice(t("export.newerFormat"));
+		return true;
+	}
+
+	// One-time heads-up, per device, that the next version changes how
+	// data is stored. Remembered in local storage so opening Obsidian
+	// never writes data.json. Skipped on a fresh install (nothing to
+	// protect yet) and when the data already comes from the newer format
+	// (the newer-format notice covers it).
+	private showFormatChangeNoticeOnce(): void {
+		if (this.loadLocalFlag(FORMAT_CHANGE_NOTICE_KEY) === FORMAT_CHANGE_NOTICE_ID) return;
+		if (!this.store.isFreshInstall() && !this.store.isNewerFormat()) {
+			new Notice(t("notice.formatChangeAhead"), 0);
+		}
+		this.saveLocalFlag(FORMAT_CHANGE_NOTICE_KEY, FORMAT_CHANGE_NOTICE_ID);
+	}
+
+	// Device-local flags. App#loadLocalStorage/saveLocalStorage would be
+	// the vault-scoped API, but it needs Obsidian 1.8.7 and minAppVersion
+	// is lower, so window.localStorage is used with the vault name in the
+	// key. Failures are harmless: at worst the heads-up shows again.
+	private loadLocalFlag(key: string): string | null {
+		try {
+			return window.localStorage.getItem(`${key}:${this.app.vault.getName()}`);
+		} catch {
+			return null;
+		}
+	}
+
+	private saveLocalFlag(key: string, value: string): void {
+		try {
+			window.localStorage.setItem(`${key}:${this.app.vault.getName()}`, value);
+		} catch (error) {
+			console.warn("Task Time Tracker: could not save a local flag", error);
+		}
 	}
 
 	// Fase 7 — aplica (o retira) la clase en document.body que activa el
@@ -463,6 +529,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		const fromMs = new Date(`${fromValue}T00:00:00`).getTime();
 		const toMs = new Date(`${toValue}T23:59:59.999`).getTime();
 		const exportsFolder = this.pluginState.settings.exportsFolder;
+		if (this.isExportBlocked()) return;
 
 		try {
 			let filePath: string;
@@ -502,6 +569,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	// in any other export: exportToCsv() already filters by
 	// entry.end !== null.
 	async exportAllEntriesToCsv(): Promise<void> {
+		if (this.isExportBlocked()) return;
 		const entries = this.trackingEngine.getEntries();
 		if (entries.length === 0) {
 			new Notice(t("notice.noSessionsYet"));

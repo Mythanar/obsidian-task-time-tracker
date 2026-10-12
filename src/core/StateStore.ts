@@ -37,8 +37,28 @@
 // (or a file per session), out of scope for this change. What is
 // guaranteed: once a synced version is on the local disk, no later local
 // operation overwrites the unrelated records in that version.
+//
+// FORWARD COMPATIBILITY (unknown data is kept): a newer plugin version
+// may store fields this version does not know (top level, settings,
+// projects, entries). normalizeState() carries them along untouched, so
+// saving from here never strips them. They always come from the read
+// just made inside apply(), never from a copy kept in memory: keeping
+// unknown data aside and re-attaching it on save would bring back the
+// stale-memory problem described above.
+//
+// Only unknown FIELDS are kept. A known field with a value this version
+// does not understand falls back to its default, as before. Rule for any
+// future format change: add new fields, never reuse an existing one with
+// a different meaning.
 
 import { DEFAULT_SETTINGS, PluginSettings, PluginState, Project, TimeEntry } from "../types";
+
+// Data format version, independent from the plugin version. Bump it only
+// when an older plugin version could misread the data (e.g. 0.0.35's
+// separate clients). Data without the mark is format 1 (everything up to
+// 0.0.34). An older format is upgraded silently on the next real save;
+// a newer one is never lowered (see normalizeFormatVersion).
+export const DATA_FORMAT_VERSION = 1;
 
 // Injected disk access (in production, the Plugin's loadData/saveData).
 // Injected instead of receiving the whole Plugin so the store can be
@@ -71,6 +91,7 @@ function normalizeEntries(raw: unknown): TimeEntry[] {
 		if (typeof item.start !== "number") continue;
 		if (typeof item.end !== "number" && item.end !== null) continue;
 		entries.push({
+			...item,
 			id: item.id,
 			taskId: item.taskId,
 			taskText: typeof item.taskText === "string" ? item.taskText : "",
@@ -89,6 +110,7 @@ function normalizeProjects(raw: unknown): Project[] {
 		if (!isRecord(item)) continue;
 		if (typeof item.id !== "string" || typeof item.name !== "string") continue;
 		projects.push({
+			...item,
 			id: item.id,
 			name: item.name,
 			client: typeof item.client === "string" ? item.client : undefined,
@@ -111,6 +133,7 @@ function normalizeSettings(raw: unknown): PluginSettings {
 	const toggl = isRecord(settings.toggl) ? settings.toggl : {};
 	const clockify = isRecord(settings.clockify) ? settings.clockify : {};
 	return {
+		...settings,
 		toggl: { ...DEFAULT_SETTINGS.toggl, ...toggl },
 		clockify: { ...DEFAULT_SETTINGS.clockify, ...clockify },
 		logViewLocation:
@@ -133,11 +156,29 @@ function normalizeSettings(raw: unknown): PluginSettings {
 export function normalizeState(raw: unknown): PluginState {
 	const source = isRecord(raw) ? raw : {};
 	return {
+		...source,
 		entries: normalizeEntries(source.entries),
 		settings: normalizeSettings(source.settings),
 		projects: normalizeProjects(source.projects),
 		taskProjects: normalizeTaskProjects(source.taskProjects),
+		formatVersion: normalizeFormatVersion(source.formatVersion),
 	};
+}
+
+// Never below this version's format (older data is upgraded on the next
+// save) and never lowered: a newer mark written by another device stays,
+// so that device still recognizes its own format after we save.
+function normalizeFormatVersion(raw: unknown): number {
+	const stored = typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : 1;
+	return Math.max(stored, DATA_FORMAT_VERSION);
+}
+
+// True when the data was written by a plugin version with a newer data
+// format than this one. Exports would come out incomplete and project
+// edits would be made in the old shape, so both are blocked (see main.ts
+// and ProjectManager.ts).
+export function isNewerFormat(state: PluginState): boolean {
+	return state.formatVersion > DATA_FORMAT_VERSION;
 }
 
 export class StateStore {
@@ -145,6 +186,9 @@ export class StateStore {
 	// Single-lane queue: two local operations in a row (two quick clicks)
 	// cannot interleave their read/write and clobber each other.
 	private queue: Promise<unknown> = Promise.resolve();
+	// Whether the initial load found no stored data at all (fresh
+	// install), as opposed to existing data from an earlier version.
+	private loadedEmpty = false;
 
 	constructor(private io: StateIO) {}
 
@@ -155,9 +199,22 @@ export class StateStore {
 		return this.state;
 	}
 
-	// Initial load (onload). Writes nothing.
+	// Initial load (onload). Writes nothing: opening Obsidian never saves.
 	async init(): Promise<PluginState> {
-		return this.reload();
+		return this.enqueue(async () => {
+			const raw = await this.io.load();
+			this.loadedEmpty = raw === null || raw === undefined;
+			this.state = normalizeState(raw);
+			return this.state;
+		});
+	}
+
+	isFreshInstall(): boolean {
+		return this.loadedEmpty;
+	}
+
+	isNewerFormat(): boolean {
+		return isNewerFormat(this.state);
 	}
 
 	// Re-read without writing, for onExternalSettingsChange(): another

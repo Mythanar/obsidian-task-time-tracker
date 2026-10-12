@@ -27,6 +27,8 @@ export const en = {
 	"recovery.keepGoing": "Keep tracking",
 
 	// 5. Export modal (src/ui/ExportModal.ts)
+	"export.newerFormat":
+		"Export is turned off: your data comes from a newer version of Task Time Tracker and the file would be incomplete. Update the plugin on this device to export.",
 	"export.title": "Export sessions",
 	"export.from": "From",
 	"export.to": "To",
@@ -92,6 +94,8 @@ export const en = {
 	"settings.exportAll.desc": "Your history only lives on this device. Use this button to get a backup anytime.",
 	"settings.exportAll.button": "Export all",
 	"settings.projects.heading": "Projects & clients",
+	"settings.projects.newerFormat":
+		"Read-only: your data comes from a newer version of Task Time Tracker. Update the plugin on this device to edit projects and clients.",
 	"settings.projects.banner":
 		"Use the exact project and client names from your tracking platform (Toggl, Clockify...). Matching names is what lets sessions exported from this plugin be imported back into that platform.",
 	"settings.projects.tabOneByOne": "One by one",
@@ -274,6 +278,10 @@ export const en = {
 	"notice.noteNotFound": "Couldn't find a note for this task.",
 	"notice.tasksCompatResult": "Reviewed {reviewed} tasks, fixed {fixed}.",
 	"notice.tasksCompatResultNone": "Reviewed {reviewed} tasks — none needed a fix.",
+	"notice.formatChangeAhead":
+		"Task Time Tracker: update the plugin on all your devices. The next version will change how data is stored, and devices that aren’t updated could lose information.",
+	"notice.newerFormat":
+		"Your data comes from a newer version of Task Time Tracker. Update the plugin on this device; until then, export and project editing are turned off.",
 } as const;
 
 export type TranslationKey = keyof typeof en;

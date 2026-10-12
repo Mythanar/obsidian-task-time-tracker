@@ -10,8 +10,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Edit task: when a task's source note can't be found, the modal now shows the full task line (open checkbox, saved text with its dates, priorities, tags and links, and its `tt-id`) with a "Copy task" button. Paste it into any note to recover the task and keep tracking it.
 
+- Data compatibility between versions: data written by a newer version of Task Time Tracker (for example, from another device synced with Obsidian Sync) is now kept intact when this version saves, instead of being dropped. The data now carries a format mark so each version can tell whether the data comes from a newer one.
+- Heads-up, shown once per device after updating: the next version changes how data is stored, so update Task Time Tracker on all your devices before then.
+- If your data comes from a newer version of Task Time Tracker, the plugin says so and asks you to update it on that device. Until you do, exporting and editing projects and clients are disabled on that device (an export would come out incomplete): the export dialog and Settings show why. Tracking and editing sessions keep working.
+
 ### Changed
 
+- Opening Obsidian never saves the plugin's data; it is only written when you change something.
 - Edit task: the modal is now wider on desktop (640 px, still capped on narrow windows), with or without a source note. On phones it stays full screen.
 
 ## [0.0.33] - 2026-10-05
