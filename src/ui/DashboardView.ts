@@ -8,16 +8,19 @@ import { ItemView, Notice, WorkspaceLeaf } from "obsidian";
 import { formatDuration } from "../core/TrackingEngine";
 import { parseCheckboxLine, TaskIdentifier } from "../core/TaskIdentifier";
 import { t } from "../i18n";
-import { Project, TimeEntry } from "../types";
+import { Client, Project, TimeEntry } from "../types";
 
 export const DASHBOARD_VIEW_TYPE = "task-time-tracker-dashboard-view";
 
 const WINDOW_DAYS = 30;
+// Bucket key of the "No project" / "No client" row.
+const NONE_KEY = "__none__";
 const INITIAL_ROWS = 5;
 const PAGE_SIZE = 50;
 
 export interface DashboardViewActions {
 	getProjectForTask(taskId: string): Project | null;
+	getClientForTask(taskId: string): Client | null;
 	openHistory(): void;
 }
 
@@ -32,6 +35,7 @@ function addDays(dateAtMidnightMs: number, days: number): number {
 }
 
 interface AggBucket {
+	key: string;
 	label: string;
 	totalMs: number;
 	count: number;
@@ -60,7 +64,7 @@ function aggregateByKey(
 			existing.totalMs += durationMs;
 			existing.count += 1;
 		} else {
-			buckets.set(key, { label, totalMs: durationMs, count: 1, muted: muted ?? false, italic: italic ?? false });
+			buckets.set(key, { key, label, totalMs: durationMs, count: 1, muted: muted ?? false, italic: italic ?? false });
 		}
 	}
 	return [...buckets.values()].sort((a, b) => b.totalMs - a.totalMs);
@@ -183,7 +187,7 @@ export class DashboardView extends ItemView {
 				const project = this.actions.getProjectForTask(entry.taskId);
 				return project
 					? { key: project.id, label: project.name }
-					: { key: "__none__", label: t("dashboard.noProject"), muted: true };
+					: { key: NONE_KEY, label: t("dashboard.noProject"), muted: true };
 			}),
 			t("dashboard.project.singular"),
 			t("dashboard.project.plural"),
@@ -193,8 +197,12 @@ export class DashboardView extends ItemView {
 			container,
 			t("dashboard.byClientHeading"),
 			aggregateByKey(windowEntries, (entry) => {
-				const client = this.actions.getProjectForTask(entry.taskId)?.client;
-				return client ? { key: client, label: client } : { key: "__none__", label: t("dashboard.noClient"), muted: true };
+				// The task's own client (independent of its project), keyed
+				// by id so a renamed client stays one row.
+				const client = this.actions.getClientForTask(entry.taskId);
+				return client
+					? { key: client.id, label: client.name }
+					: { key: NONE_KEY, label: t("dashboard.noClient"), muted: true };
 			}),
 			t("dashboard.client.singular"),
 			t("dashboard.client.plural"),
@@ -216,9 +224,25 @@ export class DashboardView extends ItemView {
 		this.renderTaskBlock(container, taskBuckets);
 	}
 
+	// "Last 30 days · 3 Oct – 1 Nov · 14 sessions": the window is always the
+	// 30 days up to today, whatever range the History panel shows, so its
+	// first and last day are spelled out. Dates follow the OS locale, like
+	// the rest of the plugin's dates; the year only appears when the window
+	// spans two years.
 	private formatMeta(count: number): string {
 		const sessionWord = count === 1 ? t("log.session.singular") : t("log.session.plural");
-		return `${t("dashboard.last30Days")} · ${count} ${sessionWord}`;
+		const today = startOfDay(Date.now());
+		const first = new Date(addDays(today, -(WINDOW_DAYS - 1)));
+		const last = new Date(today);
+		const options: Intl.DateTimeFormatOptions =
+			first.getFullYear() === last.getFullYear()
+				? { day: "numeric", month: "short" }
+				: { day: "numeric", month: "short", year: "numeric" };
+		const range = t("dashboard.periodRange", {
+			from: first.toLocaleDateString(undefined, options),
+			to: last.toLocaleDateString(undefined, options),
+		});
+		return `${t("dashboard.last30Days")} · ${range} · ${count} ${sessionWord}`;
 	}
 
 	// The note may have been deleted without the task ceasing to exist
@@ -245,10 +269,13 @@ export class DashboardView extends ItemView {
 		const block = container.createDiv({ cls: "task-time-tracker-dashboard-block" });
 		const header = block.createDiv({ cls: "task-time-tracker-dashboard-block-header" });
 		header.createEl("h3", { text: heading });
-		const unitWord = buckets.length === 1 ? unitSingular : unitPlural;
+		// The "No project" / "No client" row is not one more project or
+		// client, so it's left out of the count.
+		const realCount = buckets.filter((bucket) => bucket.key !== NONE_KEY).length;
+		const unitWord = realCount === 1 ? unitSingular : unitPlural;
 		header.createSpan({
 			cls: "task-time-tracker-dashboard-block-meta",
-			text: `${buckets.length} ${unitWord}`,
+			text: `${realCount} ${unitWord}`,
 		});
 		for (const bucket of buckets) {
 			this.renderRow(block, bucket);
@@ -266,7 +293,7 @@ export class DashboardView extends ItemView {
 			text: `${t("dashboard.last")} ${shown} ${t("dashboard.of")} ${buckets.length} ${dayWord}`,
 		});
 		for (const bucket of buckets.slice(0, shown)) {
-			this.renderRow(block, { label: bucket.label, totalMs: bucket.totalMs, count: bucket.count, muted: false });
+			this.renderRow(block, { key: String(bucket.dayStart), label: bucket.label, totalMs: bucket.totalMs, count: bucket.count, muted: false });
 		}
 		this.renderLoadMore(block, shown, buckets.length, (remaining) => t("dashboard.showMoreDays", { n: String(remaining) }), () => {
 			this.dayShown += PAGE_SIZE;

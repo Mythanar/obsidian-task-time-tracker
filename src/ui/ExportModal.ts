@@ -10,18 +10,28 @@
 // editable email pattern as Toggl, plus its own two checkboxes ("Include
 // Project", "Include Client") — see ClockifyCsvAdapter.ts. No column is
 // actually required by Clockify's importer (see docs/DECISIONS.md), so
-// both checkboxes are independent of each other and start unchecked.
+// both checkboxes are independent of each other (checked by default),
+// except that turning Project off turns Client off too.
+//
+// Client/project warnings (Toggl and Clockify only, the generic CSV is
+// not imported anywhere): non-blocking warnings recomputed for the
+// chosen range, format and checkboxes (see updateWarnings()).
 //
 // With data from a newer data format (see core/StateStore.ts#isNewerFormat)
 // the modal still opens, but shows a warning on top and every control is
 // disabled: the export would come out incomplete, and nothing typed here
 // gets saved to Settings either.
 
-import { App, ButtonComponent, Modal, Notice, Setting, setIcon } from "obsidian";
+import { App, ButtonComponent, Modal, Notice, Setting, setIcon, ToggleComponent } from "obsidian";
 import { t } from "../i18n";
 import { ClockifySettings, isValidEmail, TogglSettings } from "../types";
 
 export type ExportFormat = "generic" | "toggl" | "clockify";
+
+export interface ExportWarnings {
+	tasksWithClientNoProject: number;
+	projectWithSeveralClients: boolean;
+}
 
 function toDateInputValue(date: Date): string {
 	const pad = (n: number) => String(n).padStart(2, "0");
@@ -57,6 +67,7 @@ export class ExportModal extends Modal {
 	private clockifyEmailMessageEl: HTMLElement | null = null;
 	private clockifyIncludeProjectSetting: Setting | null = null;
 	private clockifyIncludeClientSetting: Setting | null = null;
+	private clockifyIncludeClientToggle: ToggleComponent | null = null;
 	// Three sections separated by a divider line, each with its own
 	// heading: the "Include Project"/"Include Client" checkboxes (neither
 	// required, see docs/DECISIONS.md), "Date format", and "Avoid
@@ -67,6 +78,7 @@ export class ExportModal extends Modal {
 	// once when the data comes from a newer format (see applyLock()).
 	private controls: { setDisabled: (disabled: boolean) => unknown }[] = [];
 	private lockedNoticeEl: HTMLElement | null = null;
+	private warningsEl: HTMLElement | null = null;
 
 	constructor(
 		app: App,
@@ -81,6 +93,8 @@ export class ExportModal extends Modal {
 		// Read on every check, not once: Sync can deliver newer data while
 		// the modal is open.
 		private isLocked: () => boolean,
+		// Facts for the client/project warnings, for a "YYYY-MM-DD" range.
+		private getWarnings: (fromValue: string, toValue: string) => ExportWarnings,
 	) {
 		super(app);
 		this.togglEmailDraft = toggl.email;
@@ -107,14 +121,20 @@ export class ExportModal extends Modal {
 			this.controls.push(text);
 			text.inputEl.type = "date";
 			text.setValue(this.fromValue);
-			text.onChange((value) => (this.fromValue = value));
+			text.onChange((value) => {
+				this.fromValue = value;
+				this.updateWarnings();
+			});
 		});
 
 		new Setting(contentEl).setName(t("export.to")).addText((text) => {
 			this.controls.push(text);
 			text.inputEl.type = "date";
 			text.setValue(this.toValue);
-			text.onChange((value) => (this.toValue = value));
+			text.onChange((value) => {
+				this.toValue = value;
+				this.updateWarnings();
+			});
 		});
 
 		new Setting(contentEl).setName(t("export.formatLabel")).addDropdown((dropdown) => {
@@ -158,6 +178,7 @@ export class ExportModal extends Modal {
 				this.trackControl(toggle).setValue(this.toggl.includeProjectClient).onChange((value) => {
 					this.toggl.includeProjectClient = value;
 					void this.saveIncludeProjectClient(value);
+					this.updateWarnings();
 				}),
 			);
 		this.includeProjectClientSetting.settingEl.addClass("task-time-tracker-export-include-project-client-setting");
@@ -185,7 +206,8 @@ export class ExportModal extends Modal {
 		this.clockifyInfoEl = contentEl.createDiv({ cls: "task-time-tracker-export-clockify-sections" });
 
 		// Section 1 — "Include Project" and "Include Client": Clockify's
-		// only two checkboxes, independent of each other, neither
+		// only two checkboxes, independent of each other (except that
+		// turning Project off turns Client off too), neither
 		// required (see docs/DECISIONS.md) — same behavior and spirit for
 		// both, so they share a section with no divider between them.
 		// Each Setting's name acts as its own row's heading, not
@@ -201,17 +223,29 @@ export class ExportModal extends Modal {
 				this.trackControl(toggle).setValue(this.clockify.includeProject).onChange((value) => {
 					this.clockify.includeProject = value;
 					void this.saveClockifyIncludeProject(value);
+					// Turning Project off turns Client off too (same rule as
+					// Settings > Clockify); turning it back on leaves Client
+					// as it is.
+					if (!value && this.clockify.includeClient) {
+						this.clockify.includeClient = false;
+						void this.saveClockifyIncludeClient(false);
+						this.clockifyIncludeClientToggle?.setValue(false);
+					}
+					this.updateWarnings();
 				}),
 			);
 		this.clockifyIncludeClientSetting = new Setting(checkboxesSection)
 			.setName(t("export.includeClientLabel"))
 			.setDesc(t("export.clockifyIncludeClientHelp"))
-			.addToggle((toggle) =>
+			.addToggle((toggle) => {
+				this.clockifyIncludeClientToggle = toggle;
 				this.trackControl(toggle).setValue(this.clockify.includeClient).onChange((value) => {
+					if (value === this.clockify.includeClient) return;
 					this.clockify.includeClient = value;
 					void this.saveClockifyIncludeClient(value);
-				}),
-			);
+					this.updateWarnings();
+				});
+			});
 
 		// Section 2 — "Date format": which option to pick in the dropdown
 		// Clockify shows on import (our CSV always generates
@@ -244,6 +278,8 @@ export class ExportModal extends Modal {
 			text: t("export.clockifyReimportNote"),
 			cls: "task-time-tracker-log-edit-message task-time-tracker-log-edit-message-warning",
 		});
+
+		this.warningsEl = contentEl.createDiv({ cls: "task-time-tracker-export-warnings" });
 
 		new Setting(contentEl).addButton((button) => {
 			this.exportButton = button
@@ -330,6 +366,47 @@ export class ExportModal extends Modal {
 		}
 
 		this.exportButton?.setDisabled(needsTogglEmail || needsClockifyEmail || this.isLocked());
+		this.updateWarnings();
+	}
+
+	// Which columns the file will carry decides which warnings apply: Toggl
+	// writes Project and Client together or not at all; Clockify has one
+	// checkbox for each.
+	private updateWarnings(): void {
+		const el = this.warningsEl;
+		if (!el) return;
+		el.empty();
+		if (this.format === "generic" || this.isLocked()) return;
+		if (!this.fromValue || !this.toValue || this.fromValue > this.toValue) return;
+
+		const hasProject = this.format === "toggl" ? this.toggl.includeProjectClient : this.clockify.includeProject;
+		const hasClient = this.format === "toggl" ? this.toggl.includeProjectClient : this.clockify.includeClient;
+		if (!hasClient) return;
+
+		const messages: string[] = [];
+		if (!hasProject) {
+			// Only possible in Clockify: every client would be lost.
+			messages.push(t("export.warningClientNeedsProject", { label: t("export.includeProjectLabel") }));
+		} else {
+			const warnings = this.getWarnings(this.fromValue, this.toValue);
+			const count = warnings.tasksWithClientNoProject;
+			if (count > 0) {
+				messages.push(
+					t(count === 1 ? "export.warningClientNoProjectSingular" : "export.warningClientNoProjectPlural", {
+						count: String(count),
+					}),
+				);
+			}
+			if (warnings.projectWithSeveralClients) messages.push(t("export.warningProjectSeveralClients"));
+		}
+		for (const message of messages) {
+			// Same warning look as the "Avoid duplicates" note (theme warning
+			// color), smaller like the modal's other notes.
+			el.createEl("p", {
+				text: message,
+				cls: "task-time-tracker-log-edit-message task-time-tracker-log-edit-message-warning",
+			});
+		}
 	}
 
 	private async handleSubmit(): Promise<void> {

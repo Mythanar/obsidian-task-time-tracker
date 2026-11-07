@@ -212,7 +212,7 @@ describe("6. creating a project preserves projects delivered by sync", () => {
 		);
 		const manager = new ProjectManager(store);
 
-		assert.deepEqual(await manager.addProject("P3", ""), { ok: true });
+		assert.deepEqual(await manager.add("project", "P3"), { ok: true });
 
 		assert.deepEqual(
 			disk.read().projects.map((p) => p.name),
@@ -227,7 +227,7 @@ describe("6. creating a project preserves projects delivered by sync", () => {
 		);
 		const manager = new ProjectManager(store);
 
-		assert.deepEqual(await manager.addProject("P2", ""), { ok: false, error: "duplicate" });
+		assert.deepEqual(await manager.add("project", "P2"), { ok: false, error: "duplicate" });
 		assert.equal(disk.read().projects.length, 2);
 	});
 
@@ -239,7 +239,7 @@ describe("6. creating a project preserves projects delivered by sync", () => {
 		const store = new StateStore(disk.io);
 		await store.init();
 
-		await new ProjectManager(store).removeProject("p1");
+		await new ProjectManager(store).remove("project", "p1");
 
 		const after = disk.read();
 		assert.deepEqual(

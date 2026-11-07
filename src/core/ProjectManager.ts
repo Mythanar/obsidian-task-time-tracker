@@ -1,9 +1,13 @@
 // core/ProjectManager.ts
-// Never calls an external API: there is no way to validate these names
-// against the real platform, and none is needed (see CLAUDE.md).
+// Projects and clients: two independent lists (format 2, see
+// ClientMigration.ts), and the live task<->project and task<->client
+// links by tt-id. Never calls an external API: there is no way to
+// validate these names against the real platform, and none is needed
+// (see CLAUDE.md).
 
 import { isNewerFormat, StateStore } from "./StateStore";
-import { PluginState, Project } from "../types";
+import { nameKey } from "./ClientMigration";
+import { Client, PluginState, Project } from "../types";
 
 // Same pattern as TrackingEngine.ts: a non-cryptographic id is enough for a
 // purely local entity that doesn't need strong collision resistance.
@@ -15,11 +19,38 @@ function generateId(): string {
 // format (see StateStore.ts#isNewerFormat). Projects and clients are not
 // edited from here then, so this device does not write them in the old
 // shape. Checked against the state just read inside each mutation.
-export type AddProjectResult = { ok: true } | { ok: false; error: "empty-name" | "duplicate" | "newer-format" };
-export type ImportProjectsResult =
-	| { ok: true }
-	| { ok: false; error: "invalid-line"; line: number; content: string }
-	| { ok: false; error: "newer-format" };
+export type NameResult = { ok: true } | { ok: false; error: "empty-name" | "duplicate" | "newer-format" };
+// added: names created, in paste order. skipped: lines left out because
+// the name was already in the list or earlier in the same paste (as
+// pasted, trimmed).
+export type ImportNamesResult = { ok: true; added: string[]; skipped: string[] } | { ok: false; error: "newer-format" };
+
+export type ListKind = "project" | "client";
+
+interface NamedItem {
+	id: string;
+	name: string;
+}
+
+// An alias (see types.ts#Project.aliasOf) only counts while the project
+// it points to exists; otherwise the entry is shown as a project of its
+// own, so nothing is ever hidden for good by damaged data.
+function canonicalProject(projects: Project[], project: Project): Project {
+	if (!project.aliasOf) return project;
+	return projects.find((p) => p.id === project.aliasOf && !p.aliasOf) ?? project;
+}
+
+function visibleProjects(projects: Project[]): Project[] {
+	return projects.filter((p) => canonicalProject(projects, p) === p);
+}
+
+// Names are unique within each list, ignoring case and repeated spaces
+// (same rule as the migration). Always checked against the state passed
+// in (the one just read from disk inside a mutation).
+function nameTaken(items: NamedItem[], name: string, excludeId?: string): boolean {
+	const key = nameKey(name);
+	return items.some((item) => item.id !== excludeId && nameKey(item.name) === key);
+}
 
 export class ProjectManager {
 	constructor(private store: StateStore) {}
@@ -30,180 +61,183 @@ export class ProjectManager {
 		return this.store.isNewerFormat();
 	}
 
+	// Aliases left out: each project name appears once.
 	getProjects(): Project[] {
-		return this.store.getState().projects;
+		return visibleProjects(this.store.getState().projects);
 	}
 
-	// A project's unique identity is the exact (name, client) pair; "no
-	// client" counts as its own value, distinct from any real client (see
-	// types.ts#Project). Always checked against the state passed in (the
-	// one just read from disk inside a mutation), never against the
-	// in-memory copy.
-	private static exists(
-		state: PluginState,
-		name: string,
-		client: string | undefined,
-		excludeId?: string,
-	): boolean {
-		return state.projects.some(
-			(p) => p.id !== excludeId && p.name === name && (p.client ?? "") === (client ?? ""),
-		);
+	getClients(): Client[] {
+		return this.store.getState().clients;
 	}
 
-	async addProject(rawName: string, rawClient: string): Promise<AddProjectResult> {
-		const name = rawName.trim();
-		if (name.length === 0) return { ok: false, error: "empty-name" };
-		const client = rawClient.trim() || undefined;
-
-		return this.store.apply<AddProjectResult>((state) => {
-			if (isNewerFormat(state)) return { result: { ok: false, error: "newer-format" }, changed: false };
-			if (ProjectManager.exists(state, name, client)) {
-				return { result: { ok: false, error: "duplicate" }, changed: false };
-			}
-			state.projects.push({ id: generateId(), name, client });
-			return { result: { ok: true } };
-		});
+	getItems(kind: ListKind): NamedItem[] {
+		return kind === "project" ? this.getProjects() : this.getClients();
 	}
 
-	// Inline editing from Settings > Projects & clients (one field at a
-	// time, see ProjectsSection.ts). Same validation as addProject (name
-	// not empty, unique name+client pair), excluding this project itself
-	// from the duplicate check — otherwise a project with no real changes
-	// would collide with itself.
-	//
-	// Only this project is edited inside the state just read from disk; the rest of the on-disk list
-	// (including projects created on another device) is left untouched.
-	// Consumers (TimeLogView via getProjectForTask, EditTaskModal) re-read
-	// on every render, so they do not rely on keeping the object reference.
-	async updateProject(id: string, rawName: string, rawClient: string): Promise<AddProjectResult> {
-		const name = rawName.trim();
-		if (name.length === 0) return { ok: false, error: "empty-name" };
-		const client = rawClient.trim() || undefined;
-
-		return this.store.apply<AddProjectResult>((state) => {
-			if (isNewerFormat(state)) return { result: { ok: false, error: "newer-format" }, changed: false };
-			const project = state.projects.find((p) => p.id === id);
-			if (!project) return { result: { ok: true }, changed: false };
-			if (ProjectManager.exists(state, name, client, id)) {
-				return { result: { ok: false, error: "duplicate" }, changed: false };
-			}
-			project.name = name;
-			project.client = client;
-			return { result: { ok: true } };
-		});
-	}
-
-	// Removing a project in use silently leaves those tasks "without a
-	// project" (no special marker, see the "Configurar proyectos" docs) —
-	// taskProjects is cleaned up first, then the project list itself.
-	async removeProject(id: string): Promise<void> {
-		await this.store.apply((state) => {
-			if (isNewerFormat(state)) return { result: undefined, changed: false };
-			const index = state.projects.findIndex((p) => p.id === id);
-			if (index === -1) return { result: undefined, changed: false };
-			state.projects.splice(index, 1);
-			for (const taskId of Object.keys(state.taskProjects)) {
-				if (state.taskProjects[taskId] === id) delete state.taskProjects[taskId];
-			}
-			return { result: undefined };
-		});
-	}
-
-	// How many tasks have this project assigned right now, for the delete
-	// confirmation warning (see ProjectsSection.ts).
-	countTasksUsingProject(projectId: string): number {
-		return Object.values(this.store.getState().taskProjects).filter((id) => id === projectId).length;
-	}
-
-	// Live link by tt-id (not a snapshot): resolves the project assigned
-	// to a task right now, or null if it has none.
+	// Live link by tt-id (not a snapshot): the project assigned to a task
+	// right now (an alias resolves to its project), or null.
 	getProjectForTask(taskId: string): Project | null {
 		const state = this.store.getState();
 		const projectId = state.taskProjects[taskId];
 		if (!projectId) return null;
-		return state.projects.find((p) => p.id === projectId) ?? null;
+		const project = state.projects.find((p) => p.id === projectId);
+		return project ? canonicalProject(state.projects, project) : null;
 	}
 
-	// projectId null unassigns (deletes the key); otherwise it assigns/
-	// reassigns. Reassigning replaces the previous value with no
-	// confirmation screen — see "Asignar proyectos.md". Only THIS task's
-	// key is touched: every other assignment on disk is preserved as is.
-	async assignProject(taskId: string, projectId: string | null): Promise<void> {
+	// Same for the client, independent from the project.
+	getClientForTask(taskId: string): Client | null {
+		const state = this.store.getState();
+		const clientId = state.taskClients[taskId];
+		if (!clientId) return null;
+		return state.clients.find((c) => c.id === clientId) ?? null;
+	}
+
+	// How many tasks use this project (its aliases included) or client
+	// right now, for the delete confirmation (see ProjectsSection.ts).
+	countTasksUsing(kind: ListKind, id: string): number {
+		const state = this.store.getState();
+		if (kind === "client") return Object.values(state.taskClients).filter((c) => c === id).length;
+		const ids = this.projectFamily(state, id);
+		return Object.values(state.taskProjects).filter((p) => ids.has(p)).length;
+	}
+
+	// A project's id plus the ids of its aliases.
+	private projectFamily(state: PluginState, projectId: string): Set<string> {
+		return new Set([projectId, ...state.projects.filter((p) => p.aliasOf === projectId).map((p) => p.id)]);
+	}
+
+	private static list(state: PluginState, kind: ListKind): NamedItem[] {
+		return kind === "project" ? visibleProjects(state.projects) : state.clients;
+	}
+
+	async add(kind: ListKind, rawName: string): Promise<NameResult> {
+		const name = rawName.trim();
+		if (name.length === 0) return { ok: false, error: "empty-name" };
+
+		return this.store.apply<NameResult>((state) => {
+			if (isNewerFormat(state)) return { result: { ok: false, error: "newer-format" }, changed: false };
+			if (nameTaken(ProjectManager.list(state, kind), name)) {
+				return { result: { ok: false, error: "duplicate" }, changed: false };
+			}
+			if (kind === "project") state.projects.push({ id: generateId(), name });
+			else state.clients.push({ id: generateId(), name });
+			return { result: { ok: true } };
+		});
+	}
+
+	// Inline rename from Settings. Only this item is edited inside the
+	// state just read from disk; the rest of the list (including items
+	// created on another device) is left untouched. Renaming a project
+	// renames its aliases too, so older plugin versions show the new name.
+	// A client rename never touches the frozen client text in projects.
+	async rename(kind: ListKind, id: string, rawName: string): Promise<NameResult> {
+		const name = rawName.trim();
+		if (name.length === 0) return { ok: false, error: "empty-name" };
+
+		return this.store.apply<NameResult>((state) => {
+			if (isNewerFormat(state)) return { result: { ok: false, error: "newer-format" }, changed: false };
+			const item = ProjectManager.list(state, kind).find((i) => i.id === id);
+			if (!item) return { result: { ok: true }, changed: false };
+			if (nameTaken(ProjectManager.list(state, kind), name, id)) {
+				return { result: { ok: false, error: "duplicate" }, changed: false };
+			}
+			item.name = name;
+			if (kind === "project") {
+				for (const alias of state.projects) if (alias.aliasOf === id) alias.name = name;
+			}
+			return { result: { ok: true } };
+		});
+	}
+
+	// Removing an item in use silently leaves those tasks "without a
+	// project" / "without a client" (no special marker): their
+	// assignments are cleaned up first, then the item itself (a project
+	// together with its aliases).
+	async remove(kind: ListKind, id: string): Promise<void> {
 		await this.store.apply((state) => {
-			if (projectId === null) {
-				delete state.taskProjects[taskId];
-			} else {
-				state.taskProjects[taskId] = projectId;
+			if (isNewerFormat(state)) return { result: undefined, changed: false };
+			if (kind === "client") {
+				const index = state.clients.findIndex((c) => c.id === id);
+				if (index === -1) return { result: undefined, changed: false };
+				state.clients.splice(index, 1);
+				for (const taskId of Object.keys(state.taskClients)) {
+					if (state.taskClients[taskId] === id) delete state.taskClients[taskId];
+				}
+				return { result: undefined };
+			}
+			if (!state.projects.some((p) => p.id === id)) return { result: undefined, changed: false };
+			const ids = this.projectFamily(state, id);
+			state.projects = state.projects.filter((p) => !ids.has(p.id));
+			for (const taskId of Object.keys(state.taskProjects)) {
+				if (ids.has(state.taskProjects[taskId] ?? "")) delete state.taskProjects[taskId];
 			}
 			return { result: undefined };
 		});
 	}
 
-	// name+client uniqueness key for the in-batch duplicate Set.
-	// JSON.stringify over the pair (instead of concatenating with a text
-	// separator) avoids any collision between distinct pairs that share
-	// the same characters split differently (e.g. name="A", client="B C"
-	// vs name="A B", client="C").
-	private static key(name: string, client: string | undefined): string {
-		return JSON.stringify([name, client ?? ""]);
-	}
-
-	// Syntax: one line = one project, "Name; Client" (";" is a deliberate
-	// separator, see the Settings docs — avoids clashing with client
-	// names that already contain a comma). No client: the part after ";"
-	// is omitted. All-or-nothing validation: if any line fails (bad
-	// format, duplicate against what's already stored, or duplicate
-	// within the paste itself), nothing is imported, and only the first
-	// failing line is reported (number + literal content) — the rest of
-	// the list isn't checked past that point.
-	async importProjects(text: string): Promise<ImportProjectsResult> {
-		// Validating against what is already stored needs the latest state
+	// Paste list: one name per line, empty lines ignored. Names not in the
+	// list yet are added; names already there, or repeated earlier in the
+	// same paste (ignoring case and spaces, see nameKey), are skipped and
+	// reported, all of them.
+	async importNames(kind: ListKind, text: string): Promise<ImportNamesResult> {
+		// Checking against what is already stored needs the latest state
 		// from disk, so parsing and insertion live in the same mutation.
-		return this.store.apply<ImportProjectsResult>((state) => {
+		return this.store.apply<ImportNamesResult>((state) => {
 			if (isNewerFormat(state)) return { result: { ok: false, error: "newer-format" }, changed: false };
-			const parsed = this.parseImport(state, text);
-			if (!parsed.ok) return { result: parsed, changed: false };
-			for (const project of parsed.toAdd) {
-				state.projects.push({ id: generateId(), name: project.name, client: project.client });
+			const existing = ProjectManager.list(state, kind);
+			const seen = new Set<string>();
+			const added: string[] = [];
+			const skipped: string[] = [];
+			for (const line of text.split("\n")) {
+				const name = line.trim();
+				if (name.length === 0) continue;
+				const key = nameKey(name);
+				if (seen.has(key) || nameTaken(existing, name)) {
+					skipped.push(name);
+					continue;
+				}
+				seen.add(key);
+				added.push(name);
 			}
-			return { result: { ok: true }, changed: parsed.toAdd.length > 0 };
+			for (const name of added) {
+				if (kind === "project") state.projects.push({ id: generateId(), name });
+				else state.clients.push({ id: generateId(), name });
+			}
+			return { result: { ok: true, added, skipped }, changed: added.length > 0 };
 		});
 	}
 
-	private parseImport(
-		state: PluginState,
-		text: string,
-	):
-		| { ok: true; toAdd: { name: string; client?: string }[] }
-		| { ok: false; error: "invalid-line"; line: number; content: string } {
-		const lines = text.split("\n");
-		const toAdd: { name: string; client?: string }[] = [];
-		const seenInBatch = new Set<string>();
+	// id null unassigns (deletes the key); otherwise it assigns/reassigns,
+	// with no confirmation screen. Only THIS task's key is touched: every
+	// other assignment on disk is preserved as is. Reassigning updates the
+	// task's whole history (live link, not a snapshot).
+	async assignProject(taskId: string, projectId: string | null): Promise<void> {
+		await this.assign("project", taskId, projectId);
+	}
 
-		for (let i = 0; i < lines.length; i++) {
-			const line = (lines[i] ?? "").trim();
-			if (line.length === 0) continue;
+	async assignClient(taskId: string, clientId: string | null): Promise<void> {
+		await this.assign("client", taskId, clientId);
+	}
 
-			// More than one ";" is ambiguous format (which part does the
-			// text after the second separator belong to) — rejected
-			// instead of guessed.
-			const parts = line.split(";");
-			if (parts.length > 2) return { ok: false, error: "invalid-line", line: i + 1, content: line };
-
-			const name = (parts[0] ?? "").trim();
-			if (name.length === 0) return { ok: false, error: "invalid-line", line: i + 1, content: line };
-
-			const clientPart = parts[1]?.trim();
-			const client = clientPart && clientPart.length > 0 ? clientPart : undefined;
-
-			const key = ProjectManager.key(name, client);
-			if (seenInBatch.has(key) || ProjectManager.exists(state, name, client)) {
-				return { ok: false, error: "invalid-line", line: i + 1, content: line };
+	async assign(kind: ListKind, taskId: string, id: string | null): Promise<void> {
+		await this.store.apply((state) => {
+			const map = kind === "project" ? state.taskProjects : state.taskClients;
+			if (id === null) {
+				if (!(taskId in map)) return { result: undefined, changed: false };
+				delete map[taskId];
+			} else {
+				// Picking the project a task already has through an alias
+				// keeps the alias (nothing changes for older versions).
+				if (kind === "project" && map[taskId]) {
+					const current = state.projects.find((p) => p.id === map[taskId]);
+					if (current && canonicalProject(state.projects, current).id === id) {
+						return { result: undefined, changed: false };
+					}
+				}
+				if (map[taskId] === id) return { result: undefined, changed: false };
+				map[taskId] = id;
 			}
-			seenInBatch.add(key);
-			toAdd.push({ name, client });
-		}
-
-		return { ok: true, toAdd };
+			return { result: undefined };
+		});
 	}
 }

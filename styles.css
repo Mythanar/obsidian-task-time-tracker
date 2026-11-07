@@ -978,11 +978,17 @@
 }
 
 /* Reserved height even when empty, so the form doesn't change height as a
-   message appears/disappears. */
+   message appears/disappears.
+   flex-shrink: 0 because the explicit min-height replaces a flex item's
+   automatic minimum (its content height). In a column that runs out of
+   room, such as the export modal's content on mobile (a scrolling flex
+   column), the message was squeezed down to one line and a second line
+   spilled over the setting below it. */
 .task-time-tracker-log-edit-message {
 	font-size: 0.85em;
 	margin: 0;
 	min-height: 1.2em;
+	flex-shrink: 0;
 }
 
 .task-time-tracker-log-edit-message-error {
@@ -1043,6 +1049,20 @@
 	font-size: 0.8em;
 	color: var(--text-muted);
 	margin: 0;
+}
+
+/* Client/project warnings (see ExportModal.ts#updateWarnings): warning
+   color, stacked, with room before the divider of the Export row below;
+   collapsed when empty. */
+.task-time-tracker-export-warnings {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4em;
+	margin: 0.75em 0 1em;
+}
+
+.task-time-tracker-export-warnings:empty {
+	display: none;
 }
 
 /* If these don't fit on one line, they wrap below the fields (flex-wrap on
@@ -2028,36 +2048,23 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	margin-bottom: 1.25em;
 }
 
+/* One-by-one form: name field and "Add" on one row (see the "Cliente
+   independiente" canvas, board 6). */
 .task-time-tracker-projects-form-fields {
 	display: flex;
-	flex-direction: column;
+	align-items: center;
 	gap: 0.5em;
 }
 
-.task-time-tracker-projects-form-fields > * {
-	width: 100%;
+.task-time-tracker-projects-form-fields input {
+	flex: 1 1 auto;
+	min-width: 0;
 }
 
-@container (min-width: 480px) {
-	.task-time-tracker-projects-form-fields {
-		flex-direction: row;
-		align-items: center;
-	}
-
-	.task-time-tracker-projects-form-fields input {
-		flex: 1 1 0;
-		width: auto;
-		min-width: 0;
-	}
-
-	.task-time-tracker-projects-form-fields button {
-		flex-shrink: 0;
-		width: auto;
-	}
+.task-time-tracker-projects-form-fields button {
+	flex-shrink: 0;
 }
 
-/* Same field style as .task-time-tracker-log-edit-input, adapted to a
-   multiline textarea for the "Paste list" tab. */
 .task-time-tracker-projects-textarea {
 	width: 100%;
 	min-height: 6em;
@@ -2075,23 +2082,37 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	border-color: var(--interactive-accent);
 }
 
-.task-time-tracker-projects-help {
-	font-size: 0.8em;
-	color: var(--text-muted);
-	margin: 0;
+/* "Add clients" / "Add projects" sits at the right, under the list box. */
+.task-time-tracker-projects-import-btn {
+	align-self: flex-end;
 }
 
-.task-time-tracker-projects-import-btn {
-	width: 100%;
+/* One block per list (Clients, then Projects), title and count on one
+   line. */
+.task-time-tracker-projects-block + .task-time-tracker-projects-block {
+	margin-top: 1.5em;
+	padding-top: 1.25em;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.task-time-tracker-projects-block-header {
+	display: flex;
+	align-items: baseline;
+	justify-content: space-between;
+	gap: 0.75em;
+	margin-bottom: 0.75em;
+}
+
+.task-time-tracker-projects-block-title {
+	margin: 0;
+	font-size: var(--font-ui-medium);
+	font-weight: var(--font-semibold);
 }
 
 .task-time-tracker-projects-count {
-	font-size: 0.75em;
-	font-weight: 600;
-	letter-spacing: 0.04em;
-	text-transform: uppercase;
+	flex-shrink: 0;
+	font-size: var(--font-ui-smaller);
 	color: var(--text-muted);
-	margin-bottom: 0.5em;
 }
 
 .task-time-tracker-projects-list {
@@ -2100,66 +2121,53 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	gap: 0.5em;
 }
 
-/* Narrow layout (default): name on top, client+trash grouped below — hence
-   .task-time-tracker-projects-row-meta wraps both in one wrapper (see
-   @container below and ProjectsSection.ts#renderProjectRow), rather than
-   trash hanging loose off the whole row. */
+/* Name on the left (truncated if long), edit and delete on the right. */
 .task-time-tracker-projects-row {
 	display: flex;
-	flex-direction: column;
-	gap: 0.35em;
-	padding: 0.6em 0.75em;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.75em;
+	padding: 0.45em 0.5em 0.45em 0.75em;
 	border: 1px solid var(--background-modifier-border);
 	border-radius: 4px;
 }
 
 .task-time-tracker-projects-row-name {
-	font-weight: 600;
+	flex: 0 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
 }
 
-.task-time-tracker-projects-row-meta {
+.task-time-tracker-projects-row-actions {
 	display: flex;
 	align-items: center;
-	gap: 0.75em;
-}
-
-.task-time-tracker-projects-row-client {
-	flex: 1 1 auto;
-	min-width: 0;
-	font-size: 0.85em;
-	color: var(--text-muted);
-}
-
-@container (min-width: 480px) {
-	.task-time-tracker-projects-row {
-		flex-direction: row;
-		align-items: center;
-		justify-content: space-between;
-		gap: 0.75em;
-	}
-
-	.task-time-tracker-projects-row-name {
-		min-width: 0;
-	}
-
-	.task-time-tracker-projects-row-meta {
-		flex-shrink: 0;
-	}
-}
-
-.task-time-tracker-projects-row-delete {
+	gap: 0.25em;
 	flex-shrink: 0;
+}
+
+.task-time-tracker-projects-row-edit,
+.task-time-tracker-projects-row-delete,
+.task-time-tracker-projects-row-save {
 	color: var(--text-muted);
 	cursor: pointer;
+}
+
+.task-time-tracker-projects-row-edit:hover {
+	color: var(--text-normal);
 }
 
 .task-time-tracker-projects-row-delete:hover {
 	color: var(--text-error);
 }
 
-/* Name and client are clickable to enter edit mode — same affordance on
-   desktop (hover) and mobile (tap, see ProjectsSection.ts, which doesn't
-   depend on :hover to work). */
+.task-time-tracker-projects-row-save:hover {
+	color: var(--text-success, var(--text-accent));
+}
+
+/* The name is also clickable to enter edit mode — same affordance on
+   desktop (hover) and mobile (tap). */
 .task-time-tracker-projects-row-editable {
 	cursor: pointer;
 	border-radius: var(--radius-s);
@@ -2169,23 +2177,6 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 
 .task-time-tracker-projects-row-editable:hover {
 	background-color: var(--background-modifier-hover);
-}
-
-/* Same text as the add-form's placeholder, italic and dimmer than a real
-   client so it can't be mistaken for a saved value. */
-.task-time-tracker-projects-row-client-empty {
-	font-style: italic;
-	opacity: 0.7;
-}
-
-.task-time-tracker-projects-row-save {
-	flex-shrink: 0;
-	color: var(--text-muted);
-	cursor: pointer;
-}
-
-.task-time-tracker-projects-row-save:hover {
-	color: var(--text-success, var(--text-accent));
 }
 
 .task-time-tracker-projects-row-edit-field {
@@ -2415,16 +2406,24 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 
 /* Button + popover component (ProjectPickerList.ts) replacing the previous
    native <select>. */
-.task-time-tracker-edit-modal-project-row {
-	display: flex;
+/* Client and Project rows stacked; a two-column grid keeps both buttons
+   on the same column whatever the labels' width in each language (each
+   row is display: contents, so label and button are grid cells). */
+.task-time-tracker-edit-modal-pickers {
+	display: grid;
+	grid-template-columns: max-content minmax(0, 1fr);
 	align-items: center;
-	gap: 0.75em;
+	justify-items: start;
+	gap: 0.5em 0.75em;
 	margin: 0.75em 0;
+}
+
+.task-time-tracker-edit-modal-project-row {
+	display: contents;
 }
 
 .task-time-tracker-edit-modal-project-label {
 	color: var(--text-muted);
-	flex-shrink: 0;
 	white-space: nowrap;
 }
 
@@ -2436,6 +2435,16 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 .task-time-tracker-edit-modal-project-btn {
 	max-width: 20em;
 	min-width: 0;
+}
+
+/* Phone (canvas board 4): both buttons fill the row, 44px touch target. */
+.is-mobile .task-time-tracker-edit-modal-pickers {
+	justify-items: stretch;
+}
+
+.is-mobile .task-time-tracker-edit-modal-project-btn {
+	max-width: none;
+	min-height: 44px;
 }
 
 /* Reserved single-line height from first render, empty by default, so the
@@ -2547,15 +2556,6 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	text-overflow: ellipsis;
 	white-space: nowrap;
 	color: var(--text-normal);
-}
-
-.task-time-tracker-project-picker-client {
-	min-width: 0;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-	color: var(--text-muted);
-	font-size: 0.85em;
 }
 
 .task-time-tracker-project-picker-row-clear {
@@ -3014,4 +3014,10 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	max-width: 380px;
 	font-size: 0.85em;
 	color: var(--text-muted);
+}
+
+/* Multi-paragraph notices (see main.ts#noticeFragment): a blank line's
+   worth of space between paragraphs. */
+.task-time-tracker-notice-paragraph + .task-time-tracker-notice-paragraph {
+	margin-top: 0.75em;
 }

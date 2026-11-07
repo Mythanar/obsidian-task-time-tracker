@@ -11,8 +11,9 @@ import { App, Modal, Notice, Setting, setIcon } from "obsidian";
 import { appendTaskId } from "../core/TaskIdentifier";
 import { formatDuration, formatDurationCompact } from "../core/TrackingEngine";
 import { t } from "../i18n";
-import { EntryUpdateResult, Project, TimeEntry } from "../types";
-import { openProjectPickerPopover } from "./ProjectPickerList";
+import { EntryUpdateResult, TimeEntry } from "../types";
+import { ListKind } from "../core/ProjectManager";
+import { closeProjectPickerPopover, openProjectPickerPopover, PickerItem } from "./ProjectPickerList";
 import {
 	EditDraft,
 	effectiveRange,
@@ -26,7 +27,7 @@ import {
 } from "./sessionEdit";
 
 export interface EditTaskModalActions {
-	assignProject(taskId: string, projectId: string | null): Promise<void>;
+	assign(kind: ListKind, taskId: string, id: string | null): Promise<void>;
 	updateEntryTimes(entryId: string, start: number, end: number): Promise<EntryUpdateResult>;
 	deleteEntry(entryId: string): Promise<void>;
 }
@@ -38,7 +39,8 @@ export class EditTaskModal extends Modal {
 	private summaryEl: HTMLElement | null = null;
 	private projectFeedbackEl: HTMLElement | null = null;
 	private feedbackTimeoutId: number | null = null;
-	private currentProjectId: string;
+	// Selected project and client ids ("" = none), shown on each button.
+	private currentIds: Record<ListKind, string>;
 	// There's no documented public hook (see obsidian.d.ts#Modal) to
 	// disable closing on an outside click. The only public-API-only way:
 	// detect a mousedown outside modalEl (containerEl/modalEl are both
@@ -69,15 +71,16 @@ export class EditTaskModal extends Modal {
 		// warning compares against any other session, same as the earlier
 		// inline editing did.
 		private getAllEntries: () => TimeEntry[],
-		private getProjects: () => Project[],
-		currentProject: Project | null,
+		// Project or client list, read on every use (same reason as above).
+		private getItems: (kind: ListKind) => PickerItem[],
+		current: { projectId: string | null; clientId: string | null },
 		private actions: EditTaskModalActions,
 		// Refreshes the Historial panel behind the modal after every
 		// mutation (reassigning a project, editing or deleting a session).
 		private onChange: () => void,
 	) {
 		super(app);
-		this.currentProjectId = currentProject?.id ?? "";
+		this.currentIds = { project: current.projectId ?? "", client: current.clientId ?? "" };
 	}
 
 	// The only real closing point allowed, aside from the guard on
@@ -150,48 +153,16 @@ export class EditTaskModal extends Modal {
 			this.renderRecoveryBox(contentEl, recoveryLine);
 		}
 
-		// Button + popover (shared "Project picker list" component, see
-		// ProjectPickerList.ts) instead of the previous native <select>:
-		// label and button together, left-aligned.
-		const projectRow = contentEl.createDiv({ cls: "task-time-tracker-edit-modal-project-row" });
-		projectRow.createSpan({ text: t("log.editModalProjectLabel"), cls: "task-time-tracker-edit-modal-project-label" });
-		const projectBtn = projectRow.createEl("button", {
-			cls: "task-time-tracker-log-filter-btn task-time-tracker-edit-modal-project-btn",
-		});
-		setIcon(projectBtn.createSpan(), "briefcase");
-		const projectBtnLabel = projectBtn.createSpan({ cls: "task-time-tracker-log-filter-btn-label" });
-		this.updateProjectBtnLabel(projectBtnLabel);
-		projectBtn.addEventListener("click", () => {
-			// Permanent guard while the popover is open (not just the
-			// 300ms of the automatic detector above): the popover lives
-			// outside modalEl (appended to document.body so it can be
-			// positioned with position: fixed), so searching or clicking a
-			// row inside it would look like a click "outside the modal"
-			// and close it — same problem as the native <select> this
-			// button replaces (see the comment next to
-			// outsideMousedownGuardUntil above).
-			this.outsideMousedownGuardUntil = Number.MAX_SAFE_INTEGER;
-			openProjectPickerPopover({
-				anchorEl: projectBtn,
-				projects: this.getProjects(),
-				selectedId: this.currentProjectId || null,
-				showClearOption: true,
-				onSelect: (projectId) => {
-					this.currentProjectId = projectId ?? "";
-					this.updateProjectBtnLabel(projectBtnLabel);
-					void this.actions.assignProject(this.taskId, projectId).then(() => {
-						this.onChange();
-						this.showProjectFeedback();
-					});
-				},
-				onClose: () => {
-					this.outsideMousedownGuardUntil = 0;
-				},
-			});
-		});
+		// Client first, then Project (see the "Independizar Cliente de
+		// Proyecto" brief): two independent selectors, each a button +
+		// popover (shared "Project picker list" component, see
+		// ProjectPickerList.ts), label and button together, left-aligned.
+		const pickers = contentEl.createDiv({ cls: "task-time-tracker-edit-modal-pickers" });
+		this.renderPickerRow(pickers, "client");
+		this.renderPickerRow(pickers, "project");
 
 		// Reserved space (one line, see styles.css min-height) from the
-		// first render, empty by default — keeps the "Project updated"
+		// first render, empty by default — keeps the "Client/Project updated"
 		// warning from shifting the rest of the modal when it appears or
 		// disappears.
 		this.projectFeedbackEl = contentEl.createDiv({ cls: "task-time-tracker-edit-modal-project-feedback" });
@@ -221,6 +192,7 @@ export class EditTaskModal extends Modal {
 	}
 
 	onClose(): void {
+		closeProjectPickerPopover();
 		if (this.feedbackTimeoutId !== null) window.clearTimeout(this.feedbackTimeoutId);
 		this.contentEl.empty();
 	}
@@ -278,14 +250,50 @@ export class EditTaskModal extends Modal {
 	// into the already-reserved space and fades it after ~3s. Restarts
 	// the timer if reassigned again before the previous one finishes, so
 	// two reassignments in a row don't clobber each other mid-fade.
-	private showProjectFeedback(): void {
+	private renderPickerRow(container: HTMLElement, kind: ListKind): void {
+		const row = container.createDiv({ cls: "task-time-tracker-edit-modal-project-row" });
+		row.createSpan({
+			text: t(kind === "project" ? "log.editModalProjectLabel" : "log.editModalClientLabel"),
+			cls: "task-time-tracker-edit-modal-project-label",
+		});
+		const btn = row.createEl("button", {
+			cls: "task-time-tracker-log-filter-btn task-time-tracker-edit-modal-project-btn",
+		});
+		setIcon(btn.createSpan(), kind === "project" ? "briefcase" : "user");
+		const btnLabel = btn.createSpan({ cls: "task-time-tracker-log-filter-btn-label" });
+		this.updatePickerBtnLabel(kind, btnLabel);
+		btn.addEventListener("click", () => {
+			openProjectPickerPopover({
+				anchorEl: btn,
+				// Inside the modal, not on document.body: see `modal` in
+				// ProjectPickerList.ts (focus stays in the search box).
+				// On mobile the search box isn't focused on open: see
+				// openProjectPickerPopover.
+				modal: this,
+				kind,
+				items: this.getItems(kind),
+				selectedId: this.currentIds[kind] || null,
+				showClearOption: true,
+				onSelect: (id) => {
+					this.currentIds[kind] = id ?? "";
+					this.updatePickerBtnLabel(kind, btnLabel);
+					void this.actions.assign(kind, this.taskId, id).then(() => {
+						this.onChange();
+						this.showProjectFeedback(kind);
+					});
+				},
+			});
+		});
+	}
+
+	private showProjectFeedback(kind: ListKind): void {
 		const el = this.projectFeedbackEl;
 		if (!el) return;
 		if (this.feedbackTimeoutId !== null) {
 			window.clearTimeout(this.feedbackTimeoutId);
 			this.feedbackTimeoutId = null;
 		}
-		el.setText(t("log.editModalProjectUpdated"));
+		el.setText(t(kind === "project" ? "log.editModalProjectUpdated" : "log.editModalClientUpdated"));
 		el.addClass("is-visible");
 		this.feedbackTimeoutId = window.setTimeout(() => {
 			el.removeClass("is-visible");
@@ -297,9 +305,9 @@ export class EditTaskModal extends Modal {
 		}, 3000);
 	}
 
-	private updateProjectBtnLabel(el: HTMLElement): void {
-		const project = this.getProjects().find((p) => p.id === this.currentProjectId);
-		el.setText(project ? project.name : t("log.editModalNoProject"));
+	private updatePickerBtnLabel(kind: ListKind, el: HTMLElement): void {
+		const item = this.getItems(kind).find((i) => i.id === this.currentIds[kind]);
+		el.setText(item ? item.name : t(kind === "project" ? "log.editModalNoProject" : "log.editModalNoClient"));
 	}
 
 	private renderSummary(): void {

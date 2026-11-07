@@ -64,11 +64,12 @@ export class ExportManager {
 
 		const rows: ExportRow[] = [];
 		for (const entry of inRange) {
-			// Live link by tt-id (see ProjectManager#getProjectForTask), not
-			// a snapshot: if the task is reassigned after a session was
-			// already exported, the next export reflects the current
-			// assignment. Empty string (never blocks the export) if there's
-			// no project, or if the project has no client.
+			// Live links by tt-id (see ProjectManager#getProjectForTask and
+			// getClientForTask), not a snapshot: if the task is reassigned
+			// after a session was already exported, the next export
+			// reflects the current assignment. The client comes from the
+			// task, not from its project. Empty string (never blocks the
+			// export) if the task has no project or no client.
 			const project = this.projectManager.getProjectForTask(entry.taskId);
 			rows.push({
 				date: formatDate(entry.start),
@@ -77,7 +78,7 @@ export class ExportManager {
 				duration: formatDuration(entry.end - entry.start),
 				taskName: await this.resolveTaskName(entry),
 				projectName: project?.name ?? "",
-				clientName: project?.client ?? "",
+				clientName: this.projectManager.getClientForTask(entry.taskId)?.name ?? "",
 				// The source note is the session's immutable snapshot (where
 				// the task was when tracking started), not the tt-id::'s
 				// current location — that may have changed since then and
@@ -111,8 +112,8 @@ export class ExportManager {
 		const rows: TogglExportRow[] = [];
 		for (const entry of inRange) {
 			// Same source as exportToCsv (see
-			// ProjectManager#getProjectForTask): live link by tt-id, empty
-			// string if no project is assigned or the project has no
+			// ProjectManager#getProjectForTask/getClientForTask): live links
+			// by tt-id, empty string if the task has no project or no
 			// client. Always resolved, even if the "Include Project and
 			// Client" setting is off — it's buildTogglCsv() that decides
 			// whether those columns get written.
@@ -124,7 +125,7 @@ export class ExportManager {
 				startTime: formatTogglTime(entry.start),
 				duration: formatDuration(entry.end - entry.start),
 				projectName: project?.name ?? "",
-				clientName: project?.client ?? "",
+				clientName: this.projectManager.getClientForTask(entry.taskId)?.name ?? "",
 			});
 		}
 		rows.sort((a, b) => (a.startDate + a.startTime).localeCompare(b.startDate + b.startTime));
@@ -158,8 +159,8 @@ export class ExportManager {
 		const rows: ClockifyExportRow[] = [];
 		for (const entry of inRange) {
 			// Same source as exportToCsv/exportToTogglCsv (see
-			// ProjectManager#getProjectForTask): live link by tt-id, empty
-			// string if no project is assigned or the project has no
+			// ProjectManager#getProjectForTask/getClientForTask): live links
+			// by tt-id, empty string if the task has no project or no
 			// client. Always resolved, even if the "Include Client" setting
 			// is off — it's buildClockifyCsv() that decides whether that
 			// column gets written.
@@ -171,7 +172,7 @@ export class ExportManager {
 				startTime: formatClockifyTime(entry.start),
 				duration: formatClockifyDuration(entry.end - entry.start),
 				projectName: project?.name ?? "",
-				clientName: project?.client ?? "",
+				clientName: this.projectManager.getClientForTask(entry.taskId)?.name ?? "",
 			});
 		}
 		rows.sort((a, b) => (a.startDate + a.startTime).localeCompare(b.startDate + b.startTime));
@@ -181,6 +182,38 @@ export class ExportManager {
 			"clockify-export",
 			exportsFolder,
 		);
+	}
+
+	// What the export modal warns about for a date range (closed
+	// sessions by start date, same filter as the exports). Both facts
+	// come from the tasks' live assignments:
+	// - tasksWithClientNoProject: tasks with time in the range that have a
+	//   client but no project. Toggl and Clockify import those sessions
+	//   without a client (tested on 30 Oct 2026).
+	// - projectWithSeveralClients: some project is used in the range with
+	//   more than one client ("no client" counts as one): the platforms
+	//   create one project per client, all with the same name.
+	getExportWarnings(
+		entries: TimeEntry[],
+		fromMs: number,
+		toMs: number,
+	): { tasksWithClientNoProject: number; projectWithSeveralClients: boolean } {
+		const taskIds = new Set(this.getEntriesInRange(entries, fromMs, toMs).map((entry) => entry.taskId));
+		let tasksWithClientNoProject = 0;
+		const clientsPerProject = new Map<string, Set<string>>();
+		for (const taskId of taskIds) {
+			const project = this.projectManager.getProjectForTask(taskId);
+			const client = this.projectManager.getClientForTask(taskId);
+			if (!project) {
+				if (client) tasksWithClientNoProject++;
+				continue;
+			}
+			const clients = clientsPerProject.get(project.id) ?? new Set<string>();
+			clients.add(client?.id ?? "");
+			clientsPerProject.set(project.id, clients);
+		}
+		const projectWithSeveralClients = [...clientsPerProject.values()].some((clients) => clients.size > 1);
+		return { tasksWithClientNoProject, projectWithSeveralClients };
 	}
 
 	private getEntriesInRange(entries: TimeEntry[], fromMs: number, toMs: number): ClosedTimeEntry[] {

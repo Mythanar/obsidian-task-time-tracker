@@ -1,7 +1,8 @@
 import { Editor, MarkdownFileInfo, MarkdownView, Menu, Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
 import { TrackingEngine } from "./core/TrackingEngine";
 import { ProjectManager } from "./core/ProjectManager";
-import { StateStore } from "./core/StateStore";
+import { DATA_FORMAT_VERSION, StateStore } from "./core/StateStore";
+import { MigrationReport } from "./core/ClientMigration";
 import {
 	extractCheckboxState,
 	extractTaskId,
@@ -45,11 +46,44 @@ const EDITOR_CHANGE_DEBOUNCE_MS = 300;
 // See applyTaskIdFormatClass().
 const TASKID_FORMAT_BODY_CLASSES = ["task-time-tracker-taskid-reduced", "task-time-tracker-taskid-hidden"];
 
-// Per-device flag (local storage, never data.json) for the one-time
-// heads-up about the upcoming data format change. The value names the
-// change it warns about, so a future heads-up can use its own key.
-const FORMAT_CHANGE_NOTICE_KEY = "task-time-tracker-format-change-notice";
-const FORMAT_CHANGE_NOTICE_ID = "format-2";
+// Per-device flags (local storage, never data.json):
+// - the highest data format this device has seen on disk or saved. Format
+//   1 data showing up after that means an older plugin version (0.0.33 or
+//   earlier) on another device overwrote the data (see checkDataFormat()).
+// - whether this device already showed the format-2 migration notice.
+const FORMAT_SEEN_KEY = "task-time-tracker-format-seen";
+const MIGRATION_NOTICE_KEY = "task-time-tracker-migration-notice";
+const MIGRATION_NOTICE_ID = "format-2";
+
+// Copy of the data as it was before the format-2 migration, in the
+// plugin's own folder (never in the user's notes). Written once, before
+// the first save that persists the migration (see StateStore.ts#apply).
+const MIGRATION_BACKUP_FILE = "data-backup-before-format-2.json";
+
+// A notice text whose paragraphs are separated by a blank line ("\n\n" in
+// the translation), one block per paragraph: a plain string would run
+// them together. Text between "**" markers is shown in bold (built as DOM
+// elements, never parsed as HTML).
+function noticeFragment(text: string): DocumentFragment {
+	return createFragment((fragment) => {
+		for (const paragraph of text.split("\n\n")) {
+			const block = fragment.createDiv({ cls: "task-time-tracker-notice-paragraph" });
+			paragraph.split("**").forEach((part, index) => {
+				if (part === "") return;
+				if (index % 2 === 1) block.createEl("strong", { text: part });
+				else block.appendText(part);
+			});
+		}
+	});
+}
+
+// Export range from the modal's "YYYY-MM-DD" values: whole days, local time.
+function rangeToMs(fromValue: string, toValue: string): { fromMs: number; toMs: number } {
+	return {
+		fromMs: new Date(`${fromValue}T00:00:00`).getTime(),
+		toMs: new Date(`${toValue}T23:59:59.999`).getTime(),
+	};
+}
 
 export default class TaskTimeTrackerPlugin extends Plugin {
 	trackingEngine!: TrackingEngine;
@@ -61,6 +95,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	// The "data from a newer version" notice is shown once per session,
 	// not on every Sync delivery.
 	private newerFormatNoticeShown = false;
+	private overwrittenNoticeShown = false;
 	private editorChangeDebounceTimer: number | null = null;
 	private inlineControlsBus = new InlineTrackingBus();
 
@@ -75,12 +110,16 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	async onload() {
 		this.store = new StateStore({
 			load: () => this.loadData(),
-			save: (state) => this.saveData(state),
+			save: async (state) => {
+				await this.saveData(state);
+				this.markFormatSeen(state.formatVersion);
+			},
+			backup: (raw) => this.writeMigrationBackup(raw),
 		});
 		await this.store.init();
 		this.applyTaskIdFormatClass();
 		this.checkNewerDataFormat();
-		this.showFormatChangeNoticeOnce();
+		this.checkDataFormat();
 
 		this.trackingEngine = new TrackingEngine(this.store);
 		this.projectManager = new ProjectManager(this.store);
@@ -104,8 +143,10 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 					resumeTracking: (taskId) => this.resumeTracking(taskId),
 					getEntriesForTask: (taskId) => this.trackingEngine.getEntries().filter((e) => e.taskId === taskId),
 					getProjects: () => this.projectManager.getProjects(),
+					getItems: (kind) => this.projectManager.getItems(kind),
 					getProjectForTask: (taskId) => this.projectManager.getProjectForTask(taskId),
-					assignProject: (taskId, projectId) => this.projectManager.assignProject(taskId, projectId),
+					getClientForTask: (taskId) => this.projectManager.getClientForTask(taskId),
+					assign: (kind, taskId, id) => this.projectManager.assign(kind, taskId, id),
 					bus: this.inlineControlsBus,
 				}),
 		);
@@ -115,6 +156,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			(leaf) =>
 				new DashboardView(leaf, () => this.trackingEngine.getEntries(), this.taskIdentifier, {
 					getProjectForTask: (taskId) => this.projectManager.getProjectForTask(taskId),
+					getClientForTask: (taskId) => this.projectManager.getClientForTask(taskId),
 					openHistory: () => void this.activateLogView(),
 				}),
 		);
@@ -225,6 +267,10 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 						void this.runExport(fromValue, toValue, format);
 					},
 					() => this.store.isNewerFormat(),
+					(fromValue, toValue) => {
+						const { fromMs, toMs } = rangeToMs(fromValue, toValue);
+						return this.exportManager.getExportWarnings(this.trackingEngine.getEntries(), fromMs, toMs);
+					},
 				).open();
 			},
 		});
@@ -262,6 +308,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		await this.store.reload();
 		this.applyTaskIdFormatClass();
 		this.checkNewerDataFormat();
+		this.checkDataFormat();
 		this.statusBarWidget.refresh();
 		this.refreshLogViews();
 		this.notifyTrackingChanged();
@@ -287,17 +334,70 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		return true;
 	}
 
-	// One-time heads-up, per device, that the next version changes how
-	// data is stored. Remembered in local storage so opening Obsidian
-	// never writes data.json. Skipped on a fresh install (nothing to
-	// protect yet) and when the data already comes from the newer format
-	// (the newer-format notice covers it).
-	private showFormatChangeNoticeOnce(): void {
-		if (this.loadLocalFlag(FORMAT_CHANGE_NOTICE_KEY) === FORMAT_CHANGE_NOTICE_ID) return;
-		if (!this.store.isFreshInstall() && !this.store.isNewerFormat()) {
-			new Notice(t("notice.formatChangeAhead"), 0);
+	// Format-1 data on disk (see core/ClientMigration.ts). It is migrated
+	// in memory on every read and persisted on the next real save, so
+	// nothing is written here. Two cases:
+	// - This device already saw format 2: an older plugin version on
+	//   another device overwrote the data, dropping the clients list and
+	//   each task's client. The migration recovers clients from the
+	//   projects' frozen client text; changes made since are lost. Never
+	//   silent: persistent notice, once per session.
+	// - First time: notice once per device, with the merged names, and a
+	//   reminder to update every device.
+	private checkDataFormat(): void {
+		const stored = this.store.getStoredFormat();
+		if (stored >= DATA_FORMAT_VERSION) {
+			this.markFormatSeen(stored);
+			return;
 		}
-		this.saveLocalFlag(FORMAT_CHANGE_NOTICE_KEY, FORMAT_CHANGE_NOTICE_ID);
+		if (this.store.isFreshInstall()) return;
+		const seen = Number(this.loadLocalFlag(FORMAT_SEEN_KEY) ?? "1");
+		if (seen >= DATA_FORMAT_VERSION) {
+			if (this.overwrittenNoticeShown) return;
+			this.overwrittenNoticeShown = true;
+			new Notice(noticeFragment(t("notice.dataOverwrittenByOlderVersion")), 0);
+			return;
+		}
+		if (this.loadLocalFlag(MIGRATION_NOTICE_KEY) === MIGRATION_NOTICE_ID) return;
+		this.saveLocalFlag(MIGRATION_NOTICE_KEY, MIGRATION_NOTICE_ID);
+		new Notice(this.migrationNoticeText(this.store.getLastMigration()), 0);
+	}
+
+	// The message's paragraphs, then the merged names, one line each, so a
+	// long list stays readable.
+	private migrationNoticeText(report: MigrationReport | null): DocumentFragment {
+		const fusions = [
+			...(report?.clientFusions ?? []).map((f) => ({ ...f, kind: t("notice.migrationClient") })),
+			...(report?.projectFusions ?? []).map((f) => ({ ...f, kind: t("notice.migrationProject") })),
+		];
+		const fragment = noticeFragment(t("notice.migrationDone"));
+		if (fusions.length > 0) {
+			const block = fragment.createDiv({ cls: "task-time-tracker-notice-paragraph" });
+			block.createDiv({ text: t("notice.migrationMerged") });
+			const quote = (name: string) => t("notice.migrationQuoted", { name });
+			for (const fusion of fusions) {
+				block.createDiv({ text: `• ${fusion.kind} ${quote(fusion.kept)} ← ${fusion.merged.map(quote).join(", ")}` });
+			}
+		}
+		return fragment;
+	}
+
+	private markFormatSeen(format: number): void {
+		const seen = Number(this.loadLocalFlag(FORMAT_SEEN_KEY) ?? "1");
+		if (format > seen) this.saveLocalFlag(FORMAT_SEEN_KEY, String(format));
+	}
+
+	// Never overwrites an existing copy: the first one holds the data as
+	// it was before any migration. A failure doesn't block the save (the
+	// user could not do anything about it), it's only logged.
+	private async writeMigrationBackup(raw: unknown): Promise<void> {
+		const path = `${this.manifest.dir ?? ""}/${MIGRATION_BACKUP_FILE}`;
+		try {
+			if (await this.app.vault.adapter.exists(path)) return;
+			await this.app.vault.adapter.write(path, JSON.stringify(raw, null, "\t"));
+		} catch (error) {
+			console.warn("Task Time Tracker: could not write the migration backup", error);
+		}
 	}
 
 	// Device-local flags. App#loadLocalStorage/saveLocalStorage would be
@@ -526,8 +626,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	}
 
 	private async runExport(fromValue: string, toValue: string, format: ExportFormat): Promise<void> {
-		const fromMs = new Date(`${fromValue}T00:00:00`).getTime();
-		const toMs = new Date(`${toValue}T23:59:59.999`).getTime();
+		const { fromMs, toMs } = rangeToMs(fromValue, toValue);
 		const exportsFolder = this.pluginState.settings.exportsFolder;
 		if (this.isExportBlocked()) return;
 

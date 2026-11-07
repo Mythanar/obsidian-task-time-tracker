@@ -10,9 +10,9 @@ export interface ExportRow {
 	endTime: string;
 	duration: string;
 	taskName: string;
-	// Project/Client assigned to the task (see ProjectManager), empty
-	// string if none is assigned: never blocks the export. clientName is
-	// also empty when the project has no client, even if it has a name.
+	// Project and Client assigned to the task (see ProjectManager), each
+	// independent of the other, empty string if none is assigned: never
+	// blocks the export.
 	projectName: string;
 	clientName: string;
 	sourceNote: string;

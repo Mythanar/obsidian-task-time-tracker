@@ -4,6 +4,28 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- History: deleting a task from one of its cards (in week or range views, where a task shows once per day) opened the confirmation on every card of that task. It now opens only on the card you used.
+- Edit task: typing in the Client or Project search box was slow and the focus kept jumping to the tt-id copy button.
+- Export dialog on phones: a two-line "email is required" or "invalid email" message under the Toggl or Clockify email no longer overlaps the option below it.
+
+### Changed
+
+- **Update Task Time Tracker on all your devices.** Clients are now stored differently, and a device still on version 0.0.33 or earlier would remove the clients list and each task's client the next time it saves. If that happens, the plugin warns you and recovers the clients from your projects; client changes made in between are lost. If you keep a device on 0.0.34 while using 0.0.35 on another, assigning a project to a task from the 0.0.34 device leaves that task without a client.
+- Clients and projects are now independent: Settings has two separate lists, "Clients" and "Projects" (the section is now called "Clients & projects"), and each task has its own client and its own project. The same project can be used for several clients without repeating it, and a task can have a client without a project.
+- Your existing data is converted automatically: every task keeps its project and its client. Projects with the same name become one, and names that differ only in capital letters or spaces are merged (the spelling with more tasks wins). A notice lists the merged names, and a copy of the previous data is saved in the plugin's folder first.
+- Edit task: a Client selector next to the Project selector, both searchable and with a "No client" / "No project" option. List rows are one line.
+- On phones and tablets, the Client and Project lists (and the History project filter) open with the full list visible: the keyboard only opens when you tap the search box. On desktop the search box still gets the focus right away.
+- Settings: each list has its own "One by one" and "Paste list" tabs (one name per line, the `Project; Client` format is gone), a count next to its title, and a pencil button to rename each row. Names are unique within each list, ignoring capital letters and extra spaces.
+- Settings, Paste list: new names are added and names already in the list (or repeated in the paste) are skipped, instead of rejecting the whole list on the first repeat. A message says how many were added and lists every name skipped.
+- Settings: the delete confirmation says how many tasks the client or project is assigned to, and that they will be left without it. The duplicate-name error goes away as soon as you edit the field.
+- Clockify: "Include Project" and "Include Client" are now on by default (only for setups that never changed them), and their help text explains what each column adds and what happens if you turn it off. Turning "Include Project" off now turns "Include Client" off too, in the export dialog and in Settings.
+- Dashboard: "By client" now uses each task's own client. The header shows the first and last day of the 30-day window, and the "No project" / "No client" rows no longer count as one more project or client.
+- Exports: the Client column comes from the task's client. The Toggl and Clockify export dialog warns, for the chosen range, about tasks with a client but no project (those sessions are imported without a client), about a project used with several clients (it becomes several projects with the same name), and, in Clockify, when "Include Client" is on without "Include Project".
+
 ## [0.0.34] - 2026-10-12
 
 ### Added

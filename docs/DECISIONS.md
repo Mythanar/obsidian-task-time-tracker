@@ -931,10 +931,14 @@ una entrada aquí.
   expandir/colapsar).
 - **Fix: `pointer-events: none` en reposo, `pointer-events: auto` al
   expandir** — mismo patrón espejo que ya usa `opacity` en las mismas
-  dos reglas. Verificado con clics reales (Playwright) en ambos
-  estados: colapsada, el clic en esa zona ahora cae en el `header`
-  (toggle); expandida, sigue abriendo la confirmación de borrado como
-  siempre.
+  dos reglas. Checked with simulated clicks (Playwright), most likely
+  on a static page outside Obsidian (the plugin's CSS with a copy of the
+  card markup), not in Obsidian itself: no setup was kept and nothing
+  records that Obsidian was driven. Result in both states: collapsed, a
+  click on that spot now lands on the `header` (toggle); expanded, it
+  still opens the delete confirmation as before. The first check inside
+  real Obsidian is H1 (see "Independent client — fixes after desktop
+  QA").
 
 ## Fase 7 — ajuste "Formato del id de tarea"
 
@@ -1755,3 +1759,190 @@ resultado final.
   was discarded too: it only shows the listing, and the user would
   still have to go back to Obsidian to update. The notices already say
   what to do.
+
+## Independent client — Block 1: data, Settings, Edit task, export warnings (format 2)
+
+Brief: "Independizar Cliente de Proyecto" (canvas "Cliente independiente",
+boards 1, 2, 4 and 6; board 3 belongs to "Proyecto por carpeta").
+
+- **Model.** `clients: Client[]` and `taskClients: taskId -> clientId`,
+  parallel to `projects`/`taskProjects` and independent from them: a task
+  can have a client and no project. `DATA_FORMAT_VERSION` goes to 2, so a
+  0.0.34 device locks project edits and exports on this data instead of
+  writing it in the old shape.
+- **Migration in memory, deterministic** (`core/ClientMigration.ts`).
+  `normalizeState()` migrates format-1 data on every read; the first real
+  save persists it. This keeps "opening Obsidian never saves" (0.0.34).
+  Because every read migrates again until that save, the output must be
+  identical every time, ids included (a client id chosen in the UI from
+  one read must exist in the next): client ids are a hash of the
+  normalized name, never time or randomness.
+- **Merging.** Names that differ only in case or whitespace are merged,
+  for clients and projects (`nameKey`: NFC, trim, collapsed spaces,
+  lower case; accents are kept, so similar names never merge). The
+  spelling with more tasks wins, ties go to the oldest entry. The same
+  key enforces unique names in Settings from now on (decided with Liber).
+- **Aliases for same-name projects** (decided with Liber). "Web · Acme"
+  and "Web · Globex" become one "Web"; the other entries stay in
+  `projects` with `aliasOf`, hidden everywhere and resolved by
+  `ProjectManager`. Assignments are not rewritten. Why: 0.0.31-0.0.33
+  drop the unknown `aliasOf` field when they save, so for them each alias
+  turns back into the original pair and each task keeps its own client;
+  and the next migration rebuilds the aliases. A single merged project
+  could hold only one frozen client text, so recovery would give every
+  task of "Web" the same client. Renaming a project renames its aliases;
+  deleting it deletes them and their assignments.
+- **Frozen client text** (`Project.client`). Never read by format 2
+  except by the migration; not updated on client renames. It is what
+  older versions show and what a second migration recovers from.
+- **Older version overwrote the data.** Checked first, as the brief asks:
+  no older version keeps unknown keys at the top level or directly in
+  settings (0.0.31-0.0.33 rebuild every level field by field, 0.0.26-0.0.30
+  the top level and settings). Only the `settings.toggl`/`settings.clockify`
+  sub-objects survive in all of them; storing clients there was rejected
+  as a hack. So plan B: each device remembers in local storage the highest
+  format it has seen or saved. Format-1 data on a device that already saw
+  format 2 means an older version overwrote it: persistent notice once
+  per session (update every device; clients recovered from projects;
+  changes since then may be lost) and the automatic re-migration does the
+  recovery. No "restore from backup" button (decided with Liber): the
+  backup predates the migration, so it holds nothing the re-migration
+  doesn't, and it only exists on the device that migrated.
+- **Backup.** Before the first save that persists a migration,
+  `StateStore.apply()` hands the raw data to `StateIO.backup`, written to
+  `data-backup-before-format-2.json` in the plugin folder (never in the
+  user's notes), never overwritten. A failure is logged and doesn't block
+  the save.
+- **Notices.** First sight of format-1 data on a device (not a fresh
+  install): persistent notice, once per device, saying clients are now a
+  list, asking to update every device, and listing merged names (one line
+  each). The 0.0.34 "next version changes the format" heads-up is removed.
+- **Edit task.** Client row above Project, both through the shared picker
+  (`ProjectPickerList`, now generic with `kind`), check mark kept on the
+  left (decided with Liber), one-line rows; the project search no longer
+  matches clients. "Client updated" reuses the "Project updated" slot.
+  Labels and buttons sit on a two-column grid so both buttons line up in
+  any language. The canvas's "Note" path line is not built (it belongs to
+  "Proyecto por carpeta").
+- **Historial card.** Shows the project and/or the client, each from the
+  task; order kept as Project, Client until Block 2 decides it.
+- **Settings.** "Clients & projects": Clients block above Projects, each
+  with title + count, tabs, one-line rows with pencil (rename) and trash;
+  the name stays clickable too. Paste list is one name per line,
+  all-or-nothing as before.
+- **Export warnings** (Toggl and Clockify only; the generic CSV is not
+  imported anywhere). Recomputed for the range, format and checkboxes:
+  tasks with a client and no project (only if the file has the Client
+  column), a project used with several clients in the range ("no client"
+  counts as one; only if the file has both columns), and in Clockify
+  "Include Client" on with "Include Project" off (text by Liber). Same
+  discreet note style as the modal's other notes; never blocking.
+
+## Independent client — fixes after desktop QA (0.0.35)
+
+Source: "Correcciones del QA de Independizar Cliente de Proyecto (0.0.35)".
+
+- **D3, CSV with unusual names: passes.** Generic, Toggl and Clockify
+  CSVs, with project/client names holding ";", commas, quotes and line
+  breaks (LF and CRLF), parsed back with Python's `csv` module: every
+  name whole, in its own column, delimiter sniffed as ",". The three
+  adapters quote fields with a quote, comma or line break (RFC 4180);
+  ";" needs no quoting with a comma separator. Kept as a test
+  (`tests/CsvEscaping.test.ts`, Toggl and Clockify; the generic adapter
+  shares the rule but its headers need Obsidian's i18n). So B2 stays as
+  decided: lines with ";" are added as plain names, no warning.
+- **A1, focus jumping to the tt-id copy button.** The picker popover
+  lives in `document.body`, outside the Edit task modal, and keys typed
+  in its search box also reached the modal's own handling, which moved
+  focus back into the modal. Not reproduced live here (no way to drive
+  Obsidian); the popover was mounted the same way in 0.0.34, so it most
+  likely happened there too. Two guards: key events from the search box
+  don't propagate (except Escape), and if the box loses focus while the
+  popover is open without a press or Tab from the user, focus goes back.
+- **H1, A1 reopened: search box slow, focus bouncing to the tt-id copy
+  button.** Reproduced in real Obsidian this time: Obsidian launched on
+  Tester with a local remote-debugging port, driven over the Chrome
+  DevTools Protocol by a small Node script (real mouse and key events,
+  focus and DOM changes logged per keystroke). Cause: Obsidian keeps
+  focus inside an open modal, so with the popover in `document.body` it
+  sent focus to the modal's first focusable (the tt-id copy button). In
+  0.0.34 that happened once; A1's "focus goes back" guard turned it into
+  a loop, both sides moving focus every frame (~75 times a second): keys
+  only landed when focus happened to be in the box, hence the lag, the
+  flicker and the lost border. Nothing re-rendered on typing (modal,
+  sessions and list untouched), so it doesn't depend on session count.
+  Fix: from the modal, the popover is attached to `modalEl` (new `modal`
+  option), so it's inside the modal for Obsidian and for the modal's
+  outside-click guard. A1's two guards and the permanent outside-click
+  guard while the popover is open are removed. Escape gets a keymap scope
+  on top of the modal's (`new Scope(modal.scope)`, public API), so it
+  still closes only the popover, and focus returns to the Client or
+  Project button. Checked live: typing and deleting in both boxes, a task
+  with 53 sessions, hover, picking a row, a click elsewhere in the modal,
+  Escape twice, and the Historial filter (still on `document.body`).
+- **A2, delete confirmation on every card.** Already in 0.0.34, by
+  design then (stored by task id). Now stored by card (`dayKey|taskId`,
+  the expansion key): it opens only where Delete was pressed, opening it
+  elsewhere closes the first, confirming still deletes the whole history.
+- **A3.** The Dashboard header shows the window's first and last day
+  (OS locale dates, year only when the window spans two years).
+- **A5.** The "No project"/"No client" rows are left out of the block
+  counts. Already counted in 0.0.34 for projects.
+- **A4.** The duplicate error is removed in place on the next input (no
+  re-render, so the field keeps focus), when adding and renaming.
+- **B1.** Paste list is no longer all-or-nothing (it was since the first
+  "Configurar proyectos"): new names are added, repeats (against the list
+  or within the paste, by `nameKey`) are skipped, and the result lists
+  how many were added and every name skipped.
+- **B3.** Before: deleting an unused item had no confirmation; a used one
+  showed "{count} tasks are using this client. Delete anyway?" (so the
+  count was there) and, on Yes, removed only that client's assignments,
+  leaving each task's project untouched. The text now also says what
+  happens to those tasks.
+- **C1/C2.** Export warnings use the theme's warning color (same classes
+  as the Clockify duplicates note) and leave room before the Export row's
+  divider.
+- **C3/C4.** Clockify "Include Project" and "Include Client" default to
+  on. Before, both defaulted to off. Settings are merged over defaults on
+  load, and every save stores the whole settings object, so in practice
+  only installs that never saved anything pick up the new default.
+- **D1.** Tester's "By client" totals from the pre-migration backup,
+  computed the 0.0.34 way, match the migrated data to the second, both
+  over the whole history and over the Dashboard window. The current data
+  differs only by changes made during QA (1h 17m 02s that moved from Harrington &
+  Voss to Almbridge Consulting, likely a reassigned task, and two new
+  Castellan Media sessions).
+
+## Independent client — fixes after mobile QA (0.0.35)
+
+Two findings from the phone QA (Block 7), plus a documentation note from
+the two-device simulation (Block 8).
+
+- **Picker search box not focused on touch devices.** The Client and
+  Project pickers (Edit task) and the History project filter share
+  `openProjectPickerPopover`. It focused the search box on open, which on
+  a phone opens the on-screen keyboard over most of the list. Now the
+  search box is only focused when `Platform.isMobile` is false. Criterion:
+  `Platform.isMobile` (public API, already used elsewhere in the plugin).
+  It is true in the mobile app, phones and tablets alike, so a tablet
+  behaves like a phone. A touchscreen laptop runs the desktop app, so it
+  keeps the desktop behavior (focus on open); the public API cannot tell
+  a touch from a click there, and those devices usually have a physical
+  keyboard. Checked in real Obsidian against H1: no focus bounce and no
+  lag while typing, on desktop (focus on open) and in mobile emulation
+  (focus after tapping the search box).
+- **Export dialog: email message overlapping the next setting on
+  phones.** On mobile, the modal content is a scrolling flex column, and
+  when it is taller than the screen its children shrink. A flex item does
+  not shrink below its content height by default, but the message's
+  explicit `min-height: 1.2em` replaces that automatic minimum, so a
+  two-line message was squeezed to one line and its second line spilled
+  over "Include Project". Fix: `flex-shrink: 0` on
+  `.task-time-tracker-log-edit-message` (also used by the session edit
+  form and Settings, where it has no effect or the same benefit). Same
+  structure and fix for Toggl. Desktop's modal content is a block, so it
+  was never affected.
+- **0.0.34 next to 0.0.35.** 0.0.34 keeps format-2 data intact, so 0.0.35
+  sees no overwrite and shows no notice. But assigning a project from
+  0.0.34 doesn't touch `taskClients`, so that task ends up without a
+  client. Documented in the CHANGELOG and README; not handled in code.

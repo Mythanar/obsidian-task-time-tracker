@@ -3,8 +3,6 @@
 # Task Time Tracker
 
  <img src="docs/images/ttt-logo-dark.png" width="300" alt="Task Time Tracker logo">
- 
-[![Release](https://img.shields.io/github/v/release/Mythanar/obsidian-task-time-tracker?style=flat-square&color=483699)](https://github.com/Mythanar/obsidian-task-time-tracker/releases) [![Obsidian downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Fobsidianmd%2Fobsidian-releases%2Fmaster%2Fcommunity-plugin-stats.json&query=%24%5B%22task-time-tracker%22%5D.downloads&label=Obsidian%20downloads&color=483699&style=flat-square)](https://community.obsidian.md/plugins/task-time-tracker) [![Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20the%20project-483699?logo=ko-fi&logoColor=white&style=flat-square)](https://ko-fi.com/V1G5250ECI)
 
 
 A local-first Obsidian plugin for **tracking time directly on the checkboxes in your notes** — compatible with the Tasks plugin format, with no external services involved at any point.
@@ -20,7 +18,7 @@ A local-first Obsidian plugin for **tracking time directly on the checkboxes in 
 
 - [How it works](#how-it-works)
 - [Features](#features)
-- [Projects & clients](#projects--clients)
+- [Clients & projects](#clients--projects)
 - [Search](#search)
 - [Dashboard](#dashboard)
 - [Commands](#commands)
@@ -98,22 +96,22 @@ Tasks you tracked with an older version of the plugin may still have the identif
 - **Plays nicely with Dataview, but never depends on it** — an optional, subtle-by-default identifier keeps your history linked to each task and makes it queryable, without cluttering your notes.
 - **A clear history** — a dedicated panel with per-task cards, day/week navigation or any custom date range, task search by name or `tt-id`, and inline editing or deletion of sessions.
 - **Resume tracking without leaving the panel** — start or stop a task's tracking straight from its card in the History panel, without opening the note it lives in. If a task is currently being tracked, any other day where it also has past sessions shows a small marker that jumps you straight back to the live session.
-- **Organize with projects & clients** — group your tasks under projects (each with an optional client) from Settings, then filter the History panel down to a single one at a time.
+- **Organize with clients & projects** — two separate lists in Settings: give each task a client (who the work is for) and a project (what the work is), independently, then filter the History panel down to a single project at a time.
 - **A 30-day overview at a glance** — the Dashboard view totals your last 30 days by project, client, day, and task, no filters or setup needed.
 - **Export on your terms** — generate a generic CSV or one formatted for Toggl's official importer. You choose when to export — never automatic, never in the background.
 - **Zero external API calls** — the plugin never connects to any third-party service, at any point in its operation. Your time data stays in your vault.
 
 <img src="docs/images/play-on-panel-32.gif" alt="Starting and stopping tracking directly from a task's card in the History panel" width="500" style="border-radius:12px;margin:2rem 0;">
 
-## Projects & clients
+## Clients & projects
 
-Group your tasks by project, and optionally by client, right from Settings.
+Clients and projects are two separate lists in Settings, so the same project can be done for several clients without repeating it: the client is who the work is for, the project is what the work is.
 
-<img src="docs/images/project-and-clients-settings.png" alt="Settings → Projects & clients section" width="515" style="border-radius:12px;margin:2rem 0;">
+<img src="docs/images/project-and-clients-settings.png" alt="Settings → Clients & projects section" width="515" style="border-radius:12px;margin:2rem 0;">
 
-Add projects one by one, or paste a whole list at once (`Project; Client` per line) if you're migrating from somewhere else.
+Add clients and projects one by one, or paste a whole list at once (one name per line) if you're migrating from somewhere else: new names are added and the ones already in the list are skipped and listed. Names are unique within each list, ignoring capital letters and extra spaces.
 
-Assign a project to any tracked task from its **Edit task** dialog — pick one from a searchable list, each row showing the project and its client if it has one.
+Give any tracked task a client and a project from its **Edit task** dialog — two searchable lists, one for each. A task can have a client without a project, and the other way round.
 
 
 <img src="docs/images/project-picker-modal-29.png" alt="Project picker inside Edit task" width="515" style="border-radius:12px;margin:2rem 0;">
@@ -145,7 +143,7 @@ When a project is filtered in Day or Week view, a row under the header shows tha
 
 ## Dashboard
 
-A dedicated view for a no-filter overview of your last 30 days — opened from its own icon in the ribbon, with the total for the window shown right next to its title.
+A dedicated view for a no-filter overview of your last 30 days — opened from its own icon in the ribbon, with the total for the window shown right next to its title and the first and last day it covers below it. The window is always the 30 days up to today, whatever range the History panel shows.
 
 <img src="docs/images/dashboard-ribbon-30.png" alt="Dashboard icon in the ribbon" width="180" style="border-radius:12px;margin:2rem 0;">
 
@@ -187,7 +185,9 @@ Three export formats are available whenever you need them:
 - **Toggl-formatted CSV** — matches the exact columns expected by Toggl's official importer.
 - **Clockify-formatted CSV** — matches the exact columns expected by Clockify's Timesheets importer. Importing time entries into Clockify needs a paid plan or trial — a limitation on Clockify's side, not this plugin's.
 
-Generic CSV exports also include the project and client assigned to each task, if any — ready to use for per-client reporting. (The Toggl and Clockify formats can include them too, each behind its own "Include Project"/"Include Client" toggle in Settings — off by default.)
+Generic CSV exports also include the project and client assigned to each task, if any — ready to use for per-client reporting. (The Toggl and Clockify formats can include them too, behind their "Include Project & Client" (Toggl, off by default) or "Include Project"/"Include Client" (Clockify, on by default) toggles in Settings.)
+
+Toggl and Clockify only import a client together with its project: sessions of a task with a client but no project are imported without a client, and a project used with several clients becomes several projects with the same name. The export dialog warns you when the chosen range has either case.
 
 *More export formats (Harvest, Everhour, and others) are planned.*
 
@@ -215,7 +215,7 @@ Generic CSV exports also include the project and client assigned to each task, i
 
 ### Using it on several devices
 
-If you sync your vault (for example with Obsidian Sync), keep Task Time Tracker on the same version on all your devices. **The next version changes how data is stored**, so update it everywhere when it comes out. Data written by a newer version is kept intact by older ones from 0.0.34 onward; if a device detects data from a newer version, it asks you to update the plugin there and disables exporting and editing projects until you do.
+If you sync your vault (for example with Obsidian Sync), keep Task Time Tracker on the same version on all your devices. **Update it on every device now:** this version stores clients as their own list, and a device still on 0.0.33 or earlier would remove the clients list and each task's client the next time it saves. If that happens, the plugin tells you and recovers the clients from your projects, but client changes made in between are lost. Devices on 0.0.34 keep the new data intact: they ask you to update the plugin there and disable exporting and editing projects until you do. But assigning a project to a task from a 0.0.34 device leaves that task without a client.
 
 ## About
 

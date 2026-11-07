@@ -11,7 +11,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ProjectManager } from "../src/core/ProjectManager";
-import { DATA_FORMAT_VERSION, normalizeState, StateStore } from "../src/core/StateStore";
+import { DATA_FORMAT_VERSION, normalizeState, readStoredFormat, StateStore } from "../src/core/StateStore";
 import { TrackingEngine } from "../src/core/TrackingEngine";
 import { PluginState } from "../src/types";
 
@@ -37,8 +37,9 @@ function makeRawDisk(initial: unknown) {
 	};
 }
 
-// A data.json as a newer plugin version might write it: unknown fields at
-// every level the plugin stores (top level, settings, projects, entries).
+// A data.json as a newer plugin version might write it: current format,
+// plus unknown fields at every level the plugin stores (top level,
+// settings, projects, entries).
 function newerData(over: Json = {}): Json {
 	return {
 		entries: [
@@ -55,12 +56,16 @@ function newerData(over: Json = {}): Json {
 		projects: [{ id: "p1", name: "Web", client: "Acme", clientId: "c1", color: "red" }],
 		taskProjects: { t1: "p1" },
 		clients: [{ id: "c1", name: "Acme" }],
+		taskClients: { t1: "c1" },
+		folderRules: [{ folder: "Work", projectId: "p1" }],
+		formatVersion: DATA_FORMAT_VERSION,
 		...over,
 	};
 }
 
 function assertUnknownDataKept(disk: Json): void {
 	assert.deepEqual(disk.clients, [{ id: "c1", name: "Acme" }]);
+	assert.deepEqual(disk.folderRules, [{ folder: "Work", projectId: "p1" }]);
 	const settings = disk.settings as Json;
 	assert.deepEqual(settings.trackingFolders, ["Work"]);
 	assert.equal((settings.toggl as Json).workspace, "W");
@@ -101,8 +106,8 @@ describe("unknown data survives every save", () => {
 			settings.exportsFolder = "other";
 		});
 		assertUnknownDataKept(disk.read());
-		assert.deepEqual(await projects.addProject("App", ""), { ok: true });
-		assert.deepEqual(await projects.updateProject("p1", "Web 2", "Acme"), { ok: true });
+		assert.deepEqual(await projects.add("project", "App"), { ok: true });
+		assert.deepEqual(await projects.rename("project", "p1", "Web 2"), { ok: true });
 		await projects.assignProject("t2", "p1");
 		assertUnknownDataKept(disk.read());
 
@@ -130,14 +135,14 @@ describe("unknown data survives every save", () => {
 		const disk = makeRawDisk(newerData());
 		const store = new StateStore(disk.io);
 		await store.init();
-		// The newer device removed its clients list; this stale memory still has it.
-		const { clients: _removed, ...withoutClients } = newerData();
-		disk.replace(withoutClients);
+		// The newer device removed its folder rules; this stale memory still has them.
+		const { folderRules: _removed, ...withoutRules } = newerData();
+		disk.replace(withoutRules);
 
 		await store.updateSettings((settings) => {
 			settings.exportsFolder = "other";
 		});
-		assert.equal("clients" in disk.read(), false);
+		assert.equal("folderRules" in disk.read(), false);
 	});
 });
 
@@ -165,7 +170,7 @@ describe("data format mark", () => {
 
 	it("treats a missing or invalid mark as format 1", () => {
 		for (const formatVersion of [undefined, "2", 0, -3, 1.5]) {
-			assert.equal(normalizeState({ formatVersion }).formatVersion, 1);
+			assert.equal(readStoredFormat({ formatVersion }), 1);
 		}
 	});
 });
@@ -174,6 +179,10 @@ describe("opening the plugin never saves", () => {
 	for (const [label, initial] of [
 		["fresh install", null],
 		["data from 0.0.33 (no format mark)", { entries: [], settings: { exportsFolder: "x" } }],
+		[
+			"format-1 data that needs migrating",
+			{ projects: [{ id: "p1", name: "Web", client: "Acme" }, { id: "p2", name: "web", client: "Globex" }], taskProjects: { t1: "p2" } },
+		],
 		["data from a newer version", newerData({ formatVersion: DATA_FORMAT_VERSION + 1 })],
 		["data with an open session", newerData({ entries: [{ id: "e9", taskId: "t9", taskText: "", filePath: "", start: 1, end: null }] })],
 	] as const) {
@@ -211,10 +220,10 @@ describe("data from a newer format locks project edits", () => {
 		const projects = new ProjectManager(store);
 		assert.equal(projects.isLocked(), true);
 
-		assert.deepEqual(await projects.addProject("App", ""), { ok: false, error: "newer-format" });
-		assert.deepEqual(await projects.updateProject("p1", "Renamed", ""), { ok: false, error: "newer-format" });
-		await projects.removeProject("p1");
-		assert.deepEqual(await projects.importProjects("A\nB"), { ok: false, error: "newer-format" });
+		assert.deepEqual(await projects.add("project", "App"), { ok: false, error: "newer-format" });
+		assert.deepEqual(await projects.rename("project", "p1", "Renamed"), { ok: false, error: "newer-format" });
+		await projects.remove("project", "p1");
+		assert.deepEqual(await projects.importNames("project", "A\nB"), { ok: false, error: "newer-format" });
 		assert.equal(disk.saves(), 0);
 		assert.deepEqual(
 			(disk.read().projects as Json[]).map((p) => p.name),
@@ -230,7 +239,7 @@ describe("data from a newer format locks project edits", () => {
 		assert.equal(projects.isLocked(), false);
 		disk.replace(newerData({ formatVersion: DATA_FORMAT_VERSION + 1 }));
 
-		assert.deepEqual(await projects.addProject("App", ""), { ok: false, error: "newer-format" });
+		assert.deepEqual(await projects.add("project", "App"), { ok: false, error: "newer-format" });
 		assert.equal(disk.saves(), 0);
 		assert.equal(projects.isLocked(), true);
 	});

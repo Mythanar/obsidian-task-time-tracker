@@ -51,14 +51,16 @@
 // future format change: add new fields, never reuse an existing one with
 // a different meaning.
 
-import { DEFAULT_SETTINGS, PluginSettings, PluginState, Project, TimeEntry } from "../types";
+import { Client, DEFAULT_SETTINGS, PluginSettings, PluginState, Project, TimeEntry } from "../types";
+import { migrateToFormat2, MigrationReport } from "./ClientMigration";
 
 // Data format version, independent from the plugin version. Bump it only
-// when an older plugin version could misread the data (e.g. 0.0.35's
-// separate clients). Data without the mark is format 1 (everything up to
-// 0.0.34). An older format is upgraded silently on the next real save;
-// a newer one is never lowered (see normalizeFormatVersion).
-export const DATA_FORMAT_VERSION = 1;
+// when an older plugin version could misread the data. Data without the
+// mark is format 1 (everything up to 0.0.34). Format 2 (0.0.35): clients
+// are their own list, assigned per task (see ClientMigration.ts). An
+// older format is upgraded in memory on every read and persisted on the
+// next real save; a newer one is never lowered (see normalizeFormatVersion).
+export const DATA_FORMAT_VERSION = 2;
 
 // Injected disk access (in production, the Plugin's loadData/saveData).
 // Injected instead of receiving the whole Plugin so the store can be
@@ -66,6 +68,9 @@ export const DATA_FORMAT_VERSION = 1;
 export interface StateIO {
 	load: () => Promise<unknown>;
 	save: (state: PluginState) => Promise<void>;
+	// Copy of the stored data, written right before the first save that
+	// persists a migration (see apply()). Optional so tests can skip it.
+	backup?: (raw: unknown) => Promise<void>;
 }
 
 // A mutation receives the state just read from disk and mutates it in
@@ -114,16 +119,29 @@ function normalizeProjects(raw: unknown): Project[] {
 			id: item.id,
 			name: item.name,
 			client: typeof item.client === "string" ? item.client : undefined,
+			aliasOf: typeof item.aliasOf === "string" ? item.aliasOf : undefined,
 		});
 	}
 	return projects;
 }
 
-function normalizeTaskProjects(raw: unknown): Record<string, string> {
+function normalizeClients(raw: unknown): Client[] {
+	if (!Array.isArray(raw)) return [];
+	const clients: Client[] = [];
+	for (const item of raw) {
+		if (!isRecord(item)) continue;
+		if (typeof item.id !== "string" || typeof item.name !== "string") continue;
+		clients.push({ ...item, id: item.id, name: item.name });
+	}
+	return clients;
+}
+
+// taskId -> id map, shared by taskProjects and taskClients.
+function normalizeAssignments(raw: unknown): Record<string, string> {
 	if (!isRecord(raw)) return {};
 	const assignments: Record<string, string> = {};
-	for (const [taskId, projectId] of Object.entries(raw)) {
-		if (typeof projectId === "string") assignments[taskId] = projectId;
+	for (const [taskId, id] of Object.entries(raw)) {
+		if (typeof id === "string") assignments[taskId] = id;
 	}
 	return assignments;
 }
@@ -154,22 +172,39 @@ function normalizeSettings(raw: unknown): PluginSettings {
 // is converted into a complete, valid PluginState. Used ALWAYS after a
 // read; the shape of the file is never assumed.
 export function normalizeState(raw: unknown): PluginState {
+	return normalizeStateWithReport(raw).state;
+}
+
+// Same as normalizeState(), plus what the format-1 -> 2 migration merged
+// (null when the data was already format 2 or newer).
+export function normalizeStateWithReport(raw: unknown): { state: PluginState; migration: MigrationReport | null } {
 	const source = isRecord(raw) ? raw : {};
-	return {
+	const storedFormat = readStoredFormat(raw);
+	const state: PluginState = {
 		...source,
 		entries: normalizeEntries(source.entries),
 		settings: normalizeSettings(source.settings),
 		projects: normalizeProjects(source.projects),
-		taskProjects: normalizeTaskProjects(source.taskProjects),
-		formatVersion: normalizeFormatVersion(source.formatVersion),
+		taskProjects: normalizeAssignments(source.taskProjects),
+		clients: normalizeClients(source.clients),
+		taskClients: normalizeAssignments(source.taskClients),
+		formatVersion: normalizeFormatVersion(storedFormat),
 	};
+	const migration = storedFormat < 2 ? migrateToFormat2(state) : null;
+	return { state, migration };
+}
+
+// The format mark as stored, before any upgrade: a missing or invalid
+// mark is format 1.
+export function readStoredFormat(raw: unknown): number {
+	const value = isRecord(raw) ? raw.formatVersion : undefined;
+	return typeof value === "number" && Number.isInteger(value) && value > 0 ? value : 1;
 }
 
 // Never below this version's format (older data is upgraded on the next
 // save) and never lowered: a newer mark written by another device stays,
 // so that device still recognizes its own format after we save.
-function normalizeFormatVersion(raw: unknown): number {
-	const stored = typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : 1;
+function normalizeFormatVersion(stored: number): number {
 	return Math.max(stored, DATA_FORMAT_VERSION);
 }
 
@@ -189,6 +224,11 @@ export class StateStore {
 	// Whether the initial load found no stored data at all (fresh
 	// install), as opposed to existing data from an earlier version.
 	private loadedEmpty = false;
+	// Format mark as found on disk by the last load, reload or save.
+	private storedFormat = DATA_FORMAT_VERSION;
+	// What the migration merged on the last load or reload (null if the
+	// stored data was already format 2 or newer).
+	private lastMigration: MigrationReport | null = null;
 
 	constructor(private io: StateIO) {}
 
@@ -204,7 +244,7 @@ export class StateStore {
 		return this.enqueue(async () => {
 			const raw = await this.io.load();
 			this.loadedEmpty = raw === null || raw === undefined;
-			this.state = normalizeState(raw);
+			this.adoptLoaded(raw);
 			return this.state;
 		});
 	}
@@ -217,13 +257,28 @@ export class StateStore {
 		return isNewerFormat(this.state);
 	}
 
+	getStoredFormat(): number {
+		return this.storedFormat;
+	}
+
+	getLastMigration(): MigrationReport | null {
+		return this.lastMigration;
+	}
+
+	private adoptLoaded(raw: unknown): void {
+		const { state, migration } = normalizeStateWithReport(raw);
+		this.state = state;
+		this.lastMigration = migration;
+		this.storedFormat = readStoredFormat(raw);
+	}
+
 	// Re-read without writing, for onExternalSettingsChange(): another
 	// device (or Sync) changed data.json and all that is needed is
 	// refreshing memory and UI. Observing an external change never
 	// justifies a save.
 	async reload(): Promise<PluginState> {
 		return this.enqueue(async () => {
-			this.state = normalizeState(await this.io.load());
+			this.adoptLoaded(await this.io.load());
 			return this.state;
 		});
 	}
@@ -232,10 +287,17 @@ export class StateStore {
 	// operation -> save -> adopt the persisted result as in-memory state.
 	async apply<T>(fn: Mutation<T>): Promise<T> {
 		return this.enqueue(async () => {
-			const latest = normalizeState(await this.io.load());
+			const raw = await this.io.load();
+			const latest = normalizeState(raw);
 			const { result, changed = true } = fn(latest);
 			if (changed) {
+				// This save persists the migration: keep a copy of the data
+				// as it was first.
+				if (readStoredFormat(raw) < DATA_FORMAT_VERSION && isRecord(raw) && this.io.backup) {
+					await this.io.backup(raw);
+				}
 				await this.io.save(latest);
+				this.storedFormat = latest.formatVersion;
 			}
 			this.state = latest;
 			return result;

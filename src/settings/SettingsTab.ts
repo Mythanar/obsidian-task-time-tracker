@@ -22,6 +22,7 @@ import {
 	Setting,
 	SettingDefinitionItem,
 	TFolder,
+	ToggleComponent,
 } from "obsidian";
 import type TaskTimeTrackerPlugin from "../main";
 import { t, TranslationKey } from "../i18n";
@@ -74,6 +75,10 @@ class FolderSuggest extends AbstractInputSuggest<TFolder> {
 }
 
 export class SettingsTab extends PluginSettingTab {
+	// The "Include Client" toggle on screen, so turning "Include Project"
+	// off can switch it off too (see configureClockifyIncludeProject).
+	private clockifyIncludeClientToggle: ToggleComponent | null = null;
+
 	constructor(
 		app: App,
 		private plugin: TaskTimeTrackerPlugin,
@@ -331,27 +336,34 @@ export class SettingsTab extends PluginSettingTab {
 			.setDesc(t("settings.clockify.includeProject.desc"))
 			.addToggle((toggle) =>
 				toggle.setValue(this.plugin.pluginState.settings.clockify.includeProject).onChange(async (value) => {
+					// Turning Project off turns Client off too: in Clockify a
+					// client only reaches the import through its project.
+					// Turning Project back on leaves Client as it is.
+					const clearClient = !value && this.plugin.pluginState.settings.clockify.includeClient;
 					await this.plugin.updateSettings((settings) => {
 						settings.clockify.includeProject = value;
+						if (clearClient) settings.clockify.includeClient = false;
 					});
+					if (clearClient) this.clockifyIncludeClientToggle?.setValue(false);
 				}),
 			);
 	}
 
 	// "Include Client" checkbox: independent of Include Project (see
-	// above), unchecked by default, same "clean vault by default"
-	// criterion as Toggl.
+	// above), checked by default like it since 0.0.35 (see types.ts),
+	// except that turning Project off turns it off too.
 	private configureClockifyIncludeClient(setting: Setting): void {
 		setting
 			.setName(t("settings.clockify.includeClient.name"))
 			.setDesc(t("settings.clockify.includeClient.desc"))
-			.addToggle((toggle) =>
+			.addToggle((toggle) => {
+				this.clockifyIncludeClientToggle = toggle;
 				toggle.setValue(this.plugin.pluginState.settings.clockify.includeClient).onChange(async (value) => {
 					await this.plugin.updateSettings((settings) => {
 						settings.clockify.includeClient = value;
 					});
-				}),
-			);
+				});
+			});
 	}
 
 	display(): void {

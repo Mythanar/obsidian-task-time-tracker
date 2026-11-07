@@ -15,16 +15,31 @@ export interface TimeEntry {
 	end: number | null;
 }
 
-// Projects/clients for future export adapters (Clockify and others
-// expect Project/Client columns in their importer). A project's unique
-// identity is the full (name, client) pair, not the name alone: two
-// different clients can name their project the same way (see
-// core/ProjectManager.ts). An absent client counts as its own value for
-// that uniqueness (not equivalent to client: "").
+// Project and client are two independent facts about a task (format 2,
+// see core/ClientMigration.ts): project = what the work is, client = who
+// it is for. Names are unique within each list, ignoring case and
+// repeated spaces (see core/ProjectManager.ts#nameKey).
+export interface Client {
+	id: string;
+	name: string;
+}
+
 export interface Project {
 	id: string;
 	name: string;
+	// Frozen client text from format 1, when a project was a (name,
+	// client) pair. Never read by this version except by the migration: it
+	// is kept so older plugin versions still show it, and so a second
+	// migration can recover clients if an older version overwrites the
+	// data. Not updated when a client is renamed.
 	client?: string;
+	// Set by the migration on a format-1 entry merged into another one
+	// with the same name (e.g. "Web" for Acme and "Web" for Globex). The
+	// alias is hidden from every list and resolves to aliasOf; tasks may
+	// still point to it, so older versions keep showing each task with
+	// its own client. Older versions drop this field when they save,
+	// which turns aliases back into plain projects for them.
+	aliasOf?: string;
 }
 
 // Toggl settings, manual fields (never queried via API). The date/time
@@ -46,9 +61,11 @@ export interface TogglSettings {
 
 // Clockify settings, same spirit as TogglSettings: manual fields, never
 // queried via API. includeProject exists on equal footing with
-// includeClient — both opt-in, independent of each other, unchecked by
-// default, same "clean vault by default" criterion as Toggl (see
-// docs/DECISIONS.md for why Project isn't actually required).
+// includeClient — independent of each other, both checked by default
+// since 0.0.35 (decided with Liber): Clockify only keeps a client
+// together with its project, so a fresh install exports both. Only
+// affects data that never stored these keys (see docs/DECISIONS.md for
+// why Project isn't actually required).
 export interface ClockifySettings {
 	email: string;
 	includeProject: boolean;
@@ -87,8 +104,8 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	},
 	clockify: {
 		email: "",
-		includeProject: false,
-		includeClient: false,
+		includeProject: true,
+		includeClient: true,
 	},
 	logViewLocation: "sidebar",
 	exportsFolder: "task-tracker-exports",
@@ -123,11 +140,17 @@ export function isValidEmail(email: string): boolean {
 // project assigned", not an empty value.
 export type TaskProjectAssignments = Record<string, string>;
 
+// Task<->client link, live by tt-id, same rules as TaskProjectAssignments
+// and independent from it: a task can have a client and no project.
+export type TaskClientAssignments = Record<string, string>;
+
 export interface PluginState {
 	entries: TimeEntry[];
 	settings: PluginSettings;
 	projects: Project[];
 	taskProjects: TaskProjectAssignments;
+	clients: Client[];
+	taskClients: TaskClientAssignments;
 	// Data format mark (see DATA_FORMAT_VERSION in core/StateStore.ts).
 	// Independent from the plugin version.
 	formatVersion: number;

@@ -19,11 +19,12 @@ import {
 	TaskIdentifier,
 } from "../core/TaskIdentifier";
 import { t } from "../i18n";
-import { DeleteTaskResult, EntryUpdateResult, Project, TimeEntry } from "../types";
+import { Client, DeleteTaskResult, EntryUpdateResult, Project, TimeEntry } from "../types";
+import { ListKind } from "../core/ProjectManager";
 import { openDatePickerPopover, reanchorDatePickerPopover } from "./DatePickerPopover";
 import { EditTaskModal } from "./EditTaskModal";
 import { InlineTrackingBus } from "./InlineTrackingBus";
-import { openProjectPickerPopover } from "./ProjectPickerList";
+import { openProjectPickerPopover, PickerItem } from "./ProjectPickerList";
 import { SearchSuggestPopover } from "./SearchSuggestPopover";
 import { renderSessionInfo } from "./sessionEdit";
 import { applySearchFilter, getSearchSuggestions, SearchFilter } from "../core/TaskSearch";
@@ -51,8 +52,10 @@ export interface TimeLogViewActions {
 	// history and not just what the card currently shows.
 	getEntriesForTask(taskId: string): TimeEntry[];
 	getProjects(): Project[];
+	getItems(kind: ListKind): PickerItem[];
 	getProjectForTask(taskId: string): Project | null;
-	assignProject(taskId: string, projectId: string | null): Promise<void>;
+	getClientForTask(taskId: string): Client | null;
+	assign(kind: ListKind, taskId: string, id: string | null): Promise<void>;
 	// Same bus the badge next to the checkbox already uses (see
 	// InlineTaskControlExtension.ts): notifies every second while there's
 	// an active session, so that task's card (if it's in the visible
@@ -154,11 +157,13 @@ export class TimeLogView extends ItemView {
 	// paint completes, so later re-renders never show it.
 	private showSearchLoading = false;
 	// Deleting a whole task (its entire history by tt-id): pending
-	// confirmation, if any. Stored by taskId, not by card/day: if the
-	// same task appears in several cards (week view), the confirmation
-	// is reflected in all of them at once, since the action affects the
-	// entire history, not a single card.
-	private taskDeleteConfirmId: string | null = null;
+	// confirmation, if any. Stored by card ("dayKey|taskId", same key as
+	// the card's expansion), not by task: the same task appears once per
+	// day with activity in week/range views, and the confirmation opens
+	// only on the card where Delete was pressed. Opening it on another
+	// card closes the first one. Confirming still deletes the entire
+	// history, so all of that task's cards go away.
+	private taskDeleteConfirmKey: string | null = null;
 	// Every time the panel opens (a new view instance, see registerView
 	// in main.ts) it always starts on "today" in day view; there's no
 	// memory of the last date/mode seen in a previous open.
@@ -413,7 +418,7 @@ export class TimeLogView extends ItemView {
 		// Whole-task delete confirmation: steps out of the card's normal
 		// flow (no expandable header or detail), same as confirmingDelete
 		// does for an individual session — see renderTaskDeleteConfirm().
-		if (this.taskDeleteConfirmId === taskId) {
+		if (this.taskDeleteConfirmKey === `${dayKey}|${taskId}`) {
 			const card = list.createDiv({ cls: "task-time-tracker-log-row" });
 			this.renderTaskDeleteConfirm(card, taskId, label);
 			return;
@@ -445,6 +450,7 @@ export class TimeLogView extends ItemView {
 			? (taskEntries.find((entry) => entry.id === this.globalActiveEntry?.id) ?? null)
 			: null;
 		const project = this.actions.getProjectForTask(taskId);
+		const client = this.actions.getClientForTask(taskId);
 
 		const card = list.createDiv({ cls: "task-time-tracker-log-row" });
 		card.setAttribute("data-task-id", taskId);
@@ -558,14 +564,15 @@ export class TimeLogView extends ItemView {
 			infoBlock.createDiv({ text: t("log.noteNotFound"), cls: "task-time-tracker-log-task-snapshot" });
 		}
 
-		// Row 2 — Project/Client: only if a project is assigned (live
-		// link by tt-id, see ProjectManager#getProjectForTask). Inside
+		// Row 2 — Project/Client: only if a project or a client is
+		// assigned (live links by tt-id, independent of each other, see
+		// ProjectManager#getProjectForTask/getClientForTask). Inside
 		// infoBlock (no longer a loose sibling of the title row),
 		// indented with padding-left under the title's TEXT, not under
 		// the icon (see renderProjectRow()). No hover or click action of
 		// its own; reassigning still lives inside the Edit modal.
-		if (project) {
-			this.renderProjectRow(infoBlock, project);
+		if (project || client) {
+			this.renderProjectRow(infoBlock, project, client);
 		}
 
 		// Time Tracker Tab v2 redesign — ghost play / filled stop button, in
@@ -718,7 +725,7 @@ export class TimeLogView extends ItemView {
 		setTooltip(menuBtn, t("log.taskMenuAriaLabel"));
 		menuBtn.addEventListener("click", (evt) => {
 			evt.stopPropagation();
-			this.openTaskMenu(menuBtn, taskId, titleText, isMissing);
+			this.openTaskMenu(menuBtn, taskId, titleText, isMissing, expandKey);
 		});
 
 		// Measure AFTER titleLine and the rest of the outer row's
@@ -799,32 +806,45 @@ export class TimeLogView extends ItemView {
 	// padding applied there, the row ended up indented with no reason
 	// relative to the title. No hover, no click action — reassigning
 	// lives inside the Edit modal (Zone 2, kebab -> Edit).
-	// project null: only happens when renderTaskDeleteConfirm() calls it
-	// (see below) — unlike the normal card, which omits the whole row if
-	// no project is assigned, the delete confirmation shows it
-	// explicitly ("No project") since it's the step right before an
+	// The normal card omits the project item when the task has no project
+	// (it only shows the row at all if there's a project or a client).
+	// explicitNoProject: only renderTaskDeleteConfirm() (see below) shows
+	// "No project" explicitly, since it's the step right before an
 	// irreversible action, where explicit is preferred over implicit.
-	private renderProjectRow(container: HTMLElement, project: Project | null, indented = true): void {
+	// Order stays Project, Client (whether the card puts the client first
+	// is decided with the Historial filter, Block 2).
+	private renderProjectRow(
+		container: HTMLElement,
+		project: Project | null,
+		client: Client | null,
+		indented = true,
+		explicitNoProject = false,
+	): void {
 		const row = container.createDiv({ cls: "task-time-tracker-log-card-project-row" });
 		row.toggleClass("is-indented", indented);
 
-		if (!project) {
+		let projectTooltip: { el: HTMLElement; text: string } | null = null;
+		if (project) {
+			const projectSpan = row.createSpan({ cls: "task-time-tracker-log-card-project-item" });
+			setIcon(projectSpan.createSpan({ cls: "task-time-tracker-log-card-project-icon" }), "briefcase");
+			projectTooltip = {
+				el: projectSpan.createSpan({ text: project.name, cls: "task-time-tracker-log-card-project-name" }),
+				text: project.name,
+			};
+		} else if (explicitNoProject) {
 			const emptySpan = row.createSpan({ cls: "task-time-tracker-log-card-project-item" });
 			setIcon(emptySpan.createSpan({ cls: "task-time-tracker-log-card-project-icon" }), "briefcase");
 			emptySpan.createSpan({ text: t("log.editModalNoProject") });
-			return;
 		}
 
-		const projectSpan = row.createSpan({ cls: "task-time-tracker-log-card-project-item" });
-		setIcon(projectSpan.createSpan({ cls: "task-time-tracker-log-card-project-icon" }), "briefcase");
-		const projectText = projectSpan.createSpan({ text: project.name, cls: "task-time-tracker-log-card-project-name" });
-
-		const client = project.client;
 		let clientTooltip: { el: HTMLElement; text: string } | null = null;
 		if (client) {
 			const clientSpan = row.createSpan({ cls: "task-time-tracker-log-card-project-item" });
 			setIcon(clientSpan.createSpan({ cls: "task-time-tracker-log-card-project-icon" }), "user");
-			clientTooltip = { el: clientSpan.createSpan({ text: client, cls: "task-time-tracker-log-card-project-name" }), text: client };
+			clientTooltip = {
+				el: clientSpan.createSpan({ text: client.name, cls: "task-time-tracker-log-card-project-name" }),
+				text: client.name,
+			};
 		}
 
 		// Client did show a tooltip, Project didn't, with the same
@@ -838,7 +858,7 @@ export class TimeLogView extends ItemView {
 		// Client, always measured last (with Project already present),
 		// never suffered this. Fix: measure both only after inserting
 		// both spans, not the helper itself (see applyTruncationTooltip).
-		this.applyTruncationTooltip(projectText, project.name);
+		if (projectTooltip) this.applyTruncationTooltip(projectTooltip.el, projectTooltip.text);
 		if (clientTooltip) this.applyTruncationTooltip(clientTooltip.el, clientTooltip.text);
 	}
 
@@ -864,7 +884,7 @@ export class TimeLogView extends ItemView {
 	// Zone 2 — kebab menu: Edit (opens EditTaskModal with the task's
 	// entire history) and Delete (same active-session guard and the
 	// same whole-task delete confirmation as always).
-	private openTaskMenu(anchor: HTMLElement, taskId: string, label: string, isMissing: boolean): void {
+	private openTaskMenu(anchor: HTMLElement, taskId: string, label: string, isMissing: boolean, cardKey: string): void {
 		const menu = new Menu();
 		menu.addItem((item) =>
 			item
@@ -878,7 +898,7 @@ export class TimeLogView extends ItemView {
 				.setTitle(t("log.menuDelete"))
 				.setIcon("trash")
 				.setWarning(true)
-				.onClick(() => this.requestDeleteTask(taskId)),
+				.onClick(() => this.requestDeleteTask(taskId, cardKey)),
 		);
 		const rect = anchor.getBoundingClientRect();
 		menu.showAtPosition({ x: rect.left, y: rect.bottom });
@@ -887,13 +907,13 @@ export class TimeLogView extends ItemView {
 	// The active-session check uses this.getEntries() without scoping to
 	// a day/week — the task can have its active session today even
 	// though this particular card shows a different day (week view).
-	private requestDeleteTask(taskId: string): void {
+	private requestDeleteTask(taskId: string, cardKey: string): void {
 		const hasActive = this.getEntries().some((entry) => entry.taskId === taskId && entry.end === null);
 		if (hasActive) {
 			new Notice(t("log.deleteBlockedActive"));
 			return;
 		}
-		this.taskDeleteConfirmId = taskId;
+		this.taskDeleteConfirmKey = cardKey;
 		void this.render();
 	}
 
@@ -908,10 +928,13 @@ export class TimeLogView extends ItemView {
 			isMissing,
 			() => this.actions.getEntriesForTask(taskId),
 			this.getEntries,
-			() => this.actions.getProjects(),
-			this.actions.getProjectForTask(taskId),
+			(kind) => this.actions.getItems(kind),
 			{
-				assignProject: (id, projectId) => this.actions.assignProject(id, projectId),
+				projectId: this.actions.getProjectForTask(taskId)?.id ?? null,
+				clientId: this.actions.getClientForTask(taskId)?.id ?? null,
+			},
+			{
+				assign: (kind, id, itemId) => this.actions.assign(kind, id, itemId),
 				updateEntryTimes: (entryId, start, end) => this.actions.updateEntryTimes(entryId, start, end),
 				deleteEntry: (entryId) => this.actions.deleteEntry(entryId),
 			},
@@ -942,7 +965,13 @@ export class TimeLogView extends ItemView {
 		// renderProjectRow()). alignWithNoteIcon=false: this title has no
 		// note icon in front of it (unlike the card's), so the row must
 		// align flush, without the column gap reserved for that icon.
-		this.renderProjectRow(confirm, this.actions.getProjectForTask(taskId), false);
+		this.renderProjectRow(
+			confirm,
+			this.actions.getProjectForTask(taskId),
+			this.actions.getClientForTask(taskId),
+			false,
+			true,
+		);
 
 		const meta = confirm.createDiv({ cls: "task-time-tracker-log-meta" });
 		meta.createSpan({
@@ -969,13 +998,13 @@ export class TimeLogView extends ItemView {
 				if (!result.ok) {
 					new Notice(t("log.deleteBlockedActive"));
 				}
-				this.taskDeleteConfirmId = null;
+				this.taskDeleteConfirmKey = null;
 				void this.render();
 			});
 		});
 		const cancelBtn = actions.createEl("button", { text: t("log.cancel") });
 		cancelBtn.addEventListener("click", () => {
-			this.taskDeleteConfirmId = null;
+			this.taskDeleteConfirmKey = null;
 			void this.render();
 		});
 		// Default focus on "Cancelar", never on the destructive button —
@@ -1523,7 +1552,8 @@ export class TimeLogView extends ItemView {
 		filterBtn.addEventListener("click", () => {
 			openProjectPickerPopover({
 				anchorEl: filterBtn,
-				projects: this.actions.getProjects(),
+				kind: "project",
+				items: this.actions.getProjects(),
 				selectedId: this.projectFilterId,
 				showClearOption: false,
 				showNoProjectFilterOption: true,
