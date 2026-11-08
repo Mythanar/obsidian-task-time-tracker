@@ -37,6 +37,16 @@ export function nameKey(name: string): string {
 	return name.normalize("NFC").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
+// Leading, trailing and repeated spaces as no-break spaces: HTML collapses
+// repeated spaces, and a line could wrap right at a leading or trailing
+// one, so "“ Acme”" would read as "“" + a new line. A single space
+// between words stays a normal one, so long names still wrap.
+export function visibleSpaces(name: string): string {
+	return name
+		.replace(/^ +| +$/g, (run) => "\u00a0".repeat(run.length))
+		.replace(/ {2,}/g, (run) => " " + "\u00a0".repeat(run.length - 1));
+}
+
 export interface NameFusion {
 	kept: string;
 	merged: string[];
@@ -60,10 +70,11 @@ function pickWinner(spellings: Spelling[]): Spelling {
 	);
 }
 
-// Only spellings that still differ once trimmed count as a fusion worth
-// reporting ("Acme" and "Acme " are merged silently).
+// Every stored spelling other than the kept name is reported as it was,
+// spaces included: "Acme " and " Acme" were merged into "Acme" too, and
+// the notice must show it (see main.ts#migrationNoticeText).
 function fusionOf(spellings: Spelling[], kept: string): NameFusion | null {
-	const others = [...new Set(spellings.map((s) => s.raw.trim()))].filter((name) => name !== kept);
+	const others = [...new Set(spellings.map((s) => s.raw))].filter((name) => name !== kept);
 	return others.length > 0 ? { kept, merged: others } : null;
 }
 

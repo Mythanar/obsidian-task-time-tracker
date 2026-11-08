@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { ProjectManager } from "../src/core/ProjectManager";
 import { normalizeState, normalizeStateWithReport, StateStore } from "../src/core/StateStore";
+import { visibleSpaces } from "../src/core/ClientMigration";
 import { PluginState } from "../src/types";
 
 type Json = Record<string, unknown>;
@@ -103,11 +104,29 @@ describe("migration to separate clients", () => {
 			state.clients.map((c) => c.name),
 			["ACME", "Globex"],
 		);
-		assert.deepEqual(migration?.projectFusions, [{ kept: "Design", merged: ["design"] }]);
+		// "Design " is listed too: it was merged into "Design" (spaces).
+		assert.deepEqual(migration?.projectFusions, [{ kept: "Design", merged: ["design", "Design "] }]);
 		assert.deepEqual(migration?.clientFusions, [
 			{ kept: "ACME", merged: ["Acme"] },
 			{ kept: "Globex", merged: ["globex"] },
 		]);
+	});
+
+	it("reports merges that only differed in spaces, spaces kept", () => {
+		const { state, migration } = normalizeStateWithReport({
+			projects: [
+				{ id: "a", name: "Helpdesk", client: "Acme" },
+				{ id: "b", name: " Helpdesk", client: "Acme " },
+				{ id: "c", name: "Helpdesk  ", client: "Acme" },
+			],
+			taskProjects: { t1: "a", t2: "a", t3: "b" },
+		});
+		assert.deepEqual(
+			state.projects.filter((p) => !p.aliasOf).map((p) => p.name),
+			["Helpdesk"],
+		);
+		assert.deepEqual(migration?.projectFusions, [{ kept: "Helpdesk", merged: [" Helpdesk", "Helpdesk  "] }]);
+		assert.deepEqual(migration?.clientFusions, [{ kept: "Acme", merged: ["Acme "] }]);
 	});
 
 	it("is deterministic: two reads give the same ids", () => {
@@ -244,5 +263,15 @@ describe("separate client and project lists", () => {
 		await manager.assignProject("t2", "p1");
 		assert.equal(disk.saves(), saves);
 		assert.equal((disk.read().taskProjects as Json).t2, "p2");
+	});
+});
+
+describe("visibleSpaces (migration notice)", () => {
+	const nb = "\u00a0";
+	it("turns edge and repeated spaces into no-break spaces, keeps single ones", () => {
+		assert.equal(visibleSpaces(" Helpdesk"), `${nb}Helpdesk`);
+		assert.equal(visibleSpaces("Helpdesk  "), `Helpdesk${nb}${nb}`);
+		assert.equal(visibleSpaces("Data  Analysis"), `Data ${nb}Analysis`);
+		assert.equal(visibleSpaces("Product Redesign"), "Product Redesign");
 	});
 });

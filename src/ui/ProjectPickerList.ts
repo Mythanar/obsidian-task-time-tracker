@@ -2,12 +2,13 @@
 // "Project picker list" — shared component (search box + flat list of
 // projects or clients + selection), used by the Client and Project
 // selectors in the "Edit task" modal and by the Historial header's
-// project filter (see TimeLogView.ts#renderProjectFilter and
-// EditTaskModal.ts). One list kind per instance (kind), one line per
-// row. Always lives inside a floating popover (see
-// openProjectPickerPopover below): no caller mounts it standalone inline.
+// filter (see TimeLogView.ts#renderListFilter and EditTaskModal.ts). One
+// list kind per instance (kind), one line per row. Always lives inside a
+// floating popover: openProjectPickerPopover (one list) or
+// openFilterTabsPopover (Client | Project tabs, Historial filter). No
+// caller mounts it standalone inline.
 
-import { Modal, Platform, Scope, setIcon } from "obsidian";
+import { Modal, Platform, Scope, setIcon, setTooltip } from "obsidian";
 import { t, TranslationKey } from "../i18n";
 import { ListKind } from "../core/ProjectManager";
 import { positionPopover } from "./positionPopover";
@@ -44,6 +45,11 @@ export interface ProjectPickerListOptions {
 	showNoProjectFilterOption?: boolean;
 	noProjectFilterSelected?: boolean;
 	onSelect: (projectId: string | null) => void;
+	// Filter only: pressing the row that is already selected (an item or
+	// the "No project"/"No client" filter row) removes the filter instead
+	// of selecting it again. The Edit modal doesn't pass it: there, the
+	// "No project"/"No client" row is how a value is cleared.
+	onClearSelected?: () => void;
 }
 
 const SKELETON_ROW_COUNT = 3;
@@ -89,8 +95,19 @@ export class ProjectPickerList {
 		if (!listEl) return;
 		listEl.empty();
 
-		const { kind, items, selectedId, showClearOption, showNoProjectFilterOption, noProjectFilterSelected, onSelect } =
-			this.options;
+		const {
+			kind,
+			items,
+			selectedId,
+			showClearOption,
+			showNoProjectFilterOption,
+			noProjectFilterSelected,
+			onSelect,
+			onClearSelected,
+		} = this.options;
+		// Pressing a selected row clears the filter when the caller allows it.
+		const pick = (id: string | null, selected: boolean) => () =>
+			selected && onClearSelected ? onClearSelected() : onSelect(id);
 		const noneLabel = t(LABELS[kind].none);
 
 		if (items === null) {
@@ -116,7 +133,7 @@ export class ProjectPickerList {
 				label: noneLabel,
 				selected: !!noProjectFilterSelected,
 				isClear: true,
-				onClick: () => onSelect(null),
+				onClick: pick(null, !!noProjectFilterSelected),
 			});
 		}
 
@@ -134,11 +151,12 @@ export class ProjectPickerList {
 		}
 
 		for (const item of matches) {
+			const selected = item.id === selectedId;
 			this.renderRow(listEl, {
 				label: item.name,
-				selected: item.id === selectedId,
+				selected,
 				isClear: false,
-				onClick: () => onSelect(item.id),
+				onClick: pick(item.id, selected),
 			});
 		}
 	}
@@ -185,6 +203,29 @@ export interface ProjectPickerPopoverOptions {
 	modal?: Modal;
 }
 
+// One tab of the Historial filter popover (see openFilterTabsPopover).
+export interface FilterTab {
+	kind: ListKind;
+	label: string;
+	// This tab's filter is on: the tab shows a dot while another tab is
+	// the one open.
+	active: boolean;
+	items: PickerItem[];
+	selectedId: string | null;
+	noneSelected: boolean;
+	// id null: the "No client"/"No project" filter row.
+	onSelect: (id: string | null) => void;
+	onClear: () => void;
+}
+
+export interface FilterTabsPopoverOptions {
+	anchorEl: HTMLElement;
+	tabs: FilterTab[];
+	initialKind: ListKind;
+	// Remembered by the caller, so the popover reopens on the last tab.
+	onTabChange: (kind: ListKind) => void;
+}
+
 // At most one popover of this component open at a time across the whole
 // app (a single project picker visible at any moment, same as the MVP's
 // single active timer) — opening a new one closes the previous one.
@@ -197,46 +238,137 @@ export function closeProjectPickerPopover(): void {
 }
 
 export function openProjectPickerPopover(options: ProjectPickerPopoverOptions): void {
+	mountPopover(options.anchorEl, options.modal, (popoverEl, close) => {
+		const list = new ProjectPickerList(popoverEl, {
+			kind: options.kind,
+			items: options.items,
+			selectedId: options.selectedId,
+			showClearOption: options.showClearOption,
+			showNoProjectFilterOption: options.showNoProjectFilterOption,
+			noProjectFilterSelected: options.noProjectFilterSelected,
+			onSelect: (id) => {
+				options.onSelect(id);
+				close();
+			},
+		});
+		list.render();
+		positionPopover(popoverEl, options.anchorEl);
+		focusOnDesktop(list);
+	});
+}
+
+// Historial filter: Client | Project tabs over the same list. Picking a
+// row (or pressing the selected one again, which clears it) applies the
+// filter and closes the popover. A dot on a tab that isn't open says it
+// has a filter on.
+export function openFilterTabsPopover(options: FilterTabsPopoverOptions): void {
+	mountPopover(options.anchorEl, undefined, (popoverEl, close) => {
+		popoverEl.addClass("task-time-tracker-filter-tabs-popover");
+		const tabBar = popoverEl.createDiv({ cls: "task-time-tracker-filter-tabs", attr: { role: "tablist" } });
+		const listHost = popoverEl.createDiv({ cls: "task-time-tracker-filter-tabs-panel", attr: { role: "tabpanel" } });
+		let current = options.tabs.find((tab) => tab.kind === options.initialKind) ?? options.tabs[0];
+		if (!current) return;
+		let currentList: ProjectPickerList | null = null;
+
+		const renderTabs = () => {
+			tabBar.empty();
+			for (const tab of options.tabs) {
+				const isCurrent = tab === current;
+				const tabEl = tabBar.createEl("button", {
+					cls: "task-time-tracker-filter-tab",
+					attr: { role: "tab", "aria-selected": String(isCurrent) },
+				});
+				tabEl.toggleClass("is-current", isCurrent);
+				tabEl.createSpan({ text: tab.label });
+				if (tab.active && !isCurrent) {
+					const dot = tabEl.createSpan({
+						cls: "task-time-tracker-filter-tab-dot",
+						attr: { "aria-label": t("log.filterTabActive") },
+					});
+					setTooltip(dot, t("log.filterTabActive"));
+				}
+				tabEl.addEventListener("click", () => {
+					// Pressing the open tab moved the focus onto it: hand it
+					// back to the search box (desktop only, as on open).
+					if (tab === current) {
+						if (currentList) focusOnDesktop(currentList);
+						return;
+					}
+					current = tab;
+					options.onTabChange(tab.kind);
+					renderTabs();
+					renderList();
+				});
+			}
+		};
+
+		const renderList = () => {
+			const tab = current;
+			if (!tab) return;
+			listHost.empty();
+			const list = new ProjectPickerList(listHost, {
+				kind: tab.kind,
+				items: tab.items,
+				selectedId: tab.selectedId,
+				showClearOption: false,
+				showNoProjectFilterOption: true,
+				noProjectFilterSelected: tab.noneSelected,
+				onSelect: (id) => {
+					tab.onSelect(id);
+					close();
+				},
+				onClearSelected: () => {
+					tab.onClear();
+					close();
+				},
+			});
+			list.render();
+			currentList = list;
+			positionPopover(popoverEl, options.anchorEl);
+			focusOnDesktop(list);
+		};
+
+		renderTabs();
+		renderList();
+	});
+}
+
+// No automatic focus in the mobile app (phones and tablets): focusing
+// the search box opens the on-screen keyboard, which covers most of the
+// list. The full list stays visible and the keyboard only opens when the
+// user taps the search box. Desktop keeps the focus, so typing to filter
+// works right away.
+function focusOnDesktop(list: ProjectPickerList): void {
+	if (!Platform.isMobile) list.focusSearch();
+}
+
+// The floating shell shared by both popovers: toggling from its own
+// button, closing on an outside press or Escape, and the singleton.
+// `build` fills and positions the popover; it gets `close` for rows that
+// apply a choice.
+function mountPopover(
+	anchorEl: HTMLElement,
+	modal: Modal | undefined,
+	build: (popoverEl: HTMLElement, close: () => void) => void,
+): void {
 	// Click on the same button that already has its popover open: closes
 	// it (toggle) instead of opening an identical one on top.
-	if (activePopover && activePopover.anchorEl === options.anchorEl) {
+	if (activePopover && activePopover.anchorEl === anchorEl) {
 		activePopover.close();
 		return;
 	}
 	activePopover?.close();
 
-	const { modal } = options;
 	const popoverEl = (modal?.modalEl ?? document.body).createDiv({ cls: "task-time-tracker-project-picker-popover" });
-
-	const list = new ProjectPickerList(popoverEl, {
-		kind: options.kind,
-		items: options.items,
-		selectedId: options.selectedId,
-		showClearOption: options.showClearOption,
-		showNoProjectFilterOption: options.showNoProjectFilterOption,
-		noProjectFilterSelected: options.noProjectFilterSelected,
-		onSelect: (id) => {
-			options.onSelect(id);
-			close();
-		},
-	});
-	list.render();
-	positionPopover(popoverEl, options.anchorEl);
-	// No automatic focus in the mobile app (phones and tablets): focusing
-	// the search box opens the on-screen keyboard, which covers most of
-	// the list. The full list stays visible and the keyboard only opens
-	// when the user taps the search box. Desktop keeps the focus, so
-	// typing to filter works right away.
-	if (!Platform.isMobile) list.focusSearch();
 
 	const onOutsideMousedown = (evt: MouseEvent) => {
 		const target = evt.target as Node;
-		if (!popoverEl.contains(target) && !options.anchorEl.contains(target)) close();
+		if (!popoverEl.contains(target) && !anchorEl.contains(target)) close();
 	};
 	// Escape hands focus back to the button that opened the popover.
 	const closeOnEscape = () => {
 		close();
-		options.anchorEl.focus();
+		anchorEl.focus();
 	};
 	const onKeydown = (evt: KeyboardEvent) => {
 		if (evt.key === "Escape") closeOnEscape();
@@ -262,6 +394,8 @@ export function openProjectPickerPopover(options: ProjectPickerPopoverOptions): 
 		activePopover = null;
 	}
 
+	build(popoverEl, close);
+
 	// The mousedown of the very click that opened this popover already
 	// happened before this code runs (mousedown -> mouseup -> click), so
 	// registering the listener now doesn't immediately close it on
@@ -269,5 +403,5 @@ export function openProjectPickerPopover(options: ProjectPickerPopoverOptions): 
 	document.addEventListener("mousedown", onOutsideMousedown, true);
 	document.addEventListener("keydown", onKeydown, true);
 
-	activePopover = { anchorEl: options.anchorEl, close };
+	activePopover = { anchorEl, close };
 }

@@ -24,7 +24,7 @@ import { ListKind } from "../core/ProjectManager";
 import { openDatePickerPopover, reanchorDatePickerPopover } from "./DatePickerPopover";
 import { EditTaskModal } from "./EditTaskModal";
 import { InlineTrackingBus } from "./InlineTrackingBus";
-import { openProjectPickerPopover, PickerItem } from "./ProjectPickerList";
+import { FilterTab, openFilterTabsPopover, PickerItem } from "./ProjectPickerList";
 import { SearchSuggestPopover } from "./SearchSuggestPopover";
 import { renderSessionInfo } from "./sessionEdit";
 import { applySearchFilter, getSearchSuggestions, SearchFilter } from "../core/TaskSearch";
@@ -111,6 +111,13 @@ function formatDateChip(startMs: number, endMs: number): string {
 	return startMs === endMs ? format.format(startMs) : format.formatRange(startMs, endMs);
 }
 
+// "Since" label in Resultados without a date range: the day of the first
+// session, "3 mar 2025" / "Mar 3, 2025" — the header's date format
+// (formatRangeLabel) without the weekday, always with the year.
+function formatSinceDate(ms: number): string {
+	return new Date(ms).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
 // Resultados page size, in cards (one task on one day), not days (see
 // renderResultsSection()). Each loaded card's task is resolved against the
 // vault on every render (and "Cargar mas" re-renders every loaded page),
@@ -135,6 +142,18 @@ function cardsByDay(entries: TimeEntry[]): Map<number, Set<string>> {
 }
 
 const SEARCH_SUGGESTION_LIMIT = 8;
+
+// Client and project filters, in the plugin's single order (client
+// first): popover tabs, chips, empty-state labels.
+const LIST_FILTER_ORDER: ListKind[] = ["client", "project"];
+
+// One chip under the header (see TimeLogView#renderChip).
+interface FilterChip {
+	label: string;
+	// Lucide icon name: "user" for a client, "briefcase" for a project.
+	icon?: string;
+	onRemove: () => void;
+}
 
 type LogViewMode = "day" | "week" | "results";
 
@@ -169,17 +188,19 @@ export class TimeLogView extends ItemView {
 	// memory of the last date/mode seen in a previous open.
 	private viewMode: LogViewMode = "day";
 	private anchorDate: number = startOfDay(Date.now());
-	// Header's project filter (see renderProjectFilter()): kept in the
-	// component's memory, never persisted to data.json — every time the
-	// panel opens it starts with no filter, same as it always starts on
-	// "today"/day view (see the viewMode comment above).
-	private projectFilterId: string | null = null;
-	// "No project" filter (see renderProjectFilter()): separate from
-	// projectFilterId because null in projectFilterId already means "no
-	// filter" — this filter needs a third state (specific project / no
-	// filter / no project) that projectFilterId alone can't represent.
-	// Mutually exclusive with projectFilterId: never both active at once.
-	private projectFilterNoProject = false;
+	// Header's client and project filters (see renderListFilter()): kept
+	// in the component's memory, never persisted to data.json — every time
+	// the panel opens it starts with no filter, same as it always starts on
+	// "today"/day view (see the viewMode comment above). Per list: id = a
+	// client or project (its identity, so a rename shows at once), none =
+	// the "No client"/"No project" filter. The two are mutually exclusive;
+	// both off = no filter on that list. Client and project combine (AND).
+	private listFilters: Record<ListKind, { id: string | null; none: boolean }> = {
+		client: { id: null, none: false },
+		project: { id: null, none: false },
+	};
+	// The filter popover's open tab, remembered while the panel is open.
+	private filterTab: ListKind = "client";
 	// Resultados' date range (see renderResultsSection()), set by a range
 	// applied in the date-picker (see renderDateNav()). null = no date
 	// filter: Resultados covers the whole history (a search, or a project
@@ -191,7 +212,7 @@ export class TimeLogView extends ItemView {
 	// "loaded" (the "Cargar mas" button) — resets to 1 every time a new
 	// range or search is applied.
 	private resultsLoadedPages = 1;
-	// Where "Volver" (and closeResultsIfNoFilters) returns to: the Day/Week
+	// Where "Volver" returns to: the Day/Week
 	// position the user was on when Results was entered. Not overwritten
 	// when a new range or search is applied while already in Results.
 	private resultsReturnMode: "day" | "week" = "day";
@@ -298,8 +319,8 @@ export class TimeLogView extends ItemView {
 	// on a day other than today, see renderTrackingElsewhereIndicator) and
 	// the status bar footer's click, both of which must land on today's
 	// Day view (see "Visibilidad del tracking al navegar por días
-	// anteriores"). Clears the project filter too: otherwise an active
-	// filter that doesn't match the tracked task's project would hide the
+	// anteriores"). Clears the client and project filters too: otherwise
+	// an active filter that doesn't match the tracked task would hide the
 	// very row this navigation promises to reveal.
 	// taskId is null for the footer's click when there is no active
 	// session (it still always navigates to Today, just with nothing to
@@ -308,8 +329,7 @@ export class TimeLogView extends ItemView {
 		this.leaveResults();
 		this.viewMode = "day";
 		this.anchorDate = startOfDay(Date.now());
-		this.projectFilterId = null;
-		this.projectFilterNoProject = false;
+		this.clearListFilters();
 		this.closeSearchField();
 		this.pendingHighlightTaskId = taskId;
 		void this.render();
@@ -798,7 +818,7 @@ export class TimeLogView extends ItemView {
 		});
 	}
 
-	// Briefcase icon (project) + person icon (client, if any). Indented
+	// Person icon (client, if any) + briefcase icon (project). Indented
 	// with padding-left under the title's TEXT (see styles.css) — but
 	// ONLY on the normal card, whose title has a note icon in front.
 	// indented=false disables that padding for the delete confirmation
@@ -811,8 +831,8 @@ export class TimeLogView extends ItemView {
 	// explicitNoProject: only renderTaskDeleteConfirm() (see below) shows
 	// "No project" explicitly, since it's the step right before an
 	// irreversible action, where explicit is preferred over implicit.
-	// Order stays Project, Client (whether the card puts the client first
-	// is decided with the Historial filter, Block 2).
+	// Order: client, then project — the plugin's single order (decided in
+	// Block 2, same as the filter tabs and the chips).
 	private renderProjectRow(
 		container: HTMLElement,
 		project: Project | null,
@@ -822,6 +842,16 @@ export class TimeLogView extends ItemView {
 	): void {
 		const row = container.createDiv({ cls: "task-time-tracker-log-card-project-row" });
 		row.toggleClass("is-indented", indented);
+
+		let clientTooltip: { el: HTMLElement; text: string } | null = null;
+		if (client) {
+			const clientSpan = row.createSpan({ cls: "task-time-tracker-log-card-project-item" });
+			setIcon(clientSpan.createSpan({ cls: "task-time-tracker-log-card-project-icon" }), "user");
+			clientTooltip = {
+				el: clientSpan.createSpan({ text: client.name, cls: "task-time-tracker-log-card-project-name" }),
+				text: client.name,
+			};
+		}
 
 		let projectTooltip: { el: HTMLElement; text: string } | null = null;
 		if (project) {
@@ -837,29 +867,12 @@ export class TimeLogView extends ItemView {
 			emptySpan.createSpan({ text: t("log.editModalNoProject") });
 		}
 
-		let clientTooltip: { el: HTMLElement; text: string } | null = null;
-		if (client) {
-			const clientSpan = row.createSpan({ cls: "task-time-tracker-log-card-project-item" });
-			setIcon(clientSpan.createSpan({ cls: "task-time-tracker-log-card-project-icon" }), "user");
-			clientTooltip = {
-				el: clientSpan.createSpan({ text: client.name, cls: "task-time-tracker-log-card-project-name" }),
-				text: client.name,
-			};
-		}
-
-		// Client did show a tooltip, Project didn't, with the same
-		// helper: Project was measured (right here) before Client's span
-		// (its sibling in the same flex row, see
-		// .task-time-tracker-log-card-project-row) came to exist. At
-		// that instant the row's layout only has one item competing for
-		// space, so projectText.clientWidth comes out wider than it'll
-		// be once Client is also present — the helper decided (with a
-		// width that wasn't final yet) that no tooltip was needed.
-		// Client, always measured last (with Project already present),
-		// never suffered this. Fix: measure both only after inserting
-		// both spans, not the helper itself (see applyTruncationTooltip).
-		if (projectTooltip) this.applyTruncationTooltip(projectTooltip.el, projectTooltip.text);
+		// Both are measured only after inserting both spans: the first one
+		// measured before its sibling existed came out wider than its final
+		// width (one item competing for space instead of two), so it never
+		// got its tooltip (see applyTruncationTooltip).
 		if (clientTooltip) this.applyTruncationTooltip(clientTooltip.el, clientTooltip.text);
+		if (projectTooltip) this.applyTruncationTooltip(projectTooltip.el, projectTooltip.text);
 	}
 
 	// Native tooltip with the full text only if the content is really
@@ -1300,42 +1313,27 @@ export class TimeLogView extends ItemView {
 			void this.render();
 		});
 
-		this.renderProjectFilter(actions);
+		this.renderListFilter(actions);
 		this.renderFilterChips(nav);
-		this.renderProjectHistoryRow(nav);
+		this.renderFilterHistoryRow(nav);
 	}
 
-	// Day/Week with a project filtered: a row offering that project's whole
-	// history — the one entry to Resultados that needs neither a date nor a
-	// search. Never inside Resultados (it already covers that scope).
-	// Independent of the project popover, which still just filters the
-	// current day/week. Also takes the project chip's place in Day/Week
-	// (see renderFilterChips), so it carries that chip's "x" — the only way
-	// to drop the project filter there, since the popover has no "clear".
-	private renderProjectHistoryRow(nav: HTMLElement): void {
+	// Day/Week with a client or project filtered: a row with one chip per
+	// filter (client, then project, each with its own "x") and an action
+	// opening their whole history — the one entry to Resultados that needs
+	// neither a date nor a search. Never inside Resultados (it already
+	// covers that scope). Independent of the filter popover, which still
+	// just filters the current day/week. Stands in for the Results chips in
+	// Day/Week (see renderFilterChips). If chips and action don't fit on
+	// one line, the action wraps below and the chips ellipsize.
+	private renderFilterHistoryRow(nav: HTMLElement): void {
 		if (this.viewMode === "results") return;
-		if (this.projectFilterId === null && !this.projectFilterNoProject) return;
-
-		const projectName = this.projectFilterId
-			? (this.actions.getProjects().find((p) => p.id === this.projectFilterId)?.name ?? "")
-			: t("log.editModalNoProject");
+		const chips = this.listFilterChips();
+		if (chips.length === 0) return;
 
 		const row = nav.createDiv({ cls: "task-time-tracker-log-project-history" });
-		const label = row.createDiv({ cls: "task-time-tracker-log-project-history-label" });
-		setIcon(label.createSpan({ cls: "task-time-tracker-log-project-history-icon" }), "filter");
-		const nameEl = label.createSpan({ text: projectName, cls: "task-time-tracker-log-project-history-name" });
-		setTooltip(nameEl, projectName);
-		const removeBtn = label.createEl("button", {
-			cls: "task-time-tracker-log-chip-remove clickable-icon",
-		});
-		setIcon(removeBtn, "x");
-		removeBtn.setAttribute("aria-label", t("log.filterClearAriaLabel"));
-		setTooltip(removeBtn, t("log.filterClearAriaLabel"));
-		removeBtn.addEventListener("click", () => {
-			this.projectFilterId = null;
-			this.projectFilterNoProject = false;
-			void this.render();
-		});
+		const chipsEl = row.createDiv({ cls: "task-time-tracker-log-project-history-chips" });
+		for (const chip of chips) this.renderChip(chipsEl, chip);
 
 		const action = row.createEl("button", { cls: "task-time-tracker-log-project-history-action" });
 		action.createSpan({ text: t("log.projectHistoryAction") });
@@ -1443,27 +1441,15 @@ export class TimeLogView extends ItemView {
 	}
 
 	// One chip per active filter, below the header row — Resultados only.
-	// In Day/Week the only possible filter is the project, and the "View
-	// full history" row already shows it (with its own "x"), so a chip
-	// there would just duplicate it (see renderProjectHistoryRow). Order:
-	// project, text, date. Each "x" removes only its own filter;
-	// closeResultsIfNoFilters then decides whether Resultados survives.
+	// In Day/Week the only possible filters are client and project, and the
+	// "View full history" row already shows them (with their own "x"), so
+	// chips there would just duplicate it (see renderFilterHistoryRow).
+	// Order: client, project, text, date. Each "x" removes only its own
+	// filter and never leaves Resultados: with the last one gone it shows
+	// the whole history unfiltered, and "Volver" is the way back.
 	private renderFilterChips(nav: HTMLElement): void {
 		if (this.viewMode !== "results") return;
-		const chips: Array<{ label: string; onRemove: () => void }> = [];
-
-		if (this.projectFilterId !== null || this.projectFilterNoProject) {
-			const project = this.projectFilterId
-				? this.actions.getProjects().find((p) => p.id === this.projectFilterId)
-				: undefined;
-			chips.push({
-				label: project ? project.name : t("log.editModalNoProject"),
-				onRemove: () => {
-					this.projectFilterId = null;
-					this.projectFilterNoProject = false;
-				},
-			});
-		}
+		const chips: FilterChip[] = this.listFilterChips();
 
 		if (this.searchFilter) {
 			chips.push({
@@ -1476,9 +1462,9 @@ export class TimeLogView extends ItemView {
 
 		// Any Resultados with a date range has this chip — whether the range
 		// scopes a search or came straight from the calendar. Removing it
-		// widens Resultados to the whole history (search/project kept);
-		// with no other filter left, Resultados closes.
-		if (this.viewMode === "results" && this.resultsRangeStart !== null && this.resultsRangeEnd !== null) {
+		// widens Resultados to the whole history (search/filters kept).
+		const hasRange = this.resultsRangeStart !== null && this.resultsRangeEnd !== null;
+		if (this.resultsRangeStart !== null && this.resultsRangeEnd !== null) {
 			chips.push({
 				label: formatDateChip(this.resultsRangeStart, this.resultsRangeEnd),
 				onRemove: () => {
@@ -1489,22 +1475,116 @@ export class TimeLogView extends ItemView {
 			});
 		}
 
-		if (chips.length === 0) return;
+		// Without a range, the date chip's slot says where "the whole
+		// history" starts: the first session ever, whatever the filters.
+		// Plain text, no "x": there's nothing to remove.
+		const firstStart = hasRange ? null : this.firstSessionStart();
+		if (chips.length === 0 && firstStart === null) return;
 
 		const row = nav.createDiv({ cls: "task-time-tracker-log-chips" });
-		for (const chip of chips) {
-			const chipEl = row.createDiv({ cls: "task-time-tracker-log-chip" });
-			chipEl.createSpan({ text: chip.label, cls: "task-time-tracker-log-chip-label" });
-			setTooltip(chipEl, chip.label);
-			const removeBtn = chipEl.createEl("button", { cls: "task-time-tracker-log-chip-remove clickable-icon" });
-			setIcon(removeBtn, "x");
-			removeBtn.setAttribute("aria-label", t("log.filterClearAriaLabel"));
-			removeBtn.addEventListener("click", () => {
-				chip.onRemove();
-				this.closeResultsIfNoFilters();
-				void this.render();
+		for (const chip of chips) this.renderChip(row, chip);
+		if (firstStart !== null) {
+			row.createSpan({
+				text: t("log.resultsSince", { date: formatSinceDate(firstStart) }),
+				cls: "task-time-tracker-log-results-since",
 			});
 		}
+	}
+
+	// Start of the earliest session in the whole history, or null if none.
+	private firstSessionStart(): number | null {
+		let first: number | null = null;
+		for (const entry of this.getEntries()) {
+			if (first === null || entry.start < first) first = entry.start;
+		}
+		return first;
+	}
+
+	// A filter chip: optional icon (person = client, briefcase = project),
+	// label (ellipsized, full text in the tooltip) and its "x".
+	private renderChip(container: HTMLElement, chip: FilterChip): void {
+		const chipEl = container.createDiv({ cls: "task-time-tracker-log-chip" });
+		if (chip.icon) setIcon(chipEl.createSpan({ cls: "task-time-tracker-log-chip-icon" }), chip.icon);
+		chipEl.createSpan({ text: chip.label, cls: "task-time-tracker-log-chip-label" });
+		setTooltip(chipEl, chip.label);
+		const removeBtn = chipEl.createEl("button", { cls: "task-time-tracker-log-chip-remove clickable-icon" });
+		setIcon(removeBtn, "x");
+		removeBtn.setAttribute("aria-label", t("log.filterClearAriaLabel"));
+		setTooltip(removeBtn, t("log.filterClearAriaLabel"));
+		removeBtn.addEventListener("click", () => {
+			chip.onRemove();
+			this.resultsLoadedPages = 1;
+			void this.render();
+		});
+	}
+
+	// Client first, then project (the plugin's single order).
+	private listFilterChips(): FilterChip[] {
+		const chips: FilterChip[] = [];
+		for (const kind of LIST_FILTER_ORDER) {
+			if (!this.hasListFilter(kind)) continue;
+			chips.push({
+				label: this.listFilterName(kind),
+				icon: kind === "client" ? "user" : "briefcase",
+				onRemove: () => this.clearListFilter(kind),
+			});
+		}
+		return chips;
+	}
+
+	private hasListFilter(kind?: ListKind): boolean {
+		if (!kind) return this.hasListFilter("client") || this.hasListFilter("project");
+		const filter = this.listFilters[kind];
+		return filter.id !== null || filter.none;
+	}
+
+	private clearListFilter(kind: ListKind): void {
+		this.listFilters[kind] = { id: null, none: false };
+	}
+
+	private clearListFilters(): void {
+		this.clearListFilter("client");
+		this.clearListFilter("project");
+	}
+
+	// The filtered client's or project's current name (by id, so a rename
+	// shows at once), or "No client"/"No project".
+	private listFilterName(kind: ListKind): string {
+		const filter = this.listFilters[kind];
+		if (filter.none) return t(kind === "client" ? "log.editModalNoClient" : "log.editModalNoProject");
+		return this.actions.getItems(kind).find((item) => item.id === filter.id)?.name ?? "";
+	}
+
+	// Every active filter's name, client first: "Acme · Data Analysis".
+	private listFiltersLabel(): string {
+		return LIST_FILTER_ORDER.filter((kind) => this.hasListFilter(kind))
+			.map((kind) => this.listFilterName(kind))
+			.join(" · ");
+	}
+
+	// A filter pointing to a client or project that no longer exists
+	// (deleted in Settings, or on another device) goes away on its own,
+	// instead of leaving an empty chip that hides everything.
+	private dropStaleListFilters(): void {
+		for (const kind of LIST_FILTER_ORDER) {
+			const id = this.listFilters[kind].id;
+			if (id !== null && !this.actions.getItems(kind).some((item) => item.id === id)) this.clearListFilter(kind);
+		}
+	}
+
+	// Whether a task passes the client and project filters (AND).
+	private passesListFilters(taskId: string): boolean {
+		const client = this.listFilters.client;
+		if (client.none || client.id !== null) {
+			const clientId = this.actions.getClientForTask(taskId)?.id ?? null;
+			if (client.none ? clientId !== null : clientId !== client.id) return false;
+		}
+		const project = this.listFilters.project;
+		if (project.none || project.id !== null) {
+			const projectId = this.actions.getProjectForTask(taskId)?.id ?? null;
+			if (project.none ? projectId !== null : projectId !== project.id) return false;
+		}
+		return true;
 	}
 
 	// Clears the state that only exists inside Resultados (its date range
@@ -1525,65 +1605,66 @@ export class TimeLogView extends ItemView {
 		this.anchorDate = this.resultsReturnAnchor;
 	}
 
-	// Resultados never exists without a filter: once the last one (date
-	// range, search or project) is removed, it closes back to where it was
-	// entered from.
-	private closeResultsIfNoFilters(): void {
-		if (this.viewMode !== "results") return;
-		const hasFilter =
-			this.resultsRangeStart !== null ||
-			this.searchFilter !== null ||
-			this.projectFilterId !== null ||
-			this.projectFilterNoProject;
-		if (!hasFilter) this.exitResults();
-	}
-
-	// Project filter button: icon-only in every state, tinted when a
-	// project (or "No project") is selected. The value and its "x" live in
-	// the filter chip (see renderFilterChips), not here.
-	private renderProjectFilter(actions: HTMLElement): void {
+	// Filter button: icon-only in every state, tinted when a client or
+	// project filter (or "No client"/"No project") is on. Opens Client |
+	// Project tabs (see ProjectPickerList.ts#openFilterTabsPopover) on the
+	// last tab used. The values and their "x" live in the chips (see
+	// renderFilterChips and renderFilterHistoryRow), not here.
+	private renderListFilter(actions: HTMLElement): void {
 		const filterBtn = actions.createEl("button", {
 			cls: "task-time-tracker-log-header-icon-btn task-time-tracker-icon-btn",
 		});
-		filterBtn.toggleClass("is-active", this.projectFilterId !== null || this.projectFilterNoProject);
+		filterBtn.toggleClass("is-active", this.hasListFilter());
 		filterBtn.setAttribute("aria-label", t("log.filterButton"));
 		setTooltip(filterBtn, t("log.filterButton"));
 		setIcon(filterBtn, "filter");
 		filterBtn.addEventListener("click", () => {
-			openProjectPickerPopover({
-				anchorEl: filterBtn,
-				kind: "project",
-				items: this.actions.getProjects(),
-				selectedId: this.projectFilterId,
-				showClearOption: false,
-				showNoProjectFilterOption: true,
-				noProjectFilterSelected: this.projectFilterNoProject,
-				onSelect: (projectId) => {
-					this.projectFilterId = projectId;
-					this.projectFilterNoProject = projectId === null;
+			const tabs: FilterTab[] = LIST_FILTER_ORDER.map((kind) => ({
+				kind,
+				label: t(kind === "client" ? "log.editModalClientLabel" : "log.editModalProjectLabel"),
+				active: this.hasListFilter(kind),
+				items: this.actions.getItems(kind),
+				selectedId: this.listFilters[kind].id,
+				noneSelected: this.listFilters[kind].none,
+				onSelect: (id) => {
+					this.listFilters[kind] = { id, none: id === null };
 					void this.render();
+				},
+				onClear: () => {
+					this.clearListFilter(kind);
+					this.resultsLoadedPages = 1;
+					void this.render();
+				},
+			}));
+			openFilterTabsPopover({
+				anchorEl: filterBtn,
+				tabs,
+				initialKind: this.filterTab,
+				onTabChange: (kind) => {
+					this.filterTab = kind;
 				},
 			});
 		});
 	}
 
-	// Replaces the normal day/week empty state only when a project
-	// filter is active and the whole visible range (the day, or the
-	// week's 7 days) has no session of that project — a lone empty day
+	// Replaces the normal day/week empty state only when a client or
+	// project filter is active and the whole visible range (the day, or
+	// the week's 7 days) has no session passing it — a lone empty day
 	// inside a week with results on other days still shows the normal
-	// "No sessions this day" (see render()).
+	// "No sessions this day" (see render()). With both filters, their
+	// names go together: "No tasks for Acme · Data Analysis today".
 	private renderFilteredEmptyState(container: Element): void {
-		const projectName = this.projectFilterNoProject
-			? t("log.editModalNoProject")
-			: (this.actions.getProjects().find((p) => p.id === this.projectFilterId)?.name ?? "");
 		const key = this.viewMode === "day" ? "log.filterEmptyDay" : "log.filterEmptyWeek";
-
 		const wrap = container.createDiv({ cls: "task-time-tracker-log-filter-empty" });
-		wrap.createEl("p", { text: t(key, { project: projectName }), cls: "task-time-tracker-log-empty-day" });
-		const clearBtn = wrap.createEl("button", { text: t("log.filterRemoveButton") });
+		wrap.createEl("p", { text: t(key, { project: this.listFiltersLabel() }), cls: "task-time-tracker-log-empty-day" });
+		// Both filters on: the existing plural label, since it removes both.
+		const both = this.hasListFilter("client") && this.hasListFilter("project");
+		const clearBtn = wrap.createEl("button", {
+			text: t(both ? "log.resultsFilterRemoveButton" : "log.filterRemoveButton"),
+			cls: "task-time-tracker-log-filter-remove-btn",
+		});
 		clearBtn.addEventListener("click", () => {
-			this.projectFilterId = null;
-			this.projectFilterNoProject = false;
+			this.clearListFilters();
 			void this.render();
 		});
 	}
@@ -1779,27 +1860,28 @@ export class TimeLogView extends ItemView {
 			return;
 		}
 
-		// Project filter (see renderProjectFilter()): scopes the ENTIRE
-		// visible listing (header total, navigation included) to entries
-		// of tasks assigned to that project — allEntries (unfiltered) is
-		// kept above only to decide the plugin's global empty state ("No
-		// sessions recorded yet"), which has nothing to do with the
-		// filter.
-		const projectEntries = this.projectFilterNoProject
-			? allEntries.filter((entry) => this.actions.getProjectForTask(entry.taskId) === null)
-			: this.projectFilterId
-				? allEntries.filter((entry) => this.actions.getProjectForTask(entry.taskId)?.id === this.projectFilterId)
-				: allEntries;
+		// Client and project filters (see renderListFilter()): scope the
+		// ENTIRE visible listing (header total, navigation included) to
+		// entries of tasks that pass both — allEntries (unfiltered) is kept
+		// above only to decide the plugin's global empty state ("No
+		// sessions recorded yet"), which has nothing to do with the filter.
+		this.dropStaleListFilters();
+		const projectEntries = this.hasListFilter()
+			? allEntries.filter((entry) => this.passesListFilters(entry.taskId))
+			: allEntries;
 
 		// Search (see core/TaskSearch.ts) narrows the same listing further —
-		// text AND project AND Resultados' date range. Suggestions, though,
-		// come from the whole history, ignoring both the project filter and
+		// text AND client AND project AND Resultados' date range. The text
+		// only matches the task's name and tt-id. Suggestions, though, come
+		// from the whole history, ignoring the client/project filters and
 		// the date range: a list silently cut down made tasks outside them
-		// look like they didn't exist. Picking one never touches the project
-		// or date chips — the user set them — so the combination can
-		// legitimately come back empty.
+		// look like they didn't exist. Picking one never touches the
+		// client, project or date chips — the user set them — so the
+		// combination can legitimately come back empty.
 		this.searchableEntries = allEntries;
-		const visibleEntries = this.searchFilter ? applySearchFilter(projectEntries, this.searchFilter) : projectEntries;
+		const visibleEntries = this.searchFilter
+			? applySearchFilter(projectEntries, this.searchFilter)
+			: projectEntries;
 
 		const titleRow = container.createDiv({ cls: "task-time-tracker-log-title-row" });
 		const titleCol = titleRow.createDiv({ cls: "task-time-tracker-log-title-col" });
@@ -1820,7 +1902,7 @@ export class TimeLogView extends ItemView {
 		const rangeEntries = visibleEntries.filter((entry) => entry.start >= rangeStart && entry.start < rangeEnd);
 		const rangeHasEntries = rangeEntries.length > 0;
 
-		if ((this.projectFilterId || this.projectFilterNoProject) && !rangeHasEntries) {
+		if (this.hasListFilter() && !rangeHasEntries) {
 			this.renderFilteredEmptyState(container);
 		} else {
 			// Resolved once for the whole range (single day, or all 7 of
@@ -1951,8 +2033,9 @@ export class TimeLogView extends ItemView {
 	// "Quitar filtros" (plural): Resultados' empty state can be due to the
 	// search, the date range, the project/"No project" filter, or a
 	// combination — there's no way to tell the cause apart, so the button
-	// clears them all and returns to where Resultados was entered from
-	// (same destination as "Volver"). The search message is a basic
+	// clears them all and stays in Resultados, on the whole history
+	// unfiltered, like removing the last chip ("Volver" is the way back
+	// to Day/Week). The search message is a basic
 	// placeholder; the final empty-state copy is Bloque 5.
 	private renderResultsEmptyState(container: Element): void {
 		const wrap = container.createDiv({ cls: "task-time-tracker-log-results-empty" });
@@ -1970,20 +2053,28 @@ export class TimeLogView extends ItemView {
 
 		if (this.searchFilter) {
 			// "No project" has its own wording: dropping its label into the
-			// named-project template read "No tasks from No project…".
+			// named-project template read "No tasks from No project…". Any
+			// client filter (alone or with a project) uses the generic
+			// "with the active filters" wording instead of one message per
+			// combination.
 			const hasRange = rangeStart !== null && rangeEnd !== null;
-			const project = this.actions.getProjects().find((p) => p.id === this.projectFilterId)?.name ?? "";
-			const key = this.projectFilterNoProject
+			const projectFilter = this.listFilters.project;
+			const project = this.listFilterName("project");
+			const key = this.hasListFilter("client")
 				? hasRange
-					? "log.searchEmpty.textNoProjectRange"
-					: "log.searchEmpty.textNoProject"
-				: this.projectFilterId !== null
+					? "log.searchEmpty.textFiltersRange"
+					: "log.searchEmpty.textFilters"
+				: projectFilter.none
 					? hasRange
-						? "log.searchEmpty.textProjectRange"
-						: "log.searchEmpty.textProject"
-					: hasRange
-						? "log.searchEmpty.textRange"
-						: "log.searchEmpty.text";
+						? "log.searchEmpty.textNoProjectRange"
+						: "log.searchEmpty.textNoProject"
+					: projectFilter.id !== null
+						? hasRange
+							? "log.searchEmpty.textProjectRange"
+							: "log.searchEmpty.textProject"
+						: hasRange
+							? "log.searchEmpty.textRange"
+							: "log.searchEmpty.text";
 			textEl.setText(t(key, { query: this.searchFilter.query, project }));
 		} else if (rangeStart !== null && rangeEnd !== null) {
 			const sameMonth =
@@ -2000,11 +2091,14 @@ export class TimeLogView extends ItemView {
 			textEl.setText(t("log.resultsEmptyGeneric"));
 		}
 
-		const clearBtn = wrap.createEl("button", { text: t("log.resultsFilterRemoveButton") });
+		const clearBtn = wrap.createEl("button", {
+			text: t("log.resultsFilterRemoveButton"),
+			cls: "task-time-tracker-log-filter-remove-btn",
+		});
 		clearBtn.addEventListener("click", () => {
-			this.projectFilterId = null;
-			this.projectFilterNoProject = false;
-			this.exitResults();
+			this.clearListFilters();
+			this.leaveResults();
+			this.resultsLoadedPages = 1;
 			void this.render();
 		});
 	}

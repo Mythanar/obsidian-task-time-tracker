@@ -2,7 +2,7 @@ import { Editor, MarkdownFileInfo, MarkdownView, Menu, Notice, Plugin, TAbstract
 import { TrackingEngine } from "./core/TrackingEngine";
 import { ProjectManager } from "./core/ProjectManager";
 import { DATA_FORMAT_VERSION, StateStore } from "./core/StateStore";
-import { MigrationReport } from "./core/ClientMigration";
+import { MigrationReport, visibleSpaces } from "./core/ClientMigration";
 import {
 	extractCheckboxState,
 	extractTaskId,
@@ -364,7 +364,10 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	}
 
 	// The message's paragraphs, then the merged names, one line each, so a
-	// long list stays readable.
+	// long list stays readable. The names keep their spaces inside the
+	// quotes (see visibleSpaces), so a merge that only differed in spaces
+	// is visible. A long list scrolls inside the notice instead of running
+	// off the screen.
 	private migrationNoticeText(report: MigrationReport | null): DocumentFragment {
 		const fusions = [
 			...(report?.clientFusions ?? []).map((f) => ({ ...f, kind: t("notice.migrationClient") })),
@@ -374,9 +377,10 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		if (fusions.length > 0) {
 			const block = fragment.createDiv({ cls: "task-time-tracker-notice-paragraph" });
 			block.createDiv({ text: t("notice.migrationMerged") });
-			const quote = (name: string) => t("notice.migrationQuoted", { name });
+			const quote = (name: string) => t("notice.migrationQuoted", { name: visibleSpaces(name) });
+			const list = block.createDiv({ cls: "task-time-tracker-notice-fusions" });
 			for (const fusion of fusions) {
-				block.createDiv({ text: `• ${fusion.kind} ${quote(fusion.kept)} ← ${fusion.merged.map(quote).join(", ")}` });
+				list.createDiv({ text: `• ${fusion.kind} ${quote(fusion.kept)} ← ${fusion.merged.map(quote).join(", ")}` });
 			}
 		}
 		return fragment;

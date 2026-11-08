@@ -443,8 +443,11 @@ export class SettingsTab extends PluginSettingTab {
 				type: "group",
 				heading: t("settings.projects.heading"),
 				items: [
+					// Each row needs its own name: Obsidian keys rows by name
+					// and logs "duplicate setting key" otherwise. Neither name
+					// is shown (makeFullWidthRow empties the row).
 					{
-						name: t("settings.projects.heading"),
+						name: t("settings.projects.banner"),
 						searchable: false,
 						render: (setting) => this.renderProjectsBannerRow(setting),
 					},
