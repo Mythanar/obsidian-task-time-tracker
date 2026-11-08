@@ -1946,3 +1946,114 @@ the two-device simulation (Block 8).
   sees no overwrite and shows no notice. But assigning a project from
   0.0.34 doesn't touch `taskClients`, so that task ends up without a
   client. Documented in the CHANGELOG and README; not handled in code.
+
+## Independent client — Block 2: History filter by client and project (0.0.35)
+
+Board 5 of the "Cliente independiente" canvas. Decisions taken with Liber
+before building (7 Nov 2026):
+
+- **One funnel, two tabs.** The filter popover has Client | Project tabs
+  (`openFilterTabsPopover` in ProjectPickerList.ts, sharing the popover
+  shell with the single-list picker). Each tab is the existing list with
+  its search box and a fixed "No client"/"No project" row. Picking a row
+  applies the filter and closes the popover; pressing the selected row
+  again clears it (`onClearSelected`, filter only: the Edit modal clears
+  with its "No …" row). A dot (accent color) marks the tab that isn't open
+  when it has a filter on. The popover reopens on the last tab used while
+  the panel is open (first time: Client).
+- **State.** `listFilters` holds, per list, the id (identity, not name)
+  or the "none" filter, in memory only, like the old project filter. Both
+  combine with AND, with the text search and with the date range.
+- **Chips.** Results: client, project, text, date, each with its "x";
+  client and project chips carry their icon. Day/Week: the "View full
+  history" row now holds one chip per filter plus the action, which opens
+  Results with those filters. On a narrow panel the action wraps below and
+  the chips ellipsize (chosen over a separate chip row, which would take
+  one more line in the sidebar).
+- **Rename / delete with a filter on.** A rename shows at once (names are
+  read by id on each render, and Settings refreshes the panel). A filter
+  whose client or project no longer exists is dropped on the next render
+  (`dropStaleListFilters`), and Results stays open even if it was the
+  last filter (see "Results stays open" below). Dropping it also fixes
+  the project filter, which used to stay stuck on a deleted project.
+- **Search stays name + tt-id only (revised 8 Nov 2026).** A first build
+  also matched the client's name, without highlighting it. Block 2 QA
+  showed that filtering by a word you can't see in the results is
+  confusing, and the funnel already filters by client explicitly, so it
+  was removed before release. Project names were never searched (0.0.33
+  and 0.0.34 matched name and tt-id only). Keeping one of the two would
+  make client and project behave differently for no visible reason, so
+  neither is searched; the funnel is the way to narrow by either.
+- **Empty states.** Day/Week reuses "No tasks for {project} today/this
+  week" with the active names joined ("Acme · Data Analysis"); its button
+  says "Remove filters" when both are on. A search with a client filter
+  uses the new generic "…with the active filters" text instead of one
+  message per combination.
+- **Card order.** Client before project, the plugin's single order.
+- **Mobile.** The tabs are 40 px tall; the search box isn't focused on open
+  or on a tab switch (Block 1 rule), and pressing the open tab hands the
+  focus back to the search box on desktop. The current tab uses
+  `--interactive-normal`: the popover's own background is black on mobile
+  and made the current tab read as a hole.
+- **Results stays open when the last filter goes (8 Nov 2026).** Until
+  now Results never existed without a filter: removing the last chip
+  (client, project, text or date), pressing the selected row again in the
+  funnel, or "Remove filters" in its empty state went back to Day/Week.
+  0.0.34 did the same with the project filter. Block 2 QA found it
+  unexpected: removing the text chip should not take the user out of the
+  view, and going back also changed the dates shown without the user
+  asking. Now every one of those stays in Results, which then shows the
+  whole history unfiltered. The back arrow is the only way back to
+  Day/Week, an explicit action. `closeResultsIfNoFilters` is gone.
+- **"Since" label (8 Nov 2026).** Results with no date range had nothing
+  saying what "the whole history" covers, which mattered more once
+  Results can show it with no chip at all. The date chip's slot now
+  shows "Since 3 mar 2025" / "Since Mar 3, 2025": faint plain text with no
+  ×, since there is nothing to remove. The date is the first session of
+  the whole history, not of the filtered results, because the label
+  describes the range. Format: the header's day format without the
+  weekday, always with the year, and the same locale as the other dates.
+  No tooltip. Hidden when there are no sessions.
+
+## Settings — "duplicate setting key" console error (0.0.35, 8 Nov 2026)
+
+Found in the pre-release console check (Block 9). Obsidian 1.15 keys each
+row of `getSettingDefinitions()` by its name and logs "duplicate setting
+key" when two rows share one. The "Clients & projects" group had two
+full-width rows (banner and lists) both named after the heading, since the
+declarative settings were adopted in August, so 0.0.34 had it too. No
+visible effect (the plugin never calls `update()`), but it showed in red
+on every opening of the settings. The banner row is now named after the
+banner text; neither name is displayed, as `makeFullWidthRow` empties the
+row, and both rows stay out of search.
+
+## Migration notice — merges by spaces and long lists (0.0.35, 8 Nov 2026)
+
+Two findings from the migration test with real data (on a disposable
+copy, deleted afterwards).
+
+- **Merges that only differed in spaces are listed.** `fusionOf` used to
+  trim each spelling before comparing it with the kept name, so " Acme"
+  and "Acme  " were merged without a word and "sales " showed as
+  "sales", hiding why it was merged. Every stored spelling other than the
+  kept name is now reported as it was. In the notice each name stays in
+  its quotes with its spaces visible (`visibleSpaces` in
+  ClientMigration.ts): leading, trailing and repeated spaces become
+  no-break spaces, because HTML collapses repeated spaces and a line
+  could wrap right at an edge space, leaving a lone "“" at the end of a
+  line. A single space between words stays normal, so long names still
+  wrap. No new text.
+- **Long lists scroll inside the notice.** The list of merges (not the
+  explanation above it) has `max-height: 40vh` and scrolls. Plan B, a
+  list cut at about 8 lines plus "…and N more merges", was not needed:
+  in real Obsidian (Tester, synthetic data), the mouse wheel scrolls the
+  list on desktop, and on simulated mobile a touch drag scrolls it (with
+  touch emulation on; the same drag scrolls a plain control element, and
+  CDP's scroll gesture moved neither, so that tool was the problem).
+  Obsidian's own `touchstart` handler on the notice doesn't cancel the
+  gesture, and the notice stays open while scrolling. With 50 merged
+  names the notice stays on screen in a 600 px high window and on a
+  phone-size screen. Notices with few merges, none, and the other two
+  persistent notices (older version, newer version) look as before; the
+  notice colors come from Obsidian and are the same in light and dark.
+

@@ -12,7 +12,7 @@ A local-first Obsidian plugin for **tracking time directly on the checkboxes in 
  <a href="https://community.obsidian.md/plugins/task-time-tracker">➔ Install it from the Obsidian Community Plugins directory.</a>
 
 
-<img src="docs/images/obsidian-dark-29.png" alt="Task Time Tracker plugin shown in Obsidian, with a note open and the History panel visible" width="100%" style="max-width:800px; margin-bottom:1rem; border-radius:10px;">
+<img src="docs/images/obsidian-dark-35.png" alt="Task Time Tracker plugin shown in Obsidian, with a note open and the History panel visible" width="100%" style="max-width:800px; margin-bottom:1rem; border-radius:10px;">
 
 ## Contents
 
@@ -96,29 +96,29 @@ Tasks you tracked with an older version of the plugin may still have the identif
 - **Plays nicely with Dataview, but never depends on it** — an optional, subtle-by-default identifier keeps your history linked to each task and makes it queryable, without cluttering your notes.
 - **A clear history** — a dedicated panel with per-task cards, day/week navigation or any custom date range, task search by name or `tt-id`, and inline editing or deletion of sessions.
 - **Resume tracking without leaving the panel** — start or stop a task's tracking straight from its card in the History panel, without opening the note it lives in. If a task is currently being tracked, any other day where it also has past sessions shows a small marker that jumps you straight back to the live session.
-- **Organize with clients & projects** — two separate lists in Settings: give each task a client (who the work is for) and a project (what the work is), independently, then filter the History panel down to a single project at a time.
+- **Organize with clients & projects** — two separate lists in Settings: give each task a client (who the work is for) and a project (what the work is), independently, then filter the History panel by client, by project, or by both.
 - **A 30-day overview at a glance** — the Dashboard view totals your last 30 days by project, client, day, and task, no filters or setup needed.
-- **Export on your terms** — generate a generic CSV or one formatted for Toggl's official importer. You choose when to export — never automatic, never in the background.
+- **Export on your terms** — generate a generic CSV or one formatted for Toggl's or Clockify's official importer. You choose when to export — never automatic, never in the background.
 - **Zero external API calls** — the plugin never connects to any third-party service, at any point in its operation. Your time data stays in your vault.
 
-<img src="docs/images/play-on-panel-32.gif" alt="Starting and stopping tracking directly from a task's card in the History panel" width="500" style="border-radius:12px;margin:2rem 0;">
+<img src="docs/images/play-on-panel-35.gif" alt="Starting and stopping tracking directly from a task's card in the History panel" width="500" style="border-radius:12px;margin:2rem 0;">
 
 ## Clients & projects
 
 Clients and projects are two separate lists in Settings, so the same project can be done for several clients without repeating it: the client is who the work is for, the project is what the work is.
 
-<img src="docs/images/project-and-clients-settings.png" alt="Settings → Clients & projects section" width="515" style="border-radius:12px;margin:2rem 0;">
+<img src="docs/images/project-and-clients-settings-35.png" alt="Settings → Clients & projects section" width="515" style="border-radius:12px;margin:2rem 0;">
 
 Add clients and projects one by one, or paste a whole list at once (one name per line) if you're migrating from somewhere else: new names are added and the ones already in the list are skipped and listed. Names are unique within each list, ignoring capital letters and extra spaces.
 
 Give any tracked task a client and a project from its **Edit task** dialog — two searchable lists, one for each. A task can have a client without a project, and the other way round.
 
 
-<img src="docs/images/project-picker-modal-29.png" alt="Project picker inside Edit task" width="515" style="border-radius:12px;margin:2rem 0;">
+<img src="docs/images/project-picker-modal-35.png" alt="Edit task dialog with its Client and Project selectors, the Project list open" width="515" style="border-radius:12px;margin:2rem 0;">
 
-Once you're tracking by project, filter the History panel down to a single one at a time with the **Filter** button in its header. The filter resets every time you reopen Obsidian, so it's never a setting you forget you left on.
+Filter the History panel with the **Filter** button in its header. Its two tabs, **Client** and **Project**, each list yours with a search box and a "No client" / "No project" row; pick one in each tab to see only the tasks that match both. A dot on a tab means it has a filter on. To remove a filter, press its row again or the **×** on its chip. Filters reset every time you reopen Obsidian, so they're never a setting you forget you left on.
 
-<img src="docs/images/filter-in-panel-29.png" alt="Filter button + popover in the History panel header" width="515" style="border-radius:12px;margin:2rem 0;">
+<img src="docs/images/filter-in-panel-35.png" alt="History panel Filter button open, with its Client and Project tabs" width="515" style="border-radius:12px;margin:2rem 0;">
 
 ## Search
 
@@ -127,19 +127,21 @@ Find any task from the History panel with the **magnifier icon** in its header. 
 - **Pick a suggestion** to see every session of that task, including ones saved under an older name.
 - **Press Enter** without picking one to find every task whose name contains what you typed.
 
-Search always covers your **entire history**, whatever day, week or project you were looking at. Results open in the Results view, most recent days first.
+Suggestions come from your **entire history**, whatever day or week you were looking at; the results respect any client or project filter you have on. Results open in the Results view, most recent days first.
 
 <img src="docs/images/search-suggestions-33.png" alt="Task search in the History panel header, with suggestions shown while typing" width="320" style="border-radius:12px;margin:2rem 0;">
 
 ### Combining filters
 
-Search combines with the project filter and the date range. Each active filter shows as its own chip above the results, and each chip has its own **×** to remove just that filter while keeping the rest. For example, search for "invoice" within one project and one month, then drop the month to see that project's matches across all time.
+Search combines with the client and project filters and the date range. Each active filter shows as its own chip above the results, and each chip has its own **×** to remove just that filter while keeping the rest. For example, search for "invoice" within one client, one project and one month, then drop the month to see that project's matches across all time.
 
-<img src="docs/images/search-chips-33.png" alt="Project, search text and date range filters shown as chips, each with its own remove button" width="280" style="border-radius:12px;margin:2rem 0;">
+Removing filters never takes you out of the Results view: with the last one gone, it shows your whole history. Without a date range, a "Since" label shows the day of your first session. Use the back arrow to return to Day or Week.
 
-### Full history of a project
+<img src="docs/images/search-chips-35.png" alt="Client, project, search text and date range filters shown as chips, each with its own remove button" width="552" style="border-radius:12px;margin:2rem 0;">
 
-When a project is filtered in Day or Week view, a row under the header shows that project with a **View full history** action. It opens the Results view with only that project, across your whole history, with no date range applied.
+### Full history of a client or project
+
+When a client or project is filtered in Day or Week view, a row under the header shows each filter as a chip with a **View full history** action. It opens the Results view with only those filters, across your whole history, with no date range applied.
 
 ## Dashboard
 
@@ -155,7 +157,7 @@ Four blocks share the same row format as the rest of the plugin (name + total ti
 
 Day and task blocks show the top 5 by default, with a "Show all" link loading 50 more at a time. The 30-day window is fixed — no range picker or extra filters, since the four blocks already break the same data down by project, client, day, and task.
 
-<img src="docs/images/dashboard-30.png" alt="Dashboard panel" width="415" style="border-radius:12px;margin:2rem 0;">
+<img src="docs/images/dashboard-35.png" alt="Dashboard panel" width="515" style="border-radius:12px;margin:2rem 0;">
 
 
 ## Commands
@@ -215,7 +217,7 @@ Toggl and Clockify only import a client together with its project: sessions of a
 
 ### Using it on several devices
 
-If you sync your vault (for example with Obsidian Sync), keep Task Time Tracker on the same version on all your devices. **Update it on every device now:** this version stores clients as their own list, and a device still on 0.0.33 or earlier would remove the clients list and each task's client the next time it saves. If that happens, the plugin tells you and recovers the clients from your projects, but client changes made in between are lost. Devices on 0.0.34 keep the new data intact: they ask you to update the plugin there and disable exporting and editing projects until you do. But assigning a project to a task from a 0.0.34 device leaves that task without a client.
+If you sync your vault (for example with Obsidian Sync), keep Task Time Tracker on the same version on all your devices. **Update it on every device now:** this version stores clients as their own list, and a device still on 0.0.33 or earlier would remove the clients list and each task's client the next time it saves. If that happens, the plugin tells you and recovers the clients from your projects, but client changes made in between are lost. Devices on 0.0.34 keep the new data intact: they ask you to update the plugin there and disable exporting and editing projects and clients until you do. But assigning a project to a task from a 0.0.34 device leaves that task without a client.
 
 ## About
 
