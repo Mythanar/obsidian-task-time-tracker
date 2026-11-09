@@ -86,8 +86,10 @@ export class ProjectPickerList {
 	// render() so the caller only triggers it once the popover is
 	// already positioned and visible, and only on desktop (see
 	// openProjectPickerPopover).
+	// preventScroll: focusing must never scroll a parent (the modal) to
+	// bring the box into view.
 	focusSearch(): void {
-		this.searchInput?.focus();
+		this.searchInput?.focus({ preventScroll: true });
 	}
 
 	private renderList(): void {
@@ -193,13 +195,17 @@ export interface ProjectPickerPopoverOptions {
 	noProjectFilterSelected?: boolean;
 	onSelect: (projectId: string | null) => void;
 	// The modal it's opened from, if any. The popover is then attached to
-	// the modal's own element (modalEl) instead of document.body: Obsidian
-	// keeps focus inside an open modal, so a search box outside it loses
-	// focus to the modal's first button on every keystroke. Being inside
-	// modalEl also means clicks on the popover don't count as clicks
-	// outside the modal. position: fixed still anchors it to the window.
-	// Escape gets a keymap scope on top of the modal's, so it closes only
-	// the popover, not the modal.
+	// the modal's containerEl instead of document.body: Obsidian keeps
+	// focus inside an open modal, so a search box outside it loses focus
+	// to the modal's first button on every keystroke (H1). Not modalEl
+	// itself: some themes leave a transform on .modal (Primary's slide-up
+	// animation), which turns modalEl into the reference for
+	// position: fixed, and modalEl scrolls and clips — the popover landed
+	// off its button and the modal scrolled. containerEl covers the whole
+	// window and doesn't scroll. Checked in real Obsidian: focus stays in
+	// the box while typing, and clicks on the popover don't close the
+	// modal. Escape gets a keymap scope on top of the modal's, so it
+	// closes only the popover, not the modal.
 	modal?: Modal;
 }
 
@@ -359,7 +365,7 @@ function mountPopover(
 	}
 	activePopover?.close();
 
-	const popoverEl = (modal?.modalEl ?? document.body).createDiv({ cls: "task-time-tracker-project-picker-popover" });
+	const popoverEl = (modal?.containerEl ?? document.body).createDiv({ cls: "task-time-tracker-project-picker-popover" });
 
 	const onOutsideMousedown = (evt: MouseEvent) => {
 		const target = evt.target as Node;

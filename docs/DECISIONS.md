@@ -2057,3 +2057,41 @@ copy, deleted afterwards).
   persistent notices (older version, newer version) look as before; the
   notice colors come from Obsidian and are the same in light and dark.
 
+
+## Edit task popover off its button with Primary (hotfix 0.0.36, 9 Nov 2026)
+
+Found in published 0.0.35, desktop, Primary theme: the Client and Project
+popovers opened at the bottom right of the Edit task modal, and the modal
+scrolled (both axes, with scroll bars) to show the focused search box.
+
+- **Cause.** Primary animates every modal with `.modal{animation:
+  slideUp forwards}`; `forwards` keeps the last keyframe's
+  `transform: translateY(0)` on `.modal` for as long as it is open. Any
+  transform makes the element the containing block of its
+  `position: fixed` descendants. Since H1, the popover lives in `modalEl`,
+  so its window coordinates (`positionPopover`) were applied relative to
+  the modal: shifted by the modal's own offset (about 530 × 330 px
+  measured), overflowing the modal's scroll area, and `focus()` scrolled
+  the modal to reveal the box. Not the glass effect: Primary's
+  `backdrop-filter` is on `.modal-container`, which covers the window from
+  its corner. Turning on Primary's "Remove Popup and Pop Down Animations"
+  (Style Settings) makes it disappear. 0.0.34 was not affected (popover
+  in `document.body`); it came with H1.
+- **Fix.** The popover is attached to `modal.containerEl` instead of
+  `modalEl`: still inside the modal for Obsidian's focus handling, but
+  outside the box that scrolls and may carry a theme's transform.
+  `positionPopover` now measures where the popover really landed and
+  corrects by the difference, so any themed containing block is
+  compensated (also for the date picker and search suggestions, which
+  live in `document.body` and were unaffected). The search box is focused
+  with `preventScroll: true`. No CSS changes.
+- **Checked in real Obsidian (Tester, CDP).** Client and Project, a task
+  with 1 session and one with 53, Primary animations on and off, wide and
+  700 × 700 window: popover aligned with its button, modal scroll 0, no
+  horizontal overflow, typing with zero focus changes (H1 not back),
+  Escape closes only the popover and returns focus to its button. Tester
+  data unchanged.
+- **Known, not changed (already in 0.0.34).** In a window too short for
+  the popover either below or above its button, it is pinned to the top
+  margin and covers the button; after filtering it keeps its first
+  position instead of re-anchoring.

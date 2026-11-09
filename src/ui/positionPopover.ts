@@ -26,4 +26,18 @@ export function positionPopover(popoverEl: HTMLElement, anchorEl: HTMLElement, m
 
 	popoverEl.style.left = `${left}px`;
 	popoverEl.style.top = `${top}px`;
+
+	// left/top above are window coordinates, but position: fixed is
+	// resolved against the nearest ancestor with a transform, filter or
+	// backdrop-filter, if any. Some themes leave one on a parent (Primary
+	// keeps a transform on .modal after its slide-up animation), which
+	// shifts the popover away from its button. Measure where it really
+	// landed and correct by the difference.
+	const placed = popoverEl.getBoundingClientRect();
+	const dx = placed.left - left;
+	const dy = placed.top - top;
+	if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+		popoverEl.style.left = `${left - dx}px`;
+		popoverEl.style.top = `${top - dy}px`;
+	}
 }

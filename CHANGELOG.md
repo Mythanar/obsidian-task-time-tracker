@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- Edit task: with some themes (for example Primary), the Client and Project lists opened away from their button, at the bottom right of the dialog, and the dialog scrolled to show them. They now open right below their button (or above it when there isn't room), with any theme. This came from a change in 0.0.35.
+
 ## [0.0.35] - 2026-11-08
 
 ### Added
