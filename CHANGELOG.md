@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- History cards: the menu button (three dots) now uses the theme's text color instead of a faded one, so it's easier to see. On hover it still shows the usual highlight.
+
 ## [0.0.36] - 2026-11-09
 
 ### Fixed

@@ -291,12 +291,18 @@
 	height: 1.75em;
 	flex-shrink: 0;
 	border-radius: var(--radius-s);
-	color: var(--text-faint);
+	/* Foreground color, not muted. Set through the variables the native
+	   .clickable-icon reads at rest and on hover — a plain `color` here
+	   would lose to .clickable-icon:hover (more specific) and fade the
+	   icon on hover. */
+	--icon-color: var(--text-normal);
+	--icon-color-hover: var(--text-normal);
 	cursor: pointer;
 }
 
+/* Same color at rest and on hover, so hover is signaled by the native
+   .clickable-icon highlight background instead. */
 .task-time-tracker-log-card-menu:hover {
-	color: var(--text-normal);
 	background-color: var(--background-modifier-hover);
 }
 
