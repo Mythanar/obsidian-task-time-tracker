@@ -20,7 +20,10 @@ import {
 	PluginSettingTab,
 	setIcon,
 	Setting,
+	SettingDefinitionGroup,
 	SettingDefinitionItem,
+	SettingDefinitionPage,
+	SettingGroupItem,
 	TFolder,
 	ToggleComponent,
 } from "obsidian";
@@ -399,39 +402,28 @@ export class SettingsTab extends PluginSettingTab {
 	// the global Settings search indexes. Obsidian <1.13 doesn't know
 	// this method and keeps using display() as is (see the comment on
 	// display()).
-	// Groups (SettingDefinitionGroup, optional heading), same "rounded-
-	// corner card + thin separator between rows" visual pattern Obsidian
-	// uses natively on screens like Settings > Advanced.
+	// Layout: General settings live on the main page, grouped under
+	// headings (Tracking, Task identifier, History panel); the larger
+	// blocks go to native sub-pages (type "page"), reached through a
+	// chevron row at the end. Native sub-pages, not custom tabs: Obsidian
+	// indexes the settings inside them and its search navigates into the
+	// sub-page and scrolls to the match, which custom tabs drawn inside a
+	// render row can't offer (Obsidian only indexes what is declared).
+	// Same pattern as the Tasks plugin. Groups use the "rounded-corner
+	// card + thin separator between rows" visual pattern Obsidian uses
+	// natively on screens like Settings > Advanced.
 	getSettingDefinitions(): SettingDefinitionItem[] {
 		return [
+			...this.trackingGroup(),
 			{
 				type: "group",
+				heading: t("settings.group.taskIdentifier"),
 				items: [
-					{
-						name: t("settings.logLocation.name"),
-						desc: t("settings.logLocation.desc"),
-						render: (setting) => this.configureLogLocation(setting),
-					},
 					{
 						name: t("settings.taskIdFormat.name"),
 						desc: t("settings.taskIdFormat.desc"),
 						render: (setting) => this.configureTaskIdFormat(setting),
 					},
-					{
-						name: t("settings.exportFolder.name"),
-						desc: t("settings.exportFolder.desc"),
-						render: (setting) => this.configureExportFolder(setting),
-					},
-					{
-						name: t("settings.exportAll.name"),
-						desc: t("settings.exportAll.desc"),
-						render: (setting) => this.configureExportAll(setting),
-					},
-				],
-			},
-			{
-				type: "group",
-				items: [
 					{
 						name: t("settings.tasksCompat.heading"),
 						desc: t("settings.tasksCompat.desc"),
@@ -441,63 +433,124 @@ export class SettingsTab extends PluginSettingTab {
 			},
 			{
 				type: "group",
-				heading: t("settings.projects.heading"),
+				heading: t("settings.group.historyPanel"),
 				items: [
-					// Each row needs its own name: Obsidian keys rows by name
-					// and logs "duplicate setting key" otherwise. Neither name
-					// is shown (makeFullWidthRow empties the row).
 					{
-						name: t("settings.projects.banner"),
-						searchable: false,
-						render: (setting) => this.renderProjectsBannerRow(setting),
-					},
-					{
-						name: t("settings.projects.heading"),
-						searchable: false,
-						render: (setting) => this.renderProjectsContentRow(setting),
+						name: t("settings.logLocation.name"),
+						desc: t("settings.logLocation.desc"),
+						render: (setting) => this.configureLogLocation(setting),
 					},
 				],
 			},
 			{
 				type: "group",
-				heading: t("settings.toggl.heading"),
-				items: [
-					{
-						name: t("settings.toggl.email.name"),
-						render: (setting) => this.configureTogglEmail(setting),
-					},
-					{
-						name: t("settings.toggl.includeProjectClient.name"),
-						desc: t("settings.toggl.includeProjectClient.desc"),
-						render: (setting) => this.configureTogglIncludeProjectClient(setting),
-					},
-				],
-			},
-			{
-				type: "group",
-				heading: t("settings.clockify.heading"),
-				items: [
-					{
-						name: t("settings.clockify.paymentWall.name"),
-						searchable: false,
-						render: (setting) => this.configureClockifyPaymentWallInfo(setting),
-					},
-					{
-						name: t("settings.clockify.email.name"),
-						render: (setting) => this.configureClockifyEmail(setting),
-					},
-					{
-						name: t("settings.clockify.includeProject.name"),
-						desc: t("settings.clockify.includeProject.desc"),
-						render: (setting) => this.configureClockifyIncludeProject(setting),
-					},
-					{
-						name: t("settings.clockify.includeClient.name"),
-						desc: t("settings.clockify.includeClient.desc"),
-						render: (setting) => this.configureClockifyIncludeClient(setting),
-					},
-				],
+				items: [this.projectsPage(), this.exportPage()],
 			},
 		];
+	}
+
+	// First section of the main page, reserved for Tracking folders (not
+	// built yet). Not rendered while it has no settings: an empty heading
+	// would be a blank section in every user's Settings. Its items go in
+	// `items` below; the group then shows up first, as decided.
+	private trackingGroup(): SettingDefinitionGroup[] {
+		const items: SettingGroupItem[] = [];
+		return items.length > 0 ? [{ type: "group", heading: t("settings.group.tracking"), items }] : [];
+	}
+
+	// No heading inside the page: the page title already says "Clients &
+	// projects". Each row needs its own name, different from every other
+	// row and from the page itself: Obsidian keys rows by name and logs
+	// "duplicate setting key" otherwise. Neither name is shown
+	// (makeFullWidthRow empties the row).
+	private projectsPage(): SettingDefinitionPage {
+		return {
+			type: "page",
+			name: t("settings.projects.heading"),
+			desc: t("settings.page.projects.desc"),
+			items: [
+				{
+					type: "group",
+					items: [
+						{
+							name: t("settings.projects.banner"),
+							searchable: false,
+							render: (setting) => this.renderProjectsBannerRow(setting),
+						},
+						{
+							name: t("settings.projects.title"),
+							searchable: false,
+							render: (setting) => this.renderProjectsContentRow(setting),
+						},
+					],
+				},
+			],
+		};
+	}
+
+	// Future platforms go here too, each in its own group below Clockify.
+	private exportPage(): SettingDefinitionPage {
+		return {
+			type: "page",
+			name: t("settings.page.export.name"),
+			desc: t("settings.page.export.desc"),
+			items: [
+				{
+					type: "group",
+					items: [
+						{
+							name: t("settings.exportFolder.name"),
+							desc: t("settings.exportFolder.desc"),
+							render: (setting) => this.configureExportFolder(setting),
+						},
+						{
+							name: t("settings.exportAll.name"),
+							desc: t("settings.exportAll.desc"),
+							render: (setting) => this.configureExportAll(setting),
+						},
+					],
+				},
+				{
+					type: "group",
+					heading: t("settings.toggl.heading"),
+					items: [
+						{
+							name: t("settings.toggl.email.name"),
+							render: (setting) => this.configureTogglEmail(setting),
+						},
+						{
+							name: t("settings.toggl.includeProjectClient.name"),
+							desc: t("settings.toggl.includeProjectClient.desc"),
+							render: (setting) => this.configureTogglIncludeProjectClient(setting),
+						},
+					],
+				},
+				{
+					type: "group",
+					heading: t("settings.clockify.heading"),
+					items: [
+						{
+							name: t("settings.clockify.paymentWall.name"),
+							searchable: false,
+							render: (setting) => this.configureClockifyPaymentWallInfo(setting),
+						},
+						{
+							name: t("settings.clockify.email.name"),
+							render: (setting) => this.configureClockifyEmail(setting),
+						},
+						{
+							name: t("settings.clockify.includeProject.name"),
+							desc: t("settings.clockify.includeProject.desc"),
+							render: (setting) => this.configureClockifyIncludeProject(setting),
+						},
+						{
+							name: t("settings.clockify.includeClient.name"),
+							desc: t("settings.clockify.includeClient.desc"),
+							render: (setting) => this.configureClockifyIncludeClient(setting),
+						},
+					],
+				},
+			],
+		};
 	}
 }

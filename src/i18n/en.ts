@@ -81,8 +81,14 @@ export const en = {
 	"export.csv.headerSourceNote": "Source note",
 
 	// 6. Settings (src/settings/SettingsTab.ts)
-	"settings.logLocation.name": "Time Log location",
-	"settings.logLocation.desc": "Where the Time Log panel opens. If it's already open, the change applies next time you open it.",
+	"settings.group.tracking": "Tracking",
+	"settings.group.taskIdentifier": "Task identifier",
+	"settings.group.historyPanel": "History panel",
+	"settings.page.projects.desc": "Client and project lists you can assign to tasks.",
+	"settings.page.export.name": "Export",
+	"settings.page.export.desc": "Export folder, full history export and platform formats (Toggl, Clockify).",
+	"settings.logLocation.name": "Location",
+	"settings.logLocation.desc": "Where the History panel opens. If it's already open, the change applies next time you open it.",
 	"settings.logLocation.sidebar": "Sidebar",
 	"settings.logLocation.tab": "Center tab",
 	"settings.taskIdFormat.name": "Task id format",

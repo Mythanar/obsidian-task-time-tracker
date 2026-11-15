@@ -2095,3 +2095,46 @@ scrolled (both axes, with scroll bars) to show the focused search box.
   the popover either below or above its button, it is pinned to the top
   margin and covers the button; after filtering it keeps its first
   position instead of re-anchoring.
+
+
+## Settings with native sub-pages (0.0.37, 15 Nov 2026)
+
+The Settings page is split into a main page and two native sub-pages, in
+the declarative view only (Obsidian >=1.13, `getSettingDefinitions()`).
+
+- **Native sub-pages, not custom tabs.** First planned as custom tabs
+  drawn inside the page. Dropped after testing two plugins in Tester:
+  Tasks (sub-pages, `type: "page"`) is found by the Settings search, which
+  opens the sub-page and scrolls to the match; TaskNotes (custom tabs) is
+  not, because its `getSettingDefinitions()` returns a single `render` row
+  that paints its old tab UI, so Obsidian only indexes that row's name and
+  the tab names. Custom tabs would also need `visible` per group, which
+  excludes hidden items from search, and there is no public hook to know
+  which search result was chosen.
+- **Layout.** Main page: Tracking (reserved for Tracking folders, not
+  rendered while empty), Task identifier (tt-id format, Using the Tasks
+  plugin?), History panel (location), then a headless group with two
+  chevron rows: Clients & projects and Export (export folder, Export all,
+  Toggl, Clockify; future platforms below). General settings stay on the
+  main page instead of behind a "General" row, as in Tasks.
+- **Obsidian <1.13.** `display()` is unchanged: single page, old order,
+  no new headings. `type: "page"` is only read by the declarative view, so
+  `minAppVersion` stays at 1.7.2. Every setting is still a `configureX()`
+  shared by both views.
+- **Row names.** The lists row inside the Clients & projects page is named
+  after `settings.projects.title`, not the heading, so it doesn't share a
+  name with the page (see "duplicate setting key", 0.0.35).
+- **EN rename.** "Time Log location" becomes "Location" ("Where the History
+  panel opens…"), since it now sits under the History panel heading. Other
+  "Time Log" texts are left for a separate piece.
+- **Checked in real Obsidian 1.15.1 (Tester, CDP).** Main page and both
+  sub-pages in light and dark, English and Spanish; five settings changed
+  across the main page and Export, Settings closed and reopened (values
+  kept, opens on the main page), then restored; a client added and deleted
+  in Clients & projects. Settings search finds settings on the main page
+  and in Export and scrolls to them inside the sub-page; "clients" finds
+  the Clients & projects row (the lists inside stay out of search, as
+  before). Mobile emulation at 360 px: chevron rows, full-screen sub-pages
+  with a back arrow, no horizontal scroll. No console errors. Tester data
+  unchanged.
+

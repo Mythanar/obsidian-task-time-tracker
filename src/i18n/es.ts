@@ -77,6 +77,12 @@ export const es: Record<TranslationKey, string> = {
 	"export.csv.headerSourceNote": "Nota de origen",
 
 	// 6. Settings (src/settings/SettingsTab.ts)
+	"settings.group.tracking": "Tracking",
+	"settings.group.taskIdentifier": "Identificador de tarea",
+	"settings.group.historyPanel": "Panel de Historial",
+	"settings.page.projects.desc": "Listas de clientes y proyectos para asignar a tus tareas.",
+	"settings.page.export.name": "Exportación",
+	"settings.page.export.desc": "Carpeta de exportación, exportar todo el historial y formatos por plataforma (Toggl, Clockify).",
 	"settings.logLocation.name": "Ubicación del Historial",
 	"settings.logLocation.desc": "Dónde se abre el panel de Historial. Si ya está abierto, el cambio se aplica la próxima vez que lo abras.",
 	"settings.logLocation.sidebar": "Panel lateral",

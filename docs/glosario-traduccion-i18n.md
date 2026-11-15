@@ -92,8 +92,8 @@ Fichero: `src/settings/SettingsTab.ts`
 
 | Clave sugerida | Español | Inglés |
 |---|---|---|
-| settings.logLocation.name | Ubicación del Historial | Time Log location |
-| settings.logLocation.desc | Dónde se abre el panel de Historial. Si ya está abierto, el cambio se aplica la próxima vez que lo abras. | Where the Time Log panel opens. If it's already open, the change applies next time you open it. |
+| settings.logLocation.name | Ubicación del Historial | Location *(was "Time Log location" until 0.0.36)* |
+| settings.logLocation.desc | Dónde se abre el panel de Historial. Si ya está abierto, el cambio se aplica la próxima vez que lo abras. | Where the History panel opens. If it's already open, the change applies next time you open it. |
 | settings.logLocation.sidebar | Panel lateral | Sidebar |
 | settings.logLocation.tab | Pestaña central | Center tab |
 | settings.exportFolder.name | Carpeta de exportación | Export folder |
@@ -298,3 +298,16 @@ Texts 1, 6, 8, 27-30 and 36-39 of Liber's review were rewritten on 1 Nov 2026 (Q
 | {from} – {to} | {from} – {to} | Dashboard: fechas junto a «Last 30 days» («3 oct – 1 nov») | Dejar claro qué días cuenta el Dashboard: siempre los 30 hasta hoy, sea cual sea el rango del panel. |
 | Añade el proyecto de cada tarea como columna en el CSV de Clockify. Es opcional: desmárcala si no usas proyectos en Clockify; las sesiones se importarán sin proyecto. | Adds each task's project as a column in the Clockify CSV. It's optional: uncheck it if you don't use projects in Clockify; sessions will then be imported without a project. | Exportar (Clockify) y Ajustes > Clockify: ayuda de «Include Project» (mismo texto en settings.clockify.includeProject.desc) | Qué añade la casilla y qué pasa si se desmarca, coherente con que ahora viene marcada por defecto. |
 | Añade el cliente de cada tarea como columna en el CSV de Clockify. Es opcional: desmárcala si no usas clientes en Clockify. Clockify solo conserva el cliente si la sesión también lleva su proyecto. | Adds each task's client as a column in the Clockify CSV. It's optional: uncheck it if you don't use clients in Clockify. Clockify only keeps the client if the session also has its project. | Exportar (Clockify) y Ajustes > Clockify: ayuda de «Include Client» (mismo texto en settings.clockify.includeClient.desc) | Igual, y recordar que Clockify solo conserva el cliente junto con su proyecto. |
+
+## 12. Settings sub-pages (0.0.37)
+
+New texts for the Settings layout with native sub-pages (Obsidian >=1.13). The "Clients & projects" page reuses `settings.projects.heading`. The Tracking heading is not shown until Tracking folders exists.
+
+| Key | Español | English | Where it shows |
+|---|---|---|---|
+| settings.group.tracking | Tracking | Tracking | Settings, main page: first heading (hidden until it has settings) |
+| settings.group.taskIdentifier | Identificador de tarea | Task identifier | Settings, main page: heading above tt-id format and "Using the Tasks plugin?" |
+| settings.group.historyPanel | Panel de Historial | History panel | Settings, main page: heading above the panel location |
+| settings.page.projects.desc | Listas de clientes y proyectos para asignar a tus tareas. | Client and project lists you can assign to tasks. | Settings, main page: description of the "Clients & projects" row |
+| settings.page.export.name | Exportación | Export | Settings, main page: row and page title |
+| settings.page.export.desc | Carpeta de exportación, exportar todo el historial y formatos por plataforma (Toggl, Clockify). | Export folder, full history export and platform formats (Toggl, Clockify). | Settings, main page: description of the "Export" row |

@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - History cards: the menu button (three dots) now uses the theme's text color instead of a faded one, so it's easier to see. On hover it still shows the usual highlight.
+- Settings are reorganized: Task identifier and History panel settings stay on the main page, and Clients & projects and Export each open in their own page. Obsidian's settings search still finds every setting and takes you to it. On Obsidian versions before 1.13, settings stay on a single page as before. In English, the History panel setting is now called "Location".
 
 ## [0.0.36] - 2026-11-09
 
