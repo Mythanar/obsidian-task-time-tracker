@@ -51,19 +51,23 @@ function taskIdFormatOptions(): Record<string, string> {
 // folder setting, same UI pattern Obsidian uses to configure the
 // default attachment folder. Allows typing a path that doesn't exist
 // yet (ExportManager.ts auto-creates it when exporting) — autocomplete
-// is only a help, not a restriction.
+// is only a help, not a restriction. `include` narrows the suggestions
+// (Tracking folders hides the vault root and folders already listed).
 class FolderSuggest extends AbstractInputSuggest<TFolder> {
 	constructor(
 		app: App,
 		inputEl: HTMLInputElement,
 		private onChoose: (path: string) => void,
+		private include: (folder: TFolder) => boolean = () => true,
 	) {
 		super(app, inputEl);
 	}
 
 	protected getSuggestions(query: string): TFolder[] {
 		const q = query.toLowerCase();
-		return this.app.vault.getAllFolders(true).filter((folder) => folder.path.toLowerCase().includes(q));
+		return this.app.vault
+			.getAllFolders(true)
+			.filter((folder) => this.include(folder) && folder.path.toLowerCase().includes(q));
 	}
 
 	renderSuggestion(folder: TFolder, el: HTMLElement): void {
@@ -128,6 +132,67 @@ export class SettingsTab extends PluginSettingTab {
 					this.plugin.applyTaskIdFormatClass();
 				});
 			});
+	}
+
+	// Folders where the note's play button shows (see
+	// core/TrackingFolders.ts). Folders are only added by picking an
+	// existing one from the suggestions (typing a path and pressing Enter
+	// does nothing), so there is no invalid-path error to show. The list
+	// sits under the description; each row has its × to remove it. A
+	// listed folder that no longer exists is kept and marked "Folder not
+	// found": it is never removed automatically, and recreating it with
+	// the same path makes it work again with no action.
+	private configureTrackingFolders(setting: Setting): void {
+		setting.setName(t("settings.trackingFolders.name")).setDesc(t("settings.trackingFolders.desc"));
+		const listEl = setting.infoEl.createDiv({ cls: "task-time-tracker-tracking-folders" });
+		const folders = () => this.plugin.pluginState.settings.trackingFolders;
+
+		const renderList = () => {
+			listEl.empty();
+			for (const path of folders()) {
+				const missing = this.app.vault.getFolderByPath(path) === null;
+				const row = listEl.createDiv({ cls: "task-time-tracker-tracking-folder" });
+				setIcon(row.createSpan({ cls: "task-time-tracker-tracking-folder-icon" }), missing ? "folder-x" : "folder");
+				row.createSpan({ text: path, cls: "task-time-tracker-tracking-folder-path" });
+				if (missing) {
+					row.createSpan({
+						text: t("settings.trackingFolders.notFound"),
+						cls: "task-time-tracker-tracking-folder-missing task-time-tracker-settings-warning",
+					});
+				}
+				const remove = row.createDiv({
+					cls: "clickable-icon task-time-tracker-tracking-folder-remove",
+					attr: { "aria-label": t("settings.trackingFolders.remove"), role: "button", tabindex: "0" },
+				});
+				setIcon(remove, "x");
+				const removeFolder = async () => {
+					await this.plugin.setTrackingFolders(folders().filter((folder) => folder !== path));
+					renderList();
+				};
+				remove.addEventListener("click", () => void removeFolder());
+				remove.addEventListener("keydown", (evt) => {
+					if (evt.key !== "Enter" && evt.key !== " ") return;
+					evt.preventDefault();
+					void removeFolder();
+				});
+			}
+		};
+
+		setting.addText((text) => {
+			text.setPlaceholder(t("settings.trackingFolders.placeholder"));
+			new FolderSuggest(
+				this.app,
+				text.inputEl,
+				(path) => {
+					text.setValue("");
+					if (folders().includes(path)) return;
+					void this.plugin.setTrackingFolders([...folders(), path]).then(renderList);
+				},
+				(folder) => !folder.isRoot() && !folders().includes(folder.path),
+			);
+		});
+
+		renderList();
 	}
 
 	// Destination folder for both export formats (generic CSV and Toggl
@@ -375,6 +440,7 @@ export class SettingsTab extends PluginSettingTab {
 
 		// General section: no heading of its own on purpose, follows
 		// Obsidian's convention of leaving the first section untitled.
+		this.configureTrackingFolders(new Setting(containerEl));
 		this.configureLogLocation(new Setting(containerEl));
 		this.configureTaskIdFormat(new Setting(containerEl));
 		this.configureExportFolder(new Setting(containerEl));
@@ -449,13 +515,18 @@ export class SettingsTab extends PluginSettingTab {
 		];
 	}
 
-	// First section of the main page, reserved for Tracking folders (not
-	// built yet). Not rendered while it has no settings: an empty heading
-	// would be a blank section in every user's Settings. Its items go in
-	// `items` below; the group then shows up first, as decided.
+	// First section of the main page. The English name is also a search
+	// alias, so "Tracking folders" finds it in any language.
 	private trackingGroup(): SettingDefinitionGroup[] {
-		const items: SettingGroupItem[] = [];
-		return items.length > 0 ? [{ type: "group", heading: t("settings.group.tracking"), items }] : [];
+		const items: SettingGroupItem[] = [
+			{
+				name: t("settings.trackingFolders.name"),
+				desc: t("settings.trackingFolders.desc"),
+				aliases: ["Tracking folders"],
+				render: (setting) => this.configureTrackingFolders(setting),
+			},
+		];
+		return [{ type: "group", heading: t("settings.group.tracking"), items }];
 	}
 
 	// No heading inside the page: the page title already says "Clients &

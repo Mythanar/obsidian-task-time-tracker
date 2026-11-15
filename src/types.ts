@@ -95,6 +95,11 @@ export interface PluginSettings {
 	// applies from the next export onward.
 	exportsFolder: string;
 	taskIdFormat: TaskIdFormat;
+	// Folders where the inline play button shows (see
+	// core/TrackingFolders.ts). Empty = the whole vault. Added in 0.0.37
+	// as a new field, no data format change: 0.0.34+ keeps unknown
+	// settings fields when it saves, so older devices don't drop it.
+	trackingFolders: string[];
 }
 
 export const DEFAULT_SETTINGS: PluginSettings = {
@@ -113,6 +118,7 @@ export const DEFAULT_SETTINGS: PluginSettings = {
 	// not "normal"): the full "tt-id" label Dataview renders by default
 	// is visual noise for most users from the very first moment.
 	taskIdFormat: "reduced",
+	trackingFolders: [],
 };
 
 // Result of editing a session's times from the Historial panel (see

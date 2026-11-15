@@ -1,7 +1,19 @@
-import { Editor, MarkdownFileInfo, MarkdownView, Menu, Notice, Plugin, TAbstractFile, TFile, WorkspaceLeaf } from "obsidian";
+import {
+	Editor,
+	MarkdownFileInfo,
+	MarkdownView,
+	Menu,
+	Notice,
+	Plugin,
+	TAbstractFile,
+	TFile,
+	TFolder,
+	WorkspaceLeaf,
+} from "obsidian";
 import { TrackingEngine } from "./core/TrackingEngine";
 import { ProjectManager } from "./core/ProjectManager";
 import { DATA_FORMAT_VERSION, StateStore } from "./core/StateStore";
+import { isInTrackingFolders, renameInFolderList } from "./core/TrackingFolders";
 import { MigrationReport, visibleSpaces } from "./core/ClientMigration";
 import {
 	extractCheckboxState,
@@ -186,6 +198,15 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			}),
 		);
 
+		// Tracking folders: a renamed or moved folder updates the stored
+		// paths (see handleRename). Deletions need no listener: a deleted
+		// folder stays in the list and works again if it is recreated.
+		this.registerEvent(
+			this.app.vault.on("rename", (file, oldPath) => {
+				void this.handleRename(file, oldPath);
+			}),
+		);
+
 		// Fast path: reacts to the editor's live content without waiting
 		// for the save to disk (see EDITOR_CHANGE_DEBOUNCE_MS).
 		this.registerEvent(
@@ -205,6 +226,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		const inlineControlDeps = {
 			getActiveEntry: () => this.trackingEngine.getActiveEntry(),
 			getAccumulatedMs: (taskId: string) => this.trackingEngine.getAccumulatedMs(taskId),
+			isInTrackingFolders: (filePath: string) => this.isInTrackingFolders(filePath),
 			bus: this.inlineControlsBus,
 			onStart: (taskId: string, taskText: string, filePath: string) =>
 				void this.handleInlineStart(taskId, taskText, filePath),
@@ -449,12 +471,19 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			return;
 		}
 
+		// Checked before writing the tt-id: outside Tracking folders the
+		// note is not touched at all.
+		const filePath = ctx.file?.path ?? "";
+		if (!this.isInTrackingFolders(filePath)) {
+			new Notice(t("notice.outsideTrackingFolders"));
+			return;
+		}
+
 		const { taskId, updatedLine } = ensureTaskId(line);
 		if (updatedLine !== line) {
 			editor.setLine(cursor.line, updatedLine);
 		}
 
-		const filePath = ctx.file?.path ?? "";
 		const result = await this.trackingEngine.start(taskId, taskText, filePath);
 		if (result === "already-active") {
 			new Notice(t("notice.alreadyTracking"));
@@ -761,6 +790,41 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	// projects created on another device.
 	async updateSettings(fn: (settings: PluginSettings) => void): Promise<void> {
 		await this.store.updateSettings(fn);
+	}
+
+	// Tracking folders setting (see core/TrackingFolders.ts). Only gates
+	// the note's play button and the start command: the History panel's
+	// play, a running session and the auto-stop on close ignore it.
+	isInTrackingFolders(filePath: string): boolean {
+		return isInTrackingFolders(filePath, this.pluginState.settings.trackingFolders);
+	}
+
+	// Saves the list and redraws the controls already mounted in open
+	// notes (they read the list on every refresh).
+	async setTrackingFolders(folders: string[]): Promise<void> {
+		await this.updateSettings((settings) => {
+			settings.trackingFolders = folders;
+		});
+		this.inlineControlsBus.notify();
+	}
+
+	// A folder rename/move rewrites every stored Tracking folder at or
+	// below oldPath. Obsidian may report the same move once per
+	// descendant folder, and another synced device runs this too: the
+	// mutation re-reads data.json and only saves when a stored path
+	// still starts with oldPath, so repeats are no-ops. Any rename
+	// (folder or note) also refreshes the inline controls, since a note
+	// moved in or out of a Tracking folder changes what they show.
+	private async handleRename(file: TAbstractFile, oldPath: string): Promise<void> {
+		if (file instanceof TFolder && renameInFolderList(this.pluginState.settings.trackingFolders, oldPath, file.path)) {
+			await this.store.apply((state) => {
+				const next = renameInFolderList(state.settings.trackingFolders, oldPath, file.path);
+				if (!next) return { result: undefined, changed: false };
+				state.settings.trackingFolders = next;
+				return { result: undefined };
+			});
+		}
+		this.inlineControlsBus.notify();
 	}
 
 	// Historial panel: inline editing of a closed session's start/end.

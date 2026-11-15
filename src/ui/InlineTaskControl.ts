@@ -12,6 +12,9 @@ import { TimeEntry } from "../types";
 export interface InlineTaskControlDeps {
 	getActiveEntry: () => TimeEntry | null;
 	getAccumulatedMs: (taskId: string) => number;
+	// Whether a note at this path is inside the Tracking folders setting
+	// (see core/TrackingFolders.ts).
+	isInTrackingFolders: (filePath: string) => boolean;
 }
 
 export interface InlineTaskControlHandlers {
@@ -34,6 +37,9 @@ export class InlineTaskControlView {
 		private closed: boolean,
 		private deps: InlineTaskControlDeps,
 		private handlers: InlineTaskControlHandlers,
+		// Read on every refresh, not captured once: the note can be
+		// moved or renamed while the control is mounted.
+		private getFilePath: () => string,
 	) {
 		this.el = createSpan({ cls: "task-time-tracker-inline-control" });
 		// The play icon (open task, no history, not active) is only
@@ -88,6 +94,16 @@ export class InlineTaskControlView {
 			setIcon(this.iconEl, "square");
 			this.badgeEl.toggleClass("is-hidden", false);
 			this.badgeEl.setText(formatDuration(accumulatedMs + (Date.now() - active.start)));
+			return;
+		}
+
+		// Outside Tracking folders nothing is shown in the note (no play,
+		// no accumulated time). Only the running task above keeps its
+		// stop and counter, so a session started before its folder left
+		// the list can still be stopped from the note.
+		if (!this.deps.isInTrackingFolders(this.getFilePath())) {
+			this.el.toggleClass("is-static", false);
+			this.el.toggleClass("is-hidden", true);
 			return;
 		}
 

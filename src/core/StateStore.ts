@@ -53,6 +53,7 @@
 
 import { Client, DEFAULT_SETTINGS, PluginSettings, PluginState, Project, TimeEntry } from "../types";
 import { migrateToFormat2, MigrationReport } from "./ClientMigration";
+import { normalizeTrackingFolders } from "./TrackingFolders";
 
 // Data format version, independent from the plugin version. Bump it only
 // when an older plugin version could misread the data. Data without the
@@ -164,6 +165,7 @@ function normalizeSettings(raw: unknown): PluginSettings {
 			settings.taskIdFormat === "normal" || settings.taskIdFormat === "reduced" || settings.taskIdFormat === "hidden"
 				? settings.taskIdFormat
 				: DEFAULT_SETTINGS.taskIdFormat,
+		trackingFolders: normalizeTrackingFolders(settings.trackingFolders),
 	};
 }
 

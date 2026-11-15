@@ -48,10 +48,16 @@ class InlineTaskControlWidget extends WidgetType {
 		const closed = isClosedCheckboxState(extractCheckboxState(this.lineText));
 
 		let control!: InlineTaskControlView;
-		control = new InlineTaskControlView(taskId, closed, this.deps, {
-			onStart: () => this.handleStart(view, control),
-			onStop: () => this.deps.onStop(),
-		});
+		control = new InlineTaskControlView(
+			taskId,
+			closed,
+			this.deps,
+			{
+				onStart: () => this.handleStart(view, control),
+				onStop: () => this.deps.onStop(),
+			},
+			() => editorFilePath(view),
+		);
 
 		const unsubscribe = this.deps.bus.subscribe(() => control.refresh());
 		(control.el as HTMLElement & { _ttUnsubscribe?: () => void })._ttUnsubscribe = unsubscribe;
@@ -84,10 +90,15 @@ class InlineTaskControlWidget extends WidgetType {
 			});
 		}
 
-		const info = view.state.field(editorInfoField, false);
-		const filePath = info?.file instanceof TFile ? info.file.path : "";
-		this.deps.onStart(taskId, taskText, filePath);
+		this.deps.onStart(taskId, taskText, editorFilePath(view));
 	}
+}
+
+// Path of the note open in this editor ("" when there is none). TFile
+// keeps its path up to date on rename/move, so this is always current.
+function editorFilePath(view: EditorView): string {
+	const info = view.state.field(editorInfoField, false);
+	return info?.file instanceof TFile ? info.file.path : "";
 }
 
 function buildDecorations(view: EditorView, deps: InlineEditorControlDeps): DecorationSet {

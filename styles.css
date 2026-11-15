@@ -3106,3 +3106,39 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	overflow-y: auto;
 	overscroll-behavior: contain;
 }
+
+/* Settings > Tracking folders (see SettingsTab.ts#configureTrackingFolders):
+   the listed folders, under the setting's description. */
+.task-time-tracker-tracking-folders:not(:empty) {
+	display: flex;
+	flex-direction: column;
+	gap: var(--size-2-1);
+	margin-top: var(--size-4-2);
+}
+
+.task-time-tracker-tracking-folder {
+	display: flex;
+	align-items: center;
+	gap: var(--size-4-2);
+	color: var(--text-normal);
+}
+
+.task-time-tracker-tracking-folder-icon {
+	display: flex;
+	color: var(--text-muted);
+}
+
+.task-time-tracker-tracking-folder-path {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.task-time-tracker-tracking-folder-missing {
+	flex-shrink: 0;
+	font-size: var(--font-ui-smaller);
+}
+
+.task-time-tracker-tracking-folder-remove {
+	flex-shrink: 0;
+	margin-left: auto;
+}

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Settings, Tracking folders: choose the folders where the play button shows on tasks (subfolders included); leave it empty to keep it in the whole vault. Outside them, notes only show the task being tracked, and the "Start tracking on current task" command doesn't start; the History panel's play button works for any task. Renaming or moving a listed folder updates it, and a deleted one stays listed as "Folder not found" until you remove it.
+
 ### Changed
 
 - History cards: the menu button (three dots) now uses the theme's text color instead of a faded one, so it's easier to see. On hover it still shows the usual highlight.
