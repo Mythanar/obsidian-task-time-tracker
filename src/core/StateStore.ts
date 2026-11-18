@@ -54,6 +54,7 @@
 import { Client, DEFAULT_SETTINGS, PluginSettings, PluginState, Project, TimeEntry } from "../types";
 import { migrateToFormat2, MigrationReport } from "./ClientMigration";
 import { normalizeTrackingFolders } from "./TrackingFolders";
+import { normalizeFolderPath } from "./ProjectFolders";
 
 // Data format version, independent from the plugin version. Bump it only
 // when an older plugin version could misread the data. Data without the
@@ -121,6 +122,7 @@ function normalizeProjects(raw: unknown): Project[] {
 			name: item.name,
 			client: typeof item.client === "string" ? item.client : undefined,
 			aliasOf: typeof item.aliasOf === "string" ? item.aliasOf : undefined,
+			folder: normalizeFolderPath(item.folder),
 		});
 	}
 	return projects;

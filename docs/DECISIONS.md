@@ -2138,3 +2138,110 @@ the declarative view only (Obsidian >=1.13, `getSettingDefinitions()`).
   with a back arrow, no horizontal scroll. No console errors. Tester data
   unchanged.
 
+
+## Project by folder (0.0.37, 15 Nov 2026)
+
+Issue #4. A project may have one optional folder; every task in a note
+inside it (any depth) gets that project. Rules and copy come from the
+"Spec: Proyecto por carpeta" artifact; this records how they were built.
+
+- **Effective project, computed on read.** `core/ProjectFolders.ts`
+  (pure): folder project of the note (deepest folder wins, segment
+  matching), else the manual assignment if that project has no folder,
+  else none. `ProjectManager#getProjectForTask` now returns it, so every
+  reader (History cards and filter, Dashboard, Edit task, the three CSV
+  exports, export warnings, the delete count) follows without changes of
+  its own. Nothing is stored: manual assignments overridden by a folder,
+  or pointing to a project that got a folder, stay in `taskProjects` and
+  come back on unlink.
+- **Current note of each task.** Sessions only keep the path from when
+  they started, so `core/TaskLocations.ts` keeps an in-memory index
+  tt-id -> notes holding it: built in batches once the layout is ready,
+  kept up to date from `modify`, `create`, `delete` and `rename`. Not in
+  the vault (deleted note, index not built yet) -> the latest session's
+  path, so a deleted folder keeps its tasks' project in the history
+  (CA12). Duplicated tt-ids: the latest session's note when it still holds
+  it, else the first path in order.
+- **Data.** `Project.folder?: string`, a new optional field. No format
+  change and no migration. Checked in the code of tags 0.0.34, 0.0.35 and
+  0.0.36: `normalizeProjects()` spreads the stored project (`...item`)
+  and every project mutation edits in place, pushes new objects or
+  filters, so a save from those versions keeps `folder`; they just ignore
+  it (they show the manual project). 0.0.33 and earlier rewrite the whole
+  blob from memory, the case already covered by the format-2 notice.
+- **Validation.** One folder per project and one project per folder,
+  checked in the UI and again inside the save mutation (state just read
+  from disk). A new or changed folder must be inside Tracking folders;
+  "Add to Tracking folders" adds it and links in the same mutation. A typed
+  path that doesn't exist is refused ("Folder not found").
+- **D1/D2.** `computeLinkImpact()` compares the effective project of every
+  known task (tracked or with a manual project) before and after the
+  change: gained tasks and their tracked time, manual ones overridden, and
+  tasks that lose the project. Shown only when something changes; cancel
+  saves nothing. In memory, no vault read: O(tasks x projects). The spec
+  labels D1/D2 desktop/mobile with two different "outside" sentences;
+  both are kept, by cause: D1's for tasks set to the project by hand, D2's
+  for tasks left in the project's old folder.
+- **Renames and moves.** A folder rename rewrites Tracking folders and
+  project folders in one mutation (idempotent). Note moves seen inside
+  Obsidian within 500 ms are summed into one notice per project ("3 tasks
+  now belong to Project B.", plus "N tasks no longer have a project." for
+  moves out of a project folder), comparing against the project list from
+  before the batch so a moved project folder doesn't report anything.
+- **Edit task.** "Note" line with the current path (project folder's last
+  segment highlighted when it sets the project; collapsed on mobile with
+  "Show full path"). Folder project -> read-only row with a lock and "(Set
+  by folder)". Otherwise the picker lists folder projects after the
+  pickable ones, below a separator, disabled: lock before the name,
+  folder icon + path under it; "Tied to folder …" only in the accessible
+  text. The client picker stays free (R14). (Reworked after the user's
+  QA, see below.)
+- **Export.** The approved reimport warning is always shown, for every
+  format; it replaces the Clockify-only "Avoid duplicates in Clockify"
+  section, which said the same for one platform. The "Use the exact
+  client and project names…" banner leaves Clients & projects; the
+  Clockify "Include Project/Client" help texts carry that advice instead.
+- **Not done.** No heading "Inside Tracking folders" in the folder
+  suggestions: `AbstractInputSuggest` exposes no container to draw one in.
+  Colors follow theme variables (accent, muted, warning) instead of the
+  spec's fixed hex values.
+- **Checked in real Obsidian 1.15.1 (Tester, CDP, desktop, Spanish).**
+  Settings opens in its own window there, which the test script had to
+  handle and which caused one of the bugs below. Index: 126 of 152
+  tracked tasks live today in a note other than their last session's
+  (moved to `Projects/`) and resolve to it; 13 not in the vault use their
+  last session's path. Settings: form, suggestions limited to free
+  folders inside Tracking folders, duplicate and outside errors, "Add to
+  Tracking folders" linking in one step, outside and missing rows, Re-link,
+  Remove link, folder rename (CA15, no notice), note moved out of and back
+  into a project folder (J4 notices), Tracking folder removed (J6 notice).
+  Edit task: locked row, highlighted folder, free client, picker with the
+  folder project hidden, footer, disabled search result. D1/D2: counts
+  match the History, Cancel saves nothing and keeps the draft. Export:
+  the warning in all three formats; the CSV carries the folder project on
+  every expected row (write intercepted, no file). Tester data restored
+  afterwards; no note changed.
+- **Fixed during that pass.** (1) The client form's "Add" wrapped to its
+  own line (inputs get width: 100%; flex-basis now). (2) Moving from the
+  name field to the folder field cancelled the inline edit: the blur check
+  read the main window's `document.activeElement`, not the Settings
+  window's. (3) Escape to close the folder suggestions cancelled the
+  edit; `FolderSuggest` now tracks open/close (public `open()`/`close()`)
+  and the field leaves Escape to it. Also, D1/D2 counted project
+  assignments of tasks with no sessions left (5 in Tester), which no
+  screen shows; it now counts tracked tasks only. The delete confirmation
+  keeps counting them, as before.
+- **User's desktop QA (2026-11-18), changes.** H1: the project folder
+  field suggests every vault folder except those another project uses,
+  regardless of Tracking folders (replaces spec rule CA6); picking one
+  outside Tracking folders still goes through the "outside" warning with
+  "Add to Tracking folders". H3: the picker no longer hides folder
+  projects behind a search nor shows the "N projects are tied to a
+  folder" footer; they are always listed, below a separator, disabled,
+  with a lock and their folder path (replaces M2/M2b where they clash);
+  the reason stays in visually hidden text for screen readers. H2 (no
+  move notice seen) was not a bug: reproduced in real Obsidian with
+  timestamped logging, both via `fileManager.renameFile` and a real drag
+  in the file explorer (CDP drag interception); the notice fires 500 ms
+  after the move and Obsidian keeps it ~4 s. It only shows when a moved
+  note holds tracked tasks (a `tt-id`) whose effective project changes.

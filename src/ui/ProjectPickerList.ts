@@ -16,6 +16,12 @@ import { positionPopover } from "./positionPopover";
 export interface PickerItem {
 	id: string;
 	name: string;
+	// Not pickable here: a project tied to a folder (Edit task modal, see
+	// EditTaskModal.ts). Always listed, after the pickable items and below
+	// a separator, disabled: a lock before the name and the folder path
+	// under it. `reason` ("Tied to folder X") isn't shown; it is the text
+	// screen readers get for the row.
+	locked?: { folder: string; reason: string };
 }
 
 // Texts per list kind.
@@ -139,10 +145,13 @@ export class ProjectPickerList {
 			});
 		}
 
+		// The search filters both groups (pickable and locked) by name.
 		const query = this.query.trim().toLowerCase();
 		const matches = (query ? items.filter((item) => item.name.toLowerCase().includes(query)) : items)
 			.slice()
 			.sort((a, b) => a.name.localeCompare(b.name));
+		const pickable = matches.filter((item) => !item.locked);
+		const locked = matches.filter((item) => item.locked);
 
 		if (query && matches.length === 0) {
 			listEl.createDiv({
@@ -152,7 +161,7 @@ export class ProjectPickerList {
 			return;
 		}
 
-		for (const item of matches) {
+		for (const item of pickable) {
 			const selected = item.id === selectedId;
 			this.renderRow(listEl, {
 				label: item.name,
@@ -161,6 +170,33 @@ export class ProjectPickerList {
 				onClick: pick(item.id, selected),
 			});
 		}
+
+		if (locked.length === 0) return;
+		// Separator only between the two groups: with no pickable row
+		// above, the "No project" row's own border already separates them.
+		if (pickable.length > 0) listEl.createDiv({ cls: "task-time-tracker-project-picker-separator", attr: { role: "separator" } });
+		for (const item of locked) {
+			if (item.locked) this.renderLockedRow(listEl, item.name, item.locked);
+		}
+	}
+
+	// A project tied to a folder: not pickable, so no click handler and
+	// no check. The lock sits in the check column, the folder line under
+	// the name. Both are hidden from screen readers, which read the name
+	// and the reason instead (visually hidden text).
+	private renderLockedRow(listEl: HTMLElement, name: string, locked: { folder: string; reason: string }): void {
+		const rowEl = listEl.createDiv({
+			cls: "task-time-tracker-project-picker-row is-disabled",
+			attr: { "aria-disabled": "true" },
+		});
+		const lock = rowEl.createSpan({ cls: "task-time-tracker-project-picker-check task-time-tracker-project-picker-lock" });
+		setIcon(lock, "lock");
+		const label = rowEl.createDiv({ cls: "task-time-tracker-project-picker-label" });
+		label.createDiv({ text: name, cls: "task-time-tracker-project-picker-name" });
+		const folder = label.createDiv({ cls: "task-time-tracker-project-picker-folder", attr: { "aria-hidden": "true" } });
+		setIcon(folder.createSpan({ cls: "task-time-tracker-project-picker-folder-icon" }), "folder");
+		folder.createSpan({ text: locked.folder, cls: "task-time-tracker-project-picker-folder-path" });
+		label.createSpan({ text: locked.reason, cls: "task-time-tracker-visually-hidden" });
 	}
 
 	private renderRow(

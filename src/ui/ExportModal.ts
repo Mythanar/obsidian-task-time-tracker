@@ -260,23 +260,16 @@ export class ExportModal extends Modal {
 			cls: "task-time-tracker-export-clockify-note",
 		});
 
-		// Section 3 — "Avoid duplicates in Clockify": importing sessions
-		// already in Clockify duplicates the entries, Clockify doesn't
-		// merge or warn. Unlike "Date format" (a discreet note,
-		// .task-time-tracker-export-clockify-note), this is the modal's
-		// only warning about something that can genuinely go wrong
-		// (duplicating hours without noticing): a prominent warning
-		// style, same classes the "sessions with no project" warning used
-		// before that section was removed. Permanent, not tied to the
-		// chosen range.
-		const reimportSection = this.clockifyInfoEl.createDiv({ cls: "task-time-tracker-export-clockify-section" });
-		reimportSection.createEl("p", {
-			text: t("export.clockifyReimportHeading"),
-			cls: "task-time-tracker-export-clockify-heading",
-		});
-		reimportSection.createEl("p", {
-			text: t("export.clockifyReimportNote"),
-			cls: "task-time-tracker-log-edit-message task-time-tracker-log-edit-message-warning",
+		// Fixed reimport warning, every format, not tied to the range
+		// (approved text, "Proyecto por carpeta"): the plugin can't tell
+		// what was already imported (export is one-way), and changing a
+		// project, moving notes or editing times and exporting the same
+		// dates again duplicates entries on most platforms. Replaces the
+		// Clockify-only "Avoid duplicates in Clockify" section, which said
+		// the same for one platform. Same prominent warning style.
+		contentEl.createEl("p", {
+			text: t("export.reimportWarning"),
+			cls: "task-time-tracker-log-edit-message task-time-tracker-log-edit-message-warning task-time-tracker-export-reimport-warning",
 		});
 
 		this.warningsEl = contentEl.createDiv({ cls: "task-time-tracker-export-warnings" });

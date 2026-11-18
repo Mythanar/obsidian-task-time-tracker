@@ -40,6 +40,12 @@ export interface Project {
 	// its own client. Older versions drop this field when they save,
 	// which turns aliases back into plain projects for them.
 	aliasOf?: string;
+	// "Project by folder" (0.0.37, see core/ProjectFolders.ts): vault
+	// folder whose notes' tasks get this project, at any depth. Vault-
+	// relative, no leading or trailing slash. A new optional field, no
+	// data format change: 0.0.34+ keeps unknown project fields when it
+	// saves, so older devices don't drop it (they just ignore it).
+	folder?: string;
 }
 
 // Toggl settings, manual fields (never queried via API). The date/time

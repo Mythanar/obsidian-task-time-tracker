@@ -13,7 +13,14 @@ import {
 import { TrackingEngine } from "./core/TrackingEngine";
 import { ProjectManager } from "./core/ProjectManager";
 import { DATA_FORMAT_VERSION, StateStore } from "./core/StateStore";
-import { isInTrackingFolders, renameInFolderList } from "./core/TrackingFolders";
+import { isInTrackingFolders, isPathInFolder, renameInFolderList } from "./core/TrackingFolders";
+import {
+	computeMoveChanges,
+	NoteMove,
+	projectFoldersOutsideTracking,
+	renameProjectFolders,
+} from "./core/ProjectFolders";
+import { TaskLocations, taskIdsIn } from "./core/TaskLocations";
 import { MigrationReport, visibleSpaces } from "./core/ClientMigration";
 import {
 	extractCheckboxState,
@@ -30,7 +37,7 @@ import { RecoveryModal } from "./ui/RecoveryModal";
 import { ExportModal, ExportFormat } from "./ui/ExportModal";
 import { ExportManager } from "./export/ExportManager";
 import { SettingsTab } from "./settings/SettingsTab";
-import { DeleteTaskResult, EntryUpdateResult, PluginSettings, PluginState, TimeEntry } from "./types";
+import { DeleteTaskResult, EntryUpdateResult, PluginSettings, PluginState, Project, TimeEntry } from "./types";
 import { InlineTrackingBus } from "./ui/InlineTrackingBus";
 import { createInlineTaskControlExtension } from "./ui/InlineTaskControlExtension";
 import { t } from "./i18n";
@@ -54,6 +61,15 @@ import { t } from "./i18n";
 // (much shorter) debounce avoids reacting to a transient line state
 // while the user is still editing.
 const EDITOR_CHANGE_DEBOUNCE_MS = 300;
+
+// "Project by folder": note moves reported by Obsidian within this
+// window are summed into one notice (a folder move reports every note in
+// it, see handleRename()).
+const MOVE_NOTICE_DELAY_MS = 500;
+
+// Notes indexed per batch while building the task location index, then
+// the build yields so a large vault doesn't freeze the interface.
+const INDEX_BATCH_SIZE = 200;
 
 // See applyTaskIdFormatClass().
 const TASKID_FORMAT_BODY_CLASSES = ["task-time-tracker-taskid-reduced", "task-time-tracker-taskid-hidden"];
@@ -110,6 +126,17 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	private overwrittenNoticeShown = false;
 	private editorChangeDebounceTimer: number | null = null;
 	private inlineControlsBus = new InlineTrackingBus();
+	// tt-id -> current note (see core/TaskLocations.ts), for the
+	// effective project of each task ("Project by folder").
+	private taskLocations = new TaskLocations();
+	// Latest session's note per task, cached per state object (the store
+	// replaces the state wholesale on every write, see StateStore.ts).
+	private latestPathsCache: { state: PluginState; paths: Map<string, string> } | null = null;
+	// Note moves waiting for their notice (see handleRename()), with the
+	// project list as it was before the first one.
+	private pendingMoves: NoteMove[] = [];
+	private projectsBeforeMoves: readonly Project[] | null = null;
+	private moveNoticeTimer: number | null = null;
 
 	// The in-memory state lives in StateStore and is replaced wholesale
 	// after every write (read-before-write, see core/StateStore.ts), so it
@@ -134,7 +161,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		this.checkDataFormat();
 
 		this.trackingEngine = new TrackingEngine(this.store);
-		this.projectManager = new ProjectManager(this.store);
+		this.projectManager = new ProjectManager(this.store, (taskId) => this.locateTask(taskId));
 		this.taskIdentifier = new TaskIdentifier(this.app);
 		this.exportManager = new ExportManager(this.app, this.taskIdentifier, this.projectManager);
 		this.statusBarWidget = new StatusBarWidget(
@@ -157,6 +184,7 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 					getProjects: () => this.projectManager.getProjects(),
 					getItems: (kind) => this.projectManager.getItems(kind),
 					getProjectForTask: (taskId) => this.projectManager.getProjectForTask(taskId),
+					getProjectInfo: (taskId) => this.projectManager.getProjectInfo(taskId),
 					getClientForTask: (taskId) => this.projectManager.getClientForTask(taskId),
 					assign: (kind, taskId, id) => this.projectManager.assign(kind, taskId, id),
 					bus: this.inlineControlsBus,
@@ -198,14 +226,35 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 			}),
 		);
 
-		// Tracking folders: a renamed or moved folder updates the stored
-		// paths (see handleRename). Deletions need no listener: a deleted
-		// folder stays in the list and works again if it is recreated.
+		// A renamed or moved folder updates the stored Tracking folders and
+		// project folders; any rename keeps the task location index up to
+		// date (see handleRename). A deleted folder stays in both lists
+		// ("Folder not found") and works again if it is recreated.
 		this.registerEvent(
 			this.app.vault.on("rename", (file, oldPath) => {
 				void this.handleRename(file, oldPath);
 			}),
 		);
+		this.registerEvent(
+			this.app.vault.on("delete", (file) => {
+				if (this.taskLocations.removeUnder(file.path)) this.onTaskLocationsChanged();
+			}),
+		);
+		this.register(() => {
+			if (this.moveNoticeTimer !== null) window.clearTimeout(this.moveNoticeTimer);
+		});
+
+		// Task location index: built once the vault is loaded. "create"
+		// is registered here too, so it doesn't fire for every note of the
+		// vault on startup (see Vault#on("create")).
+		this.app.workspace.onLayoutReady(() => {
+			this.registerEvent(
+				this.app.vault.on("create", (file) => {
+					if (file instanceof TFile && file.extension === "md") void this.indexFile(file);
+				}),
+			);
+			void this.buildTaskLocations();
+		});
 
 		// Fast path: reacts to the editor's live content without waiting
 		// for the save to disk (see EDITOR_CHANGE_DEBOUNCE_MS).
@@ -504,11 +553,15 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 	private async handleFileModified(file: TAbstractFile): Promise<void> {
 		if (!(file instanceof TFile) || file.extension !== "md") return;
 
+		// The location index always follows the note (a task cut from one
+		// note and pasted in another changes its folder project).
+		const content = await this.app.vault.cachedRead(file);
+		if (this.taskLocations.setFile(file.path, taskIdsIn(content))) this.onTaskLocationsChanged();
+
 		const hasActive = this.trackingEngine.getActiveEntry() !== null;
 		const panelOpen = this.hasTimeLogViewOpen();
 		if (!hasActive && !panelOpen) return;
 
-		const content = await this.app.vault.cachedRead(file);
 		if (hasActive) await this.stopIfActiveTaskClosedIn(content);
 		if (panelOpen) this.refreshLogViewsIfTracked(content);
 	}
@@ -808,23 +861,146 @@ export default class TaskTimeTrackerPlugin extends Plugin {
 		this.inlineControlsBus.notify();
 	}
 
-	// A folder rename/move rewrites every stored Tracking folder at or
-	// below oldPath. Obsidian may report the same move once per
-	// descendant folder, and another synced device runs this too: the
-	// mutation re-reads data.json and only saves when a stored path
-	// still starts with oldPath, so repeats are no-ops. Any rename
-	// (folder or note) also refreshes the inline controls, since a note
-	// moved in or out of a Tracking folder changes what they show.
+	// Removing a Tracking folder is never blocked: it only hides the play
+	// button there. Linked project folders left outside keep their tasks'
+	// project; a notice says how many, and their rows in Settings show
+	// the "outside" state.
+	async removeTrackingFolder(path: string): Promise<void> {
+		const before = projectFoldersOutsideTracking(this.pluginState.projects, this.pluginState.settings.trackingFolders);
+		await this.setTrackingFolders(this.pluginState.settings.trackingFolders.filter((folder) => folder !== path));
+		const after = projectFoldersOutsideTracking(this.pluginState.projects, this.pluginState.settings.trackingFolders);
+		const count = [...after].filter((id) => !before.has(id)).length;
+		if (count === 0) return;
+		new Notice(
+			t(count === 1 ? "notice.projectFoldersOutsideSingular" : "notice.projectFoldersOutsidePlural", {
+				count: String(count),
+			}),
+		);
+	}
+
+	// After a change in Settings > Clients & projects: the History and
+	// Dashboard show the new names and effective projects right away.
+	onProjectsChanged(): void {
+		this.refreshLogViews();
+		this.inlineControlsBus.notify();
+	}
+
+	// A folder rename/move rewrites every stored Tracking folder and
+	// project folder at or below oldPath. Obsidian may report the same
+	// move once per descendant folder, and another synced device runs
+	// this too: the mutation re-reads data.json and only saves when a
+	// stored path still starts with oldPath, so repeats are no-ops. Any
+	// rename (folder or note) moves the indexed notes with it, refreshes
+	// the inline controls (a note moved in or out of a Tracking folder
+	// changes what they show) and queues the "now belong to" notice.
 	private async handleRename(file: TAbstractFile, oldPath: string): Promise<void> {
-		if (file instanceof TFolder && renameInFolderList(this.pluginState.settings.trackingFolders, oldPath, file.path)) {
-			await this.store.apply((state) => {
-				const next = renameInFolderList(state.settings.trackingFolders, oldPath, file.path);
-				if (!next) return { result: undefined, changed: false };
-				state.settings.trackingFolders = next;
-				return { result: undefined };
+		// The project list before this batch of moves, for the notice
+		// (taken before the project folders below are rewritten).
+		if (this.projectsBeforeMoves === null) this.projectsBeforeMoves = this.pluginState.projects;
+
+		const moved = this.taskLocations.rename(oldPath, file.path);
+		for (const [from, to] of moved) {
+			this.pendingMoves.push({ oldPath: from, newPath: to, tasks: this.taskLocations.idsIn(to).map((taskId) => ({ taskId })) });
+		}
+
+		const state = this.pluginState;
+		if (
+			file instanceof TFolder &&
+			(renameInFolderList(state.settings.trackingFolders, oldPath, file.path) ||
+				state.projects.some((p) => p.folder !== undefined && isPathInFolder(p.folder, oldPath)))
+		) {
+			await this.store.apply((latest) => {
+				let changed = false;
+				const next = renameInFolderList(latest.settings.trackingFolders, oldPath, file.path);
+				if (next) {
+					latest.settings.trackingFolders = next;
+					changed = true;
+				}
+				if (renameProjectFolders(latest.projects, oldPath, file.path)) changed = true;
+				return { result: undefined, changed };
 			});
 		}
 		this.inlineControlsBus.notify();
+		this.scheduleMoveNotice();
+	}
+
+	private scheduleMoveNotice(): void {
+		if (this.moveNoticeTimer !== null) window.clearTimeout(this.moveNoticeTimer);
+		this.moveNoticeTimer = window.setTimeout(() => {
+			this.moveNoticeTimer = null;
+			this.flushMoveNotice();
+		}, MOVE_NOTICE_DELAY_MS);
+	}
+
+	// Best effort (J4): only moves made inside Obsidian are seen; moves
+	// made elsewhere still get the right project, just without a notice.
+	private flushMoveNotice(): void {
+		const before = this.projectsBeforeMoves;
+		const moves = this.pendingMoves;
+		this.projectsBeforeMoves = null;
+		this.pendingMoves = [];
+		if (!before || moves.length === 0) return;
+
+		const state = this.pluginState;
+		for (const move of moves) {
+			for (const task of move.tasks) task.manualProjectId = state.taskProjects[task.taskId];
+		}
+		const changes = computeMoveChanges(before, state.projects, moves);
+		for (const [project, count] of changes) {
+			const params = { count: String(count), project: project?.name ?? "" };
+			if (project) {
+				new Notice(t(count === 1 ? "notice.tasksNowInProjectSingular" : "notice.tasksNowInProjectPlural", params));
+			} else {
+				new Notice(t(count === 1 ? "notice.tasksNoProjectSingular" : "notice.tasksNoProjectPlural", params));
+			}
+		}
+		this.onTaskLocationsChanged();
+	}
+
+	// The task's current note: from the location index, else (note
+	// deleted, index not built yet) the latest session's note.
+	private locateTask(taskId: string): string | null {
+		return this.taskLocations.locate(taskId, this.latestSessionPath(taskId));
+	}
+
+	private latestSessionPath(taskId: string): string | null {
+		const state = this.pluginState;
+		if (this.latestPathsCache?.state !== state) {
+			const latest = new Map<string, TimeEntry>();
+			for (const entry of state.entries) {
+				const current = latest.get(entry.taskId);
+				if (!current || entry.start > current.start) latest.set(entry.taskId, entry);
+			}
+			this.latestPathsCache = {
+				state,
+				paths: new Map([...latest].map(([id, entry]) => [id, entry.filePath])),
+			};
+		}
+		return this.latestPathsCache.paths.get(taskId) || null;
+	}
+
+	// One pass over the vault's notes when the layout is ready, in
+	// batches. Only notes with a tt-id end up in the index. Until it is
+	// ready, each task uses its latest session's note.
+	private async buildTaskLocations(): Promise<void> {
+		const files = this.app.vault.getMarkdownFiles();
+		for (let i = 0; i < files.length; i++) {
+			const file = files[i];
+			if (file) await this.indexFile(file, false);
+			if (i % INDEX_BATCH_SIZE === INDEX_BATCH_SIZE - 1) await new Promise((resolve) => window.setTimeout(resolve, 0));
+		}
+		this.taskLocations.markReady();
+		this.onTaskLocationsChanged();
+	}
+
+	private async indexFile(file: TFile, notify = true): Promise<void> {
+		const content = await this.app.vault.cachedRead(file);
+		if (this.taskLocations.setFile(file.path, taskIdsIn(content)) && notify) this.onTaskLocationsChanged();
+	}
+
+	// A task changed notes: its effective project may have changed.
+	private onTaskLocationsChanged(): void {
+		if (this.taskLocations.isReady()) this.refreshLogViews();
 	}
 
 	// Historial panel: inline editing of a closed session's start/end.

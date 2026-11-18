@@ -174,7 +174,7 @@
 	display: block !important;
 }
 
-/* Same icon+text pattern as .task-time-tracker-projects-banner, but using
+/* Icon+text banner pattern, but using
    the theme's warning tokens instead of accent — for a "this may not work
    as expected" notice, distinct from .task-time-tracker-settings-error
    (reserved for actual blocking states). */
@@ -2002,46 +2002,10 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	margin-bottom: 1em;
 }
 
-/* Same highlighted-block-with-left-accent-border pattern already used
-   elsewhere in the plugin (see .task-time-tracker-log-edit-duration). */
 /* Read-only notice in "Projects & clients" (data from a newer version,
-   see ProjectsSection.ts#renderLockedNotice): same spacing as the info
-   banner above it. */
+   see ProjectsSection.ts#renderLockedNotice). */
 .task-time-tracker-projects .task-time-tracker-settings-warning-banner {
 	margin-bottom: 1em;
-}
-
-.task-time-tracker-projects-banner {
-	display: flex;
-	align-items: flex-start;
-	gap: 0.6em;
-	padding: 0.75em 1em;
-	margin-bottom: 1em;
-	border-left: 3px solid var(--interactive-accent);
-	border-radius: 0 var(--radius-s) var(--radius-s) 0;
-	background-color: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
-}
-
-@supports not (color: color-mix(in srgb, red 50%, blue)) {
-	.task-time-tracker-projects-banner {
-		background-color: var(--background-secondary);
-	}
-}
-
-.task-time-tracker-projects-banner-icon {
-	flex-shrink: 0;
-	color: var(--interactive-accent);
-	margin-top: 0.15em;
-}
-
-.task-time-tracker-projects-banner-icon svg {
-	width: 1.1em;
-	height: 1.1em;
-}
-
-.task-time-tracker-projects-banner-text {
-	font-size: 0.9em;
-	color: var(--text-muted);
 }
 
 /* Same segmented control as the History's Day/Week toggle
@@ -2071,8 +2035,10 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 	gap: 0.5em;
 }
 
+/* flex-basis instead of auto: Obsidian gives inputs width: 100%, which
+   would push "Add" to its own line once the row may wrap (below). */
 .task-time-tracker-projects-form-fields input {
-	flex: 1 1 auto;
+	flex: 1 1 10em;
 	min-width: 0;
 }
 
@@ -3141,4 +3107,241 @@ body.task-time-tracker-taskid-hidden span[data-dv-key="tt-id"] + span {
 .task-time-tracker-tracking-folder-remove {
 	flex-shrink: 0;
 	margin-left: auto;
+}
+
+/* ---------------------------------------------------------------------
+   Project by folder (see core/ProjectFolders.ts). Theme variables only:
+   the spec's lilac highlight maps to --text-accent, the "outside" state
+   to --text-muted and "Folder not found" to --text-warning. States are
+   told by text and icon too, never by color alone.
+   --------------------------------------------------------------------- */
+
+/* Settings > Clients & projects: name, folder and "Add" on one row,
+   wrapping on narrow panes. */
+.task-time-tracker-projects-form-fields {
+	flex-wrap: wrap;
+}
+
+.task-time-tracker-projects-form-fields .task-time-tracker-projects-folder-input {
+	flex: 1 1 12em;
+}
+
+/* "Add" with no name yet: still focusable (aria-disabled), dimmed. */
+.task-time-tracker-is-unavailable {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
+
+.task-time-tracker-projects-folder-error .task-time-tracker-log-edit-error {
+	margin: 0;
+}
+
+.task-time-tracker-projects-folder-outside {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5em;
+	font-size: 0.9em;
+}
+
+/* Row: name and, under it, the folder and its state. */
+.task-time-tracker-projects-row-main {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 0.2em;
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.task-time-tracker-projects-row-folder,
+.task-time-tracker-projects-row-folder-state {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.35em;
+	max-width: 100%;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.task-time-tracker-projects-row-folder-path {
+	min-width: 0;
+	font-family: var(--font-monospace);
+	overflow-wrap: anywhere;
+}
+
+.task-time-tracker-projects-row-folder-icon {
+	display: flex;
+	flex-shrink: 0;
+}
+
+.task-time-tracker-projects-row-folder-icon svg {
+	width: 1em;
+	height: 1em;
+}
+
+.task-time-tracker-projects-row-folder-state.is-missing .task-time-tracker-projects-row-folder-icon {
+	color: var(--text-warning);
+}
+
+.task-time-tracker-projects-row-folder-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.35em;
+}
+
+.task-time-tracker-projects-row-folder-btn {
+	min-height: 24px;
+	font-size: var(--font-ui-smaller);
+}
+
+.is-mobile .task-time-tracker-projects-row-folder-btn {
+	min-height: 44px;
+}
+
+/* Inline edit of a project: name, then folder, stacked. */
+.task-time-tracker-projects-row-edit-field {
+	display: flex;
+	flex-direction: column;
+	gap: 0.35em;
+}
+
+/* D1/D2: confirm a folder link. */
+.task-time-tracker-link-folder-path {
+	margin-top: 0;
+	font-family: var(--font-monospace);
+	font-size: var(--font-ui-small);
+	color: var(--text-muted);
+	overflow-wrap: anywhere;
+}
+
+.task-time-tracker-link-folder-warning {
+	color: var(--text-warning);
+}
+
+.is-mobile .task-time-tracker-link-folder-actions button {
+	min-height: 44px;
+}
+
+/* Edit task: "Note" line under the tt-id, same look. The path wraps
+   instead of being cut. */
+.task-time-tracker-edit-modal-note-row {
+	flex-wrap: wrap;
+	align-items: baseline;
+}
+
+.task-time-tracker-edit-modal-note-path {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.task-time-tracker-edit-modal-note-folder {
+	color: var(--text-accent);
+	font-weight: var(--font-bold);
+}
+
+.task-time-tracker-edit-modal-note-show-full {
+	font-size: inherit;
+	padding: 0 0.5em;
+	height: auto;
+	min-height: 24px;
+}
+
+.is-mobile .task-time-tracker-edit-modal-note-show-full {
+	min-height: 44px;
+}
+
+/* Project set by folder: read-only, no button. */
+.task-time-tracker-edit-modal-project-locked-value {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.4em;
+	min-width: 0;
+}
+
+.task-time-tracker-edit-modal-project-locked-icon {
+	display: flex;
+	color: var(--text-muted);
+}
+
+.task-time-tracker-edit-modal-project-locked-icon svg {
+	width: 1em;
+	height: 1em;
+}
+
+.task-time-tracker-edit-modal-project-locked-name {
+	font-family: var(--font-monospace);
+	overflow-wrap: anywhere;
+}
+
+.task-time-tracker-edit-modal-project-locked-hint {
+	color: var(--text-accent);
+}
+
+/* Picker: a project tied to a folder, listed after the pickable ones
+   below a separator, disabled (see renderLockedRow() in
+   ProjectPickerList.ts). */
+.task-time-tracker-project-picker-separator {
+	margin: 0.2em 0;
+	border-top: 1px solid var(--background-modifier-border);
+}
+
+.task-time-tracker-project-picker-row.is-disabled {
+	position: relative;
+	align-items: flex-start;
+	cursor: not-allowed;
+}
+
+.task-time-tracker-project-picker-row.is-disabled:hover {
+	background-color: transparent;
+}
+
+.task-time-tracker-project-picker-row.is-disabled .task-time-tracker-project-picker-name {
+	color: var(--text-muted);
+}
+
+/* The lock takes the check column, centered on the name's line (the
+   row aligns to the top, as the folder line sits under the name). */
+.task-time-tracker-project-picker-lock {
+	min-height: calc(1em * var(--line-height-normal));
+	color: var(--text-muted);
+}
+
+.task-time-tracker-project-picker-folder {
+	display: flex;
+	align-items: center;
+	gap: 0.3em;
+	min-width: 0;
+	font-size: var(--font-ui-smaller);
+	color: var(--text-muted);
+}
+
+.task-time-tracker-project-picker-folder-icon {
+	display: flex;
+	flex-shrink: 0;
+}
+
+.task-time-tracker-project-picker-folder-icon svg {
+	width: 0.9em;
+	height: 0.9em;
+}
+
+.task-time-tracker-project-picker-folder-path {
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+/* Text only for screen readers. */
+.task-time-tracker-visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	padding: 0;
+	margin: -1px;
+	overflow: hidden;
+	clip: rect(0 0 0 0);
+	white-space: nowrap;
+	border: 0;
 }

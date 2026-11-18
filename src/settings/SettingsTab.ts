@@ -15,7 +15,6 @@
 // minAppVersion isn't bumped.
 
 import {
-	AbstractInputSuggest,
 	App,
 	PluginSettingTab,
 	setIcon,
@@ -24,13 +23,13 @@ import {
 	SettingDefinitionItem,
 	SettingDefinitionPage,
 	SettingGroupItem,
-	TFolder,
 	ToggleComponent,
 } from "obsidian";
 import type TaskTimeTrackerPlugin from "../main";
 import { t, TranslationKey } from "../i18n";
 import { DEFAULT_SETTINGS, isValidEmail, LogViewLocation, PluginSettings, TaskIdFormat } from "../types";
-import { ProjectsSection, renderProjectsBanner } from "./ProjectsSection";
+import { ProjectsSection } from "./ProjectsSection";
+import { FolderSuggest } from "./FolderSuggest";
 
 function logViewLocationOptions(): Record<string, string> {
 	return {
@@ -47,44 +46,13 @@ function taskIdFormatOptions(): Record<string, string> {
 	};
 }
 
-// Autocomplete of folders already existing in the vault for the export
-// folder setting, same UI pattern Obsidian uses to configure the
-// default attachment folder. Allows typing a path that doesn't exist
-// yet (ExportManager.ts auto-creates it when exporting) — autocomplete
-// is only a help, not a restriction. `include` narrows the suggestions
-// (Tracking folders hides the vault root and folders already listed).
-class FolderSuggest extends AbstractInputSuggest<TFolder> {
-	constructor(
-		app: App,
-		inputEl: HTMLInputElement,
-		private onChoose: (path: string) => void,
-		private include: (folder: TFolder) => boolean = () => true,
-	) {
-		super(app, inputEl);
-	}
-
-	protected getSuggestions(query: string): TFolder[] {
-		const q = query.toLowerCase();
-		return this.app.vault
-			.getAllFolders(true)
-			.filter((folder) => this.include(folder) && folder.path.toLowerCase().includes(q));
-	}
-
-	renderSuggestion(folder: TFolder, el: HTMLElement): void {
-		el.setText(folder.path);
-	}
-
-	selectSuggestion(folder: TFolder): void {
-		this.setValue(folder.path);
-		this.onChoose(folder.path);
-		this.close();
-	}
-}
-
 export class SettingsTab extends PluginSettingTab {
 	// The "Include Client" toggle on screen, so turning "Include Project"
 	// off can switch it off too (see configureClockifyIncludeProject).
 	private clockifyIncludeClientToggle: ToggleComponent | null = null;
+	// The Tracking folders list on screen, redrawn when a project's "Add
+	// to Tracking folders" changes it (same page on Obsidian <1.13).
+	private renderTrackingFolderList: (() => void) | null = null;
 
 	constructor(
 		app: App,
@@ -165,8 +133,11 @@ export class SettingsTab extends PluginSettingTab {
 					attr: { "aria-label": t("settings.trackingFolders.remove"), role: "button", tabindex: "0" },
 				});
 				setIcon(remove, "x");
+				// Never blocked: removing only hides the play button there
+				// (see main.ts#removeTrackingFolder for the notice about
+				// linked project folders left outside).
 				const removeFolder = async () => {
-					await this.plugin.setTrackingFolders(folders().filter((folder) => folder !== path));
+					await this.plugin.removeTrackingFolder(path);
 					renderList();
 				};
 				remove.addEventListener("click", () => void removeFolder());
@@ -192,6 +163,7 @@ export class SettingsTab extends PluginSettingTab {
 			);
 		});
 
+		this.renderTrackingFolderList = renderList;
 		renderList();
 	}
 
@@ -261,14 +233,26 @@ export class SettingsTab extends PluginSettingTab {
 	// others expect Project/Client columns in their importer).
 	// Self-contained component, see ProjectsSection.ts.
 	private renderProjectsSection(containerEl: HTMLElement): void {
-		new ProjectsSection(containerEl.createDiv(), this.plugin.projectManager, () => this.plugin.refreshLogViews()).render();
+		this.newProjectsSection(containerEl.createDiv()).render();
+	}
+
+	private newProjectsSection(containerEl: HTMLElement): ProjectsSection {
+		return new ProjectsSection(containerEl, this.plugin.projectManager, () => this.plugin.onProjectsChanged(), {
+			app: this.app,
+			getTrackingFolders: () => this.plugin.pluginState.settings.trackingFolders,
+			addTrackingFolder: async (path) => {
+				const folders = this.plugin.pluginState.settings.trackingFolders;
+				if (!folders.includes(path)) await this.plugin.setTrackingFolders([...folders, path]);
+				this.renderTrackingFolderList?.();
+			},
+		});
 	}
 
 	// A getSettingDefinitions() `render` row is still a Setting with its
 	// name/description column and its control column side by side
-	// (two-column layout). The banner and the "Projects & clients" block
-	// (tabs, form, list) need the row's full width, not one column —
-	// hence emptying settingEl and forcing block layout (see
+	// (two-column layout). The "Projects & clients" block (tabs, form,
+	// list) needs the row's full width, not one column — hence emptying
+	// settingEl and forcing block layout (see
 	// .task-time-tracker-settings-fullwidth-row in styles.css) before
 	// painting its own content inside. Only applies to the declarative
 	// view; display() never creates a Setting for this content.
@@ -278,22 +262,8 @@ export class SettingsTab extends PluginSettingTab {
 		return setting.settingEl.createDiv();
 	}
 
-	private renderProjectsBannerRow(setting: Setting): void {
-		renderProjectsBanner(this.makeFullWidthRow(setting));
-	}
-
-	// includeBanner=false: the banner is already painted in its own row
-	// (see renderProjectsBannerRow) — avoids it reappearing here below
-	// every time ProjectsSection re-renders itself after an interaction
-	// (add/edit/delete), since that re-render calls its own full
-	// render() again.
 	private renderProjectsContentRow(setting: Setting): void {
-		new ProjectsSection(
-			this.makeFullWidthRow(setting),
-			this.plugin.projectManager,
-			() => this.plugin.refreshLogViews(),
-			false,
-		).render();
+		this.newProjectsSection(this.makeFullWidthRow(setting)).render();
 	}
 
 	// Email validation shared between Toggl and Clockify (same
@@ -369,8 +339,7 @@ export class SettingsTab extends PluginSettingTab {
 	// is a real error). Icon+text banner in the theme's warning color
 	// (var(--text-warning), never a fixed hex) with an "info" icon (not
 	// an error/alert one), same visual pattern as
-	// renderProjectsBanner() in ProjectsSection.ts but with warning
-	// tokens instead of accent. Full-width via makeFullWidthRow(): works
+	// the other settings banners. Full-width via makeFullWidthRow(): works
 	// the same in display() and in the declarative view, both already
 	// pass it a real Setting.
 	private configureClockifyPaymentWallInfo(setting: Setting): void {
@@ -543,11 +512,6 @@ export class SettingsTab extends PluginSettingTab {
 				{
 					type: "group",
 					items: [
-						{
-							name: t("settings.projects.banner"),
-							searchable: false,
-							render: (setting) => this.renderProjectsBannerRow(setting),
-						},
 						{
 							name: t("settings.projects.title"),
 							searchable: false,

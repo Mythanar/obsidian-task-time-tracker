@@ -7,12 +7,13 @@
 // and deleting the whole task only lives in the card's kebab menu,
 // never here.
 
-import { App, Modal, Notice, Setting, setIcon } from "obsidian";
+import { App, Modal, Notice, Platform, Setting, setIcon } from "obsidian";
 import { appendTaskId } from "../core/TaskIdentifier";
 import { formatDuration, formatDurationCompact } from "../core/TrackingEngine";
 import { t } from "../i18n";
 import { EntryUpdateResult, TimeEntry } from "../types";
-import { ListKind } from "../core/ProjectManager";
+import { ListKind, TaskProjectInfo } from "../core/ProjectManager";
+import { collapsePath, splitPathAtFolder } from "../core/ProjectFolders";
 import { closeProjectPickerPopover, openProjectPickerPopover, PickerItem } from "./ProjectPickerList";
 import {
 	EditDraft,
@@ -72,8 +73,11 @@ export class EditTaskModal extends Modal {
 		// inline editing did.
 		private getAllEntries: () => TimeEntry[],
 		// Project or client list, read on every use (same reason as above).
-		private getItems: (kind: ListKind) => PickerItem[],
+		private getItems: (kind: ListKind) => (PickerItem & { folder?: string })[],
 		current: { projectId: string | null; clientId: string | null },
+		// The task's effective project, where it comes from and its current
+		// note (see core/ProjectFolders.ts), read when the modal opens.
+		private getProjectInfo: () => TaskProjectInfo,
 		private actions: EditTaskModalActions,
 		// Refreshes the Historial panel behind the modal after every
 		// mutation (reassigning a project, editing or deleting a session).
@@ -149,6 +153,9 @@ export class EditTaskModal extends Modal {
 			});
 		});
 
+		const projectInfo = this.getProjectInfo();
+		this.renderNoteRow(contentEl, projectInfo);
+
 		if (recoveryLine !== null) {
 			this.renderRecoveryBox(contentEl, recoveryLine);
 		}
@@ -158,8 +165,10 @@ export class EditTaskModal extends Modal {
 		// popover (shared "Project picker list" component, see
 		// ProjectPickerList.ts), label and button together, left-aligned.
 		const pickers = contentEl.createDiv({ cls: "task-time-tracker-edit-modal-pickers" });
+		// The client stays free even when a folder sets the project (R14).
 		this.renderPickerRow(pickers, "client");
-		this.renderPickerRow(pickers, "project");
+		if (projectInfo.source === "folder" && projectInfo.project) this.renderLockedProjectRow(pickers, projectInfo.project.name);
+		else this.renderPickerRow(pickers, "project");
 
 		// Reserved space (one line, see styles.css min-height) from the
 		// first render, empty by default — keeps the "Client/Project updated"
@@ -246,6 +255,76 @@ export class EditTaskModal extends Modal {
 		});
 	}
 
+	// Read-only "Note" line, same look as the tt-id row: the task's
+	// current note. When a folder sets the project, that folder's last
+	// segment is highlighted. On mobile a long path is collapsed
+	// ("Projects/A/…/Retros/meeting.md") with a "Show full path" button.
+	private renderNoteRow(container: HTMLElement, info: TaskProjectInfo): void {
+		const path = info.notePath;
+		if (!path) return;
+		const folder = info.source === "folder" ? info.project?.folder : undefined;
+
+		const row = container.createDiv({ cls: "task-time-tracker-edit-modal-id-row task-time-tracker-edit-modal-note-row" });
+		row.createSpan({ text: t("log.editModalNoteLabel"), cls: "task-time-tracker-edit-modal-id-key" });
+		const value = row.createSpan({ cls: "task-time-tracker-edit-modal-id-value task-time-tracker-edit-modal-note-path" });
+
+		const renderPath = (shown: string) => {
+			value.empty();
+			const parts = folder ? splitPathAtFolder(shown, folder) : null;
+			if (!parts) {
+				value.setText(shown);
+				return;
+			}
+			value.appendText(parts[0]);
+			value.createSpan({ text: parts[1], cls: "task-time-tracker-edit-modal-note-folder" });
+			value.appendText(parts[2]);
+		};
+
+		const collapsed = Platform.isMobile ? collapsePath(path, folder) : path;
+		renderPath(collapsed);
+		if (collapsed === path) return;
+		value.setAttribute("aria-label", path);
+		const showFull = row.createEl("button", {
+			text: t("log.editModalShowFullPath"),
+			cls: "task-time-tracker-edit-modal-note-show-full",
+		});
+		showFull.addEventListener("click", () => {
+			renderPath(path);
+			value.removeAttribute("aria-label");
+			showFull.remove();
+		});
+	}
+
+	// Project set by the note's folder: a read-only row (lock, name,
+	// "(Set by folder)"), no picker. Changing it means moving the note.
+	private renderLockedProjectRow(container: HTMLElement, projectName: string): void {
+		const row = container.createDiv({
+			cls: "task-time-tracker-edit-modal-project-row task-time-tracker-edit-modal-project-locked",
+		});
+		row.createSpan({ text: t("log.editModalProjectLabel"), cls: "task-time-tracker-edit-modal-project-label" });
+		const value = row.createDiv({ cls: "task-time-tracker-edit-modal-project-locked-value" });
+		setIcon(value.createSpan({ cls: "task-time-tracker-edit-modal-project-locked-icon" }), "lock");
+		value.createSpan({ text: projectName, cls: "task-time-tracker-edit-modal-project-locked-name" });
+		value.createSpan({ text: t("log.editModalSetByFolder"), cls: "task-time-tracker-edit-modal-project-locked-hint" });
+	}
+
+	// Picker items: a project tied to a folder can't be set by hand (a
+	// project is either a folder or a manual one), so it is listed apart,
+	// locked, with its folder (see PickerItem.locked).
+	private pickerItems(kind: ListKind): PickerItem[] {
+		const items = this.getItems(kind);
+		if (kind !== "project") return items;
+		return items.map((item) =>
+			item.folder
+				? {
+						id: item.id,
+						name: item.name,
+						locked: { folder: item.folder, reason: t("log.projectPicker.tiedToFolder", { folder: item.folder }) },
+					}
+				: item,
+		);
+	}
+
 	// Inline feedback (no global Notice, no footer): writes the message
 	// into the already-reserved space and fades it after ~3s. Restarts
 	// the timer if reassigned again before the previous one finishes, so
@@ -271,7 +350,7 @@ export class EditTaskModal extends Modal {
 				// openProjectPickerPopover.
 				modal: this,
 				kind,
-				items: this.getItems(kind),
+				items: this.pickerItems(kind),
 				selectedId: this.currentIds[kind] || null,
 				showClearOption: true,
 				onSelect: (id) => {

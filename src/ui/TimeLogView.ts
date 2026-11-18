@@ -20,7 +20,7 @@ import {
 } from "../core/TaskIdentifier";
 import { t } from "../i18n";
 import { Client, DeleteTaskResult, EntryUpdateResult, Project, TimeEntry } from "../types";
-import { ListKind } from "../core/ProjectManager";
+import { ListKind, TaskProjectInfo } from "../core/ProjectManager";
 import { openDatePickerPopover, reanchorDatePickerPopover } from "./DatePickerPopover";
 import { EditTaskModal } from "./EditTaskModal";
 import { InlineTrackingBus } from "./InlineTrackingBus";
@@ -54,6 +54,7 @@ export interface TimeLogViewActions {
 	getProjects(): Project[];
 	getItems(kind: ListKind): PickerItem[];
 	getProjectForTask(taskId: string): Project | null;
+	getProjectInfo(taskId: string): TaskProjectInfo;
 	getClientForTask(taskId: string): Client | null;
 	assign(kind: ListKind, taskId: string, id: string | null): Promise<void>;
 	// Same bus the badge next to the checkbox already uses (see
@@ -946,6 +947,7 @@ export class TimeLogView extends ItemView {
 				projectId: this.actions.getProjectForTask(taskId)?.id ?? null,
 				clientId: this.actions.getClientForTask(taskId)?.id ?? null,
 			},
+			() => this.actions.getProjectInfo(taskId),
 			{
 				assign: (kind, id, itemId) => this.actions.assign(kind, id, itemId),
 				updateEntryTimes: (entryId, start, end) => this.actions.updateEntryTimes(entryId, start, end),
