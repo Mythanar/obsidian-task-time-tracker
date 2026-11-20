@@ -125,7 +125,7 @@ export const es: Record<TranslationKey, string> = {
 	"settings.projects.folderPlaceholder": "Carpeta del proyecto (opcional)",
 	"settings.projects.folderTaken": "Esta carpeta ya está asignada a {project}.",
 	"settings.projects.folderOutside": "Esta carpeta no está en tus carpetas de tracking.",
-	"settings.projects.folderOutsideState": "Fuera de las carpetas de tracking, así que sin botón de play.",
+	"settings.projects.folderOutsideState": "No está en tus carpetas de tracking: no se muestra el botón de play.",
 	"settings.projects.folderNotFound": "Carpeta no encontrada",
 	"settings.projects.addToTracking": "Añadir a carpetas de tracking",
 	"settings.projects.relink": "Volver a enlazar",
