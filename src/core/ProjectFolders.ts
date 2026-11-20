@@ -207,13 +207,32 @@ export function splitPathAtFolder(notePath: string, folder: string): [string, st
 	return [head, segment, notePath.slice(folder.length)];
 }
 
-// Collapsed note path for narrow screens: the first segments up to the
-// project folder (when given), then "…", then the last folder and the
-// file name. Returns the full path when there is nothing to collapse.
-export function collapsePath(notePath: string, keepUpTo?: string): string {
-	const parts = notePath.split("/");
-	const keepHead = keepUpTo && isPathInFolder(notePath, keepUpTo) ? keepUpTo.split("/").length : 1;
-	const keepTail = 2;
-	if (parts.length <= keepHead + keepTail + 1) return notePath;
-	return [...parts.slice(0, keepHead), "…", ...parts.slice(-keepTail)].join("/");
+// Collapsed note path for mobile: with 3 or more folder levels, only
+// the first segment, the project folder's last segment (when the note
+// is inside keepUpTo) and the file name are kept, with "…" wherever
+// segments were skipped. `highlight` is the index in `parts` of the
+// project folder segment, or -1. Null when the path isn't collapsed.
+export const COLLAPSE_MIN_FOLDER_LEVELS = 3;
+
+export interface CollapsedPath {
+	parts: string[];
+	highlight: number;
+}
+
+export function collapsePath(notePath: string, keepUpTo?: string): CollapsedPath | null {
+	const segments = notePath.split("/");
+	if (segments.length - 1 < COLLAPSE_MIN_FOLDER_LEVELS) return null;
+	const last = segments.length - 1;
+	const folderIdx = keepUpTo && isPathInFolder(notePath, keepUpTo) ? keepUpTo.split("/").length - 1 : -1;
+	const keep = [...new Set([0, folderIdx, last].filter((i) => i >= 0))].sort((a, b) => a - b);
+	const parts: string[] = [];
+	let highlight = -1;
+	let prev = -1;
+	for (const idx of keep) {
+		if (prev >= 0 && idx - prev > 1) parts.push("…");
+		if (idx === folderIdx) highlight = parts.length;
+		parts.push(segments[idx] ?? "");
+		prev = idx;
+	}
+	return { parts, highlight };
 }

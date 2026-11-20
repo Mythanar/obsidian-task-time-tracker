@@ -153,12 +153,31 @@ describe("folder helpers", () => {
 		assert.equal(splitPathAtFolder("Other/x.md", "Projects/A"), null);
 	});
 
-	it("collapses long paths, keeping the project folder", () => {
-		assert.equal(
-			collapsePath("Projects/Project A/2026/Q4/Retros/meeting.md", "Projects/Project A"),
-			"Projects/Project A/…/Retros/meeting.md",
-		);
-		assert.equal(collapsePath("A/b.md"), "A/b.md");
+	it("collapses 3+ folder levels to first segment, project folder and note", () => {
+		const path = "Todos los Proyectos/Carpeta de Subnivel 2/Notas de tareas de Helpdesk/Prueba de Proyectos.md";
+		assert.deepEqual(collapsePath(path, "Todos los Proyectos/Carpeta de Subnivel 2/Notas de tareas de Helpdesk"), {
+			parts: ["Todos los Proyectos", "…", "Notas de tareas de Helpdesk", "Prueba de Proyectos.md"],
+			highlight: 2,
+		});
+		assert.deepEqual(collapsePath(path, "Todos los Proyectos/Carpeta de Subnivel 2"), {
+			parts: ["Todos los Proyectos", "Carpeta de Subnivel 2", "…", "Prueba de Proyectos.md"],
+			highlight: 1,
+		});
+		assert.deepEqual(collapsePath("Projects/Project A/2026/Q4/Retros/meeting.md", "Projects/Project A"), {
+			parts: ["Projects", "Project A", "…", "meeting.md"],
+			highlight: 1,
+		});
+		assert.deepEqual(collapsePath("P/a/b/c/meeting.md", "P/a/b"), {
+			parts: ["P", "…", "b", "…", "meeting.md"],
+			highlight: 2,
+		});
+		assert.deepEqual(collapsePath("P/a/b/meeting.md", "P"), { parts: ["P", "…", "meeting.md"], highlight: 0 });
+		assert.deepEqual(collapsePath("A/b/c/meeting.md"), { parts: ["A", "…", "meeting.md"], highlight: -1 });
+	});
+
+	it("keeps paths with fewer than 3 folder levels whole", () => {
+		assert.equal(collapsePath("A/b.md"), null);
+		assert.equal(collapsePath("A/B/c.md", "A/B"), null);
 	});
 });
 

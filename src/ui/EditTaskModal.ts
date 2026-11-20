@@ -257,8 +257,9 @@ export class EditTaskModal extends Modal {
 
 	// Read-only "Note" line, same look as the tt-id row: the task's
 	// current note. When a folder sets the project, that folder's last
-	// segment is highlighted. On mobile a long path is collapsed
-	// ("Projects/A/…/Retros/meeting.md") with a "Show full path" button.
+	// segment is highlighted. On mobile, 3+ folder levels collapse to
+	// first segment, project folder and file name ("Projects/…/A/…/
+	// meeting.md") with a "Show full path" button.
 	private renderNoteRow(container: HTMLElement, info: TaskProjectInfo): void {
 		const path = info.notePath;
 		if (!path) return;
@@ -280,9 +281,16 @@ export class EditTaskModal extends Modal {
 			value.appendText(parts[2]);
 		};
 
-		const collapsed = Platform.isMobile ? collapsePath(path, folder) : path;
-		renderPath(collapsed);
-		if (collapsed === path) return;
+		const collapsed = Platform.isMobile ? collapsePath(path, folder) : null;
+		if (!collapsed) {
+			renderPath(path);
+			return;
+		}
+		collapsed.parts.forEach((part, i) => {
+			if (i > 0) value.appendText("/");
+			if (i === collapsed.highlight) value.createSpan({ text: part, cls: "task-time-tracker-edit-modal-note-folder" });
+			else value.appendText(part);
+		});
 		value.setAttribute("aria-label", path);
 		const showFull = row.createEl("button", {
 			text: t("log.editModalShowFullPath"),
