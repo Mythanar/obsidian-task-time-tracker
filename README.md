@@ -18,14 +18,10 @@ A local-first Obsidian plugin for **tracking time directly on the checkboxes in 
 
 - [How it works](#how-it-works)
 - [Features](#features)
-- [Clients & projects](#clients--projects)
-- [Settings](#settings)
-- [Search](#search)
-- [Dashboard](#dashboard)
-- [Commands](#commands)
 - [Privacy & architecture](#privacy--architecture)
 - [Export](#export)
 - [Installation](#installation)
+- [Documentation](#documentation)
 - [About](#about)
 - [License](#license)
 
@@ -40,164 +36,22 @@ A local-first Obsidian plugin for **tracking time directly on the checkboxes in 
 
 <img src="docs/images/badges-demo.gif" alt="Animated demo of the task badge states — play, active tracking, and completed" width="450" style="border-radius:12px; margin:2rem 0;">
 
-### Where you can interact with the tracker
-
-The play/stop icon and the live counter only appear where Obsidian renders an editable view of the note — that is, in **Edit/Source mode** on the note itself.
-
-They won't appear in any read-only rendering of the task, even though the task and its recorded time are exactly the same underlying data. This includes:
-- **Reading mode**
-- **Embedded notes** (`![[note#^block]]`)
-- **Any query or dataview-style result** (Tasks, Dataview, or similar plugins) — these render a non-editable visualization of the task, not the task itself
-
-To start or stop tracking, switch to Edit mode on the note, or use the **History panel** — which works everywhere, regardless of how the task is normally displayed.
-
-If you set **Tracking folders** (see [Settings](#tracking-folders)), the icon only appears on tasks in those folders.
-
-The status bar at the bottom of Obsidian always shows the active task (or "No active tracking"). Clicking anywhere on it opens the History panel — this works regardless of the note's mode, and even with no timer running.
-
-<img src="docs/images/status-bar-dark.png" alt="Status bar, clickable to open History" style="border-radius:12px;">
-
-
-### The task identifier
-
-Every tracked task gets a short, unique identifier stored inline with the task text (`[tt-id:: ...]`), so your history stays linked to the right task even if you edit or move it. Keeping your notes uncluttered matters to us, so this identifier is **subtle by default** — and you're never stuck with how it looks out of the box:
-
-- Go to **Settings → Task identifier format** to choose between **Normal** (fully visible), **Reduced** (small and low-opacity — the default), or **Hidden** entirely.
-- This styling requires the [Dataview](https://github.com/blacksmithgu/obsidian-dataview) plugin — Dataview is what renders the identifier at all, so it's also what makes it queryable (e.g. `WHERE tt-id = "..."`) and stylable. **Dataview is entirely optional**: tracking, history, and export all work exactly the same without it.
-- Without Dataview installed, the identifier is shown as plain text (e.g. `[tt-id:: a3f9k2mp]`) — this is a known limitation of relying on Dataview for the styling, not a bug.
-- In Source mode, the raw identifier is always visible regardless of this setting, so you can always find and inspect it if needed. It's also shown — with a one-click copy button — in the **Edit task** dialog, the quickest way to grab it without switching to Source mode.
-
-**Normal** — shown as Dataview would normally render any inline field.
-
-<img src="docs/images/id-normal-dark.png" alt="Task identifier, Normal visibility mode" style="border-radius:12px;">
-
-**Reduced** *(default)* — same information, styled to blend in and stay out of the way while you read your notes.
-
-<img src="docs/images/id-reduced-dark.png" alt="Task identifier, Reduced visibility mode" style="border-radius:12px;">
-
-**Hidden** — the identifier isn't rendered at all, though it's still there in the note and your Dataview queries on `tt-id` keep working.
-
-<img src="docs/images/id-hidden-dark.png" alt="Task identifier, Hidden visibility mode" style="border-radius:12px;">
-
-**Duplicated notes.** If two notes contain the same `[tt-id:: …]` (for example, after duplicating a note), the plugin treats them as a single task: its time still adds up correctly. Which copy's text is shown in the Time Tracker panel, the Dashboard and exports is not defined. The note icon on each card opens the note where the task was last tracked. Avoid duplicating notes that contain tracked tasks.
-
-### Using it with the Tasks plugin
-
-If you use the [Tasks](https://github.com/obsidian-tasks-group/obsidian-tasks) plugin, where the identifier sits on the line matters. Tasks only recognises its own fields (due date 📅, scheduled ⏳, start 🛫, created ➕, done ✅, priority, recurrence…) when nothing else comes after them. This is a known limitation of Tasks itself ([obsidian-tasks#1505](https://github.com/obsidian-tasks-group/obsidian-tasks/issues/1505)) and affects any text added at the end of a task line, not just this plugin.
-
-To avoid it, Task Time Tracker places the identifier **before** your Tasks fields, whenever you start or stop tracking a task:
-
-`- [ ] Create profile [tt-id:: a3f9k2mp] 📅 2026-09-18`
-
-Tasks you tracked with an older version of the plugin may still have the identifier at the end of the line, and can disappear from your Tasks queries (for example, date filters). To fix them all at once, go to **Settings → "Using the Tasks plugin?" → "Repair tasks"**. It scans your vault and only moves the identifier — nothing else on the line changes — and it's safe to run as often as you like.
+Not seeing the play icon on a task? See [where you can interact with the tracker](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/tracking.md).
 
 ## Features
 
 - **Local-first, always available** — tracking works entirely offline. The plugin never depends on network access for day-to-day use.
 - **One timer, no confusion** — only one active timer at a time. Switching tasks closes the previous session automatically, without losing data.
 - **Fits your task format** — works with Tasks-style checkboxes (`- [ ]`, `* [ ]`, `+ [ ]`), numbered lists, nested tasks, and checkboxes inside callouts or blockquotes.
-- **Plays nicely with Dataview, but never depends on it** — an optional, subtle-by-default identifier keeps your history linked to each task and makes it queryable, without cluttering your notes.
-- **A clear history** — a dedicated panel with per-task cards, day/week navigation or any custom date range, task search by name or `tt-id`, and inline editing or deletion of sessions.
+- **Plays nicely with Dataview, but never depends on it** — an optional, subtle-by-default identifier keeps your history linked to each task and makes it queryable, without cluttering your notes. → [The task identifier](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/task-identifier.md)
+- **A clear history** — a dedicated panel with per-task cards, day/week navigation or any custom date range, task search by name or `tt-id`, and inline editing or deletion of sessions. → [Search](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/search.md)
 - **Resume tracking without leaving the panel** — start or stop a task's tracking straight from its card in the History panel, without opening the note it lives in. If a task is currently being tracked, any other day where it also has past sessions shows a small marker that jumps you straight back to the live session.
-- **Organize with clients & projects** — two separate lists in Settings: give each task a client (who the work is for) and a project (what the work is), independently, then filter the History panel by client, by project, or by both.
-- **A 30-day overview at a glance** — the Dashboard view totals your last 30 days by project, client, day, and task, no filters or setup needed.
-- **Export on your terms** — generate a generic CSV or one formatted for Toggl's or Clockify's official importer. You choose when to export — never automatic, never in the background.
+- **Organize with clients & projects** — two separate lists in Settings: give each task a client (who the work is for) and a project (what the work is), independently, then filter the History panel by client, by project, or by both. → [Clients & projects](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/clients-and-projects.md)
+- **A 30-day overview at a glance** — the Dashboard view totals your last 30 days by project, client, day, and task, no filters or setup needed. → [Dashboard](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/dashboard.md)
+- **Export on your terms** — generate a generic CSV or one formatted for Toggl's or Clockify's official importer. You choose when to export — never automatic, never in the background. → [Export](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/export.md)
 - **Zero external API calls** — the plugin never connects to any third-party service, at any point in its operation. Your time data stays in your vault.
 
 <img src="docs/images/play-on-panel-35.gif" alt="Starting and stopping tracking directly from a task's card in the History panel" width="500" style="border-radius:12px;margin:2rem 0;">
-
-## Clients & projects
-
-Clients and projects are two separate lists in **Settings → Clients & projects**, so the same project can be done for several clients without repeating it: the client is who the work is for, the project is what the work is.
-
-<img src="docs/images/project-and-clients-settings-35.png" alt="Settings → Clients & projects section" width="515" style="border-radius:12px;margin:2rem 0;">
-
-Add clients and projects one by one, or paste a whole list at once (one name per line) if you're migrating from somewhere else: new names are added and the ones already in the list are skipped and listed. Names are unique within each list, ignoring capital letters and extra spaces.
-
-Give any tracked task a client and a project from its **Edit task** dialog — two searchable lists, one for each. A task can have a client without a project, and the other way round.
-
-
-<img src="docs/images/project-picker-modal-35.png" alt="Edit task dialog with its Client and Project selectors, the Project list open" width="515" style="border-radius:12px;margin:2rem 0;">
-
-Filter the History panel with the **Filter** button in its header. Its two tabs, **Client** and **Project**, each list yours with a search box and a "No client" / "No project" row; pick one in each tab to see only the tasks that match both. A dot on a tab means it has a filter on. To remove a filter, press its row again or the **×** on its chip. Filters reset every time you reopen Obsidian, so they're never a setting you forget you left on.
-
-<img src="docs/images/filter-in-panel-35.png" alt="History panel Filter button open, with its Client and Project tabs" width="515" style="border-radius:12px;margin:2rem 0;">
-
-### Project by folder
-
-If you keep one folder per project, link them: give the project a folder in **Settings → Clients & projects** (it's optional). Every task in a note inside that folder, at any depth, gets that project automatically, including its past sessions and your exports. With nested project folders, the deepest one wins.
-
-<img src="docs/images/project-folder-settings-37.png" alt="Settings → Clients & projects page, with two projects linked to folders" width="515" style="border-radius:12px;margin:2rem 0;">
-
-- **The folder decides.** A task inside a project folder can't get another project by hand: its **Edit task** dialog shows the project with a lock and "(Set by folder)", and a "Note" line shows where the note is. A project you had set by hand isn't lost: it comes back if you remove the folder link.
-- **The client stays free.** Folders only set the project; you still choose the client in Edit task.
-- **No surprises.** Before you link a folder that changes the project of tasks you already tracked, a dialog tells you how many tasks and how much time. Moving a note into another project's folder shows a notice, and renaming or moving a project folder keeps the link.
-- **Export again with care.** If you change projects for dates you already exported, export them again only after checking your platform: most platforms add the entries again instead of updating them. The export dialog reminds you of this.
-
-<img src="docs/images/edit-task-set-by-folder-37.png" alt="Edit task dialog for a task whose project is set by its folder, with a lock and (Set by folder)" width="515" style="border-radius:12px;margin:2rem 0;">
-
-## Search
-
-Find any task from the History panel with the **magnifier icon** in its header. Type part of a task's name or its `tt-id`, and suggestions appear as you type.
-
-- **Pick a suggestion** to see every session of that task, including ones saved under an older name.
-- **Press Enter** without picking one to find every task whose name contains what you typed.
-
-Suggestions come from your **entire history**, whatever day or week you were looking at; the results respect any client or project filter you have on. Results open in the Results view, most recent days first.
-
-<img src="docs/images/search-suggestions-33.png" alt="Task search in the History panel header, with suggestions shown while typing" width="320" style="border-radius:12px;margin:2rem 0;">
-
-### Combining filters
-
-Search combines with the client and project filters and the date range. Each active filter shows as its own chip above the results, and each chip has its own **×** to remove just that filter while keeping the rest. For example, search for "invoice" within one client, one project and one month, then drop the month to see that project's matches across all time.
-
-Removing filters never takes you out of the Results view: with the last one gone, it shows your whole history. Without a date range, a "Since" label shows the day of your first session. Use the back arrow to return to Day or Week.
-
-<img src="docs/images/search-chips-35.png" alt="Client, project, search text and date range filters shown as chips, each with its own remove button" width="552" style="border-radius:12px;margin:2rem 0;">
-
-### Full history of a client or project
-
-When a client or project is filtered in Day or Week view, a row under the header shows each filter as a chip with a **View full history** action. It opens the Results view with only those filters, across your whole history, with no date range applied.
-
-## Dashboard
-
-A dedicated view for a no-filter overview of your last 30 days — opened from its own icon in the ribbon, with the total for the window shown right next to its title and the first and last day it covers below it. The window is always the 30 days up to today, whatever range the History panel shows.
-
-<img src="docs/images/dashboard-ribbon-30.png" alt="Dashboard icon in the ribbon" width="180" style="border-radius:12px;margin:2rem 0;">
-
-Four blocks share the same row format as the rest of the plugin (name + total time in `HH:MM:SS` + number of sessions):
-
-- **By project** and **by client** — ranked by total time, with a "No project"/"No client" row for anything not assigned.
-- **By day** — chronological (most recent first), not ranked, since it's a timeline rather than a leaderboard.
-- **By task** — ranked by total time; if a task's source note was deleted, its name still shows (in italics on its History card, upright in Edit task) instead of a generic error, with an explicit "Note not found" and a red icon so it's easy to spot.
-
-Day and task blocks show the top 5 by default, with a "Show all" link loading 50 more at a time. The 30-day window is fixed — no range picker or extra filters, since the four blocks already break the same data down by project, client, day, and task.
-
-<img src="docs/images/dashboard-35.png" alt="Dashboard panel" width="515" style="border-radius:12px;margin:2rem 0;">
-
-
-## Settings
-
-The main settings page has the everyday options: Tracking folders, the task identifier format, the Tasks plugin repair and where the History panel opens. **Clients & projects** and **Export** (export folder and the Toggl and Clockify formats) each have their own page, opened from the main one. Obsidian's settings search finds every setting, wherever it lives.
-
-On Obsidian versions before 1.13, everything stays on a single page, as before.
-
-### Tracking folders
-
-Choose the folders where you track time. The play icon only shows on tasks in those folders and their subfolders; elsewhere your notes look exactly as if the plugin wasn't there. The only exception is the task you're tracking right now, which always shows its timer so you can stop it. Leave the list empty to track in the whole vault (the default).
-
-The History panel's play button keeps working for any task, and renaming or moving a listed folder updates the list. If you pick a project folder outside your Tracking folders, Settings warns you and offers to add it.
-
-<img src="docs/images/tracking-folders-37.png" alt="Settings → Tracking folders, with two folders in the list" width="515" style="border-radius:12px;margin:2rem 0;">
-
-## Commands
-
-All actions are also available from Obsidian's Command Palette (`Cmd/Ctrl + P`), so you're never dependent on hovering over a checkbox or finding the status bar:
-
-- **Time Tracker: Start tracking on current task** — starts tracking the task under your cursor (only in your Tracking folders, if you set any).
-- **Time Tracker: Stop active tracking** — stops whatever timer is currently running.
-- **Time Tracker: Open time log panel** — opens the History panel.
-- **Time Tracker: Export time entries...** — opens the export dialog to generate a CSV (generic, Toggl-formatted, or Clockify-formatted) for a chosen date range.
 
 ## Privacy & architecture
 
@@ -217,14 +71,12 @@ Three export formats are available whenever you need them:
 - **Toggl-formatted CSV** — matches the exact columns expected by Toggl's official importer.
 - **Clockify-formatted CSV** — matches the exact columns expected by Clockify's Timesheets importer. Importing time entries into Clockify needs a paid plan or trial — a limitation on Clockify's side, not this plugin's.
 
-Generic CSV exports also include the project and client assigned to each task, if any — ready to use for per-client reporting. (The Toggl and Clockify formats can include them too, behind their "Include Project & Client" (Toggl, off by default) or "Include Project"/"Include Client" (Clockify, on by default) toggles in **Settings → Export**.)
-
-Toggl and Clockify only import a client together with its project: sessions of a task with a client but no project are imported without a client, and a project used with several clients becomes several projects with the same name. The export dialog warns you when the chosen range has either case.
-
 *More export formats (Harvest, Everhour, and others) are planned.*
 
 <a href="https://toggl.com/" target="_blank"><img src="docs/images/toggl-logo.png" alt="Toggl logo" width="150" style="border-radius:6px"></a><br>
 <a href="https://clockify.me/" target="_blank"><img src="docs/images/clockify-logo.png" alt="Clockify logo" width="150" style="border-radius:6px"></a>
+
+For the project and client columns and the Toggl and Clockify limits, see [Export](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/export.md).
 
 
 ## Installation
@@ -245,11 +97,22 @@ Toggl and Clockify only import a client together with its project: sessions of a
 2. Create a folder named `task-time-tracker` inside your vault's `.obsidian/plugins/` directory and place the three files there.
 3. Reload Obsidian and enable the plugin in Community Plugins.
 
-### Using it on several devices
+If you sync your vault across devices, keep Task Time Tracker on the same version on all of them. See [Updating](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/updating.md).
 
-If you sync your vault (for example with Obsidian Sync), keep Task Time Tracker on the same version on all your devices. **Update it on every device now:** this version stores clients as their own list, and a device still on 0.0.33 or earlier would remove the clients list and each task's client the next time it saves. If that happens, the plugin tells you and recovers the clients from your projects, but client changes made in between are lost. Devices on 0.0.34 keep the new data intact: they ask you to update the plugin there and disable exporting and editing projects and clients until you do. But assigning a project to a task from a 0.0.34 device leaves that task without a client.
+## Documentation
 
-Devices on 0.0.34 to 0.0.36 ignore Tracking folders and project folders: their History and exports show the project you set by hand, and the play button shows in the whole vault. Nothing is lost when you go back to 0.0.37. Update every device before exporting, so your exports use the projects set by folder.
+The [full documentation](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/README.md) covers each feature in detail:
+
+- [Where you can interact with the tracker](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/tracking.md)
+- [The task identifier](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/task-identifier.md)
+- [Using it with the Tasks plugin](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/tasks-plugin.md)
+- [Clients & projects](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/clients-and-projects.md)
+- [Search](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/search.md)
+- [Dashboard](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/dashboard.md)
+- [Settings](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/settings.md)
+- [Commands](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/commands.md)
+- [Export](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/export.md)
+- [Updating](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/updating.md)
 
 ## About
 
