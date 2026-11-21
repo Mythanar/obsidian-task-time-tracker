@@ -9,7 +9,7 @@ They won't appear in any read-only rendering of the task, even though the task a
 
 To start or stop tracking, switch to Edit mode on the note, or use the **History panel** — which works everywhere, regardless of how the task is normally displayed.
 
-If you set **Tracking folders** (see [Tracking folders](settings.md#tracking-folders)), the icon only appears on tasks in those folders.
+If you set [Tracking folders](settings.md#tracking-folders), the icon only appears on tasks in those folders.
 
 The status bar at the bottom of Obsidian always shows the active task (or "No active tracking"). Clicking anywhere on it opens the History panel — this works regardless of the note's mode, and even with no timer running.
 

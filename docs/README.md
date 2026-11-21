@@ -1,6 +1,6 @@
 # Task Time Tracker documentation
 
-The full guide to Task Time Tracker, one page per topic. For an overview of the plugin, see the [main README](../README.md).
+The full guide to Task Time Tracker, one page per topic. For an overview of the plugin, see the [main README](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/README.md).
 
 - [Where you can interact with the tracker](tracking.md) — where the play/stop icon shows, and the status bar.
 - [The task identifier](task-identifier.md) — the inline `[tt-id:: …]`, its three display modes and duplicated notes.

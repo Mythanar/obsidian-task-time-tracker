@@ -42,7 +42,7 @@ Not seeing the play icon on a task? See [where you can interact with the tracker
 
 - **Local-first, always available** — tracking works entirely offline. The plugin never depends on network access for day-to-day use.
 - **One timer, no confusion** — only one active timer at a time. Switching tasks closes the previous session automatically, without losing data.
-- **Fits your task format** — works with Tasks-style checkboxes (`- [ ]`, `* [ ]`, `+ [ ]`), numbered lists, nested tasks, and checkboxes inside callouts or blockquotes. → [Using it with the Tasks plugin](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/tasks-plugin.md)
+- **Fits your task format** — works with Tasks-style checkboxes (`- [ ]`, `* [ ]`, `+ [ ]`), numbered lists, nested tasks, and checkboxes inside callouts or blockquotes.
 - **Plays nicely with Dataview, but never depends on it** — an optional, subtle-by-default identifier keeps your history linked to each task and makes it queryable, without cluttering your notes. → [The task identifier](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/task-identifier.md)
 - **A clear history** — a dedicated panel with per-task cards, day/week navigation or any custom date range, task search by name or `tt-id`, and inline editing or deletion of sessions. → [Search](https://github.com/Mythanar/obsidian-task-time-tracker/blob/main/docs/search.md)
 - **Resume tracking without leaving the panel** — start or stop a task's tracking straight from its card in the History panel, without opening the note it lives in. If a task is currently being tracked, any other day where it also has past sessions shows a small marker that jumps you straight back to the live session.
@@ -69,7 +69,7 @@ Three export formats are available whenever you need them:
 
 - **Generic CSV** — opens cleanly in any spreadsheet tool.
 - **Toggl-formatted CSV** — matches the exact columns expected by Toggl's official importer.
-- **Clockify-formatted CSV** — matches the exact columns expected by Clockify's Timesheets importer.
+- **Clockify-formatted CSV** — matches the exact columns expected by Clockify's Timesheets importer. Importing time entries into Clockify needs a paid plan or trial — a limitation on Clockify's side, not this plugin's.
 
 *More export formats (Harvest, Everhour, and others) are planned.*
 
